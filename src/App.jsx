@@ -588,17 +588,20 @@ export default function SuperDeliveryApp() {
     if (!registerForm.name) {
       return notifySystem("ผิดพลาด", "กรุณากรอกชื่อ-นามสกุล", "error");
     }
-    if (!registerForm.phone && !registerForm.email) {
-      notifySystem("ผิดพลาด", "กรุณากรอกเบอร์โทรหรืออีเมล", "error");
-      return;
+    if (FIREBASE_ENABLED && !registerForm.email) {
+      return notifySystem("ผิดพลาด", "กรุณากรอกอีเมล", "error");
+    }
+    if (!FIREBASE_ENABLED && !registerForm.phone && !registerForm.email) {
+      return notifySystem("ผิดพลาด", "กรุณากรอกเบอร์โทรหรืออีเมล", "error");
     }
     if (!registerForm.password) {
-      notifySystem("ผิดพลาด", "กรุณากรอกรหัสผ่าน", "error");
-      return;
+      return notifySystem("ผิดพลาด", "กรุณากรอกรหัสผ่าน", "error");
+    }
+    if (registerForm.password.length < 6) {
+      return notifySystem("ผิดพลาด", "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร", "error");
     }
     if (registerForm.password !== registerForm.confirmPassword) {
-      notifySystem("ผิดพลาด", "รหัสผ่านไม่ตรงกัน", "error");
-      return;
+      return notifySystem("ผิดพลาด", "รหัสผ่านไม่ตรงกัน", "error");
     }
 
     // Firebase register (when configured and email provided)
@@ -2502,11 +2505,11 @@ export default function SuperDeliveryApp() {
             ) : (
               <div className="space-y-3">
                 {[
-                  { label: 'ชื่อ-นามสกุล', type: 'text', field: 'name', placeholder: 'ชื่อจริง นามสกุล', autoComplete: 'name' },
-                  { label: 'เบอร์โทรศัพท์', type: 'tel', field: 'phone', placeholder: '081-xxx-xxxx', autoComplete: 'tel' },
-                  { label: 'อีเมล (ไม่บังคับ)', type: 'email', field: 'email', placeholder: 'email@example.com', autoComplete: 'email' },
-                  { label: 'รหัสผ่าน', type: 'password', field: 'password', placeholder: '••••••••', autoComplete: 'new-password' },
-                  { label: 'ยืนยันรหัสผ่าน', type: 'password', field: 'confirmPassword', placeholder: '••••••••', autoComplete: 'new-password' },
+                  { label: 'ชื่อ-นามสกุล *', type: 'text', field: 'name', placeholder: 'ชื่อจริง นามสกุล', autoComplete: 'name' },
+                  { label: FIREBASE_ENABLED ? 'อีเมล *' : 'อีเมล (ไม่บังคับ)', type: 'email', field: 'email', placeholder: 'email@example.com', autoComplete: 'email' },
+                  { label: 'เบอร์โทรศัพท์ (ไม่บังคับ)', type: 'tel', field: 'phone', placeholder: '081-xxx-xxxx', autoComplete: 'tel' },
+                  { label: 'รหัสผ่าน * (6 ตัวขึ้นไป)', type: 'password', field: 'password', placeholder: '••••••••', autoComplete: 'new-password' },
+                  { label: 'ยืนยันรหัสผ่าน *', type: 'password', field: 'confirmPassword', placeholder: '••••••••', autoComplete: 'new-password' },
                 ].map(({ label, type, field, placeholder, autoComplete }) => (
                   <div key={field}>
                     <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">{label}</label>
