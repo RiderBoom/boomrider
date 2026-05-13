@@ -1,0 +1,58 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+
+# Environment — keep secrets out of git
+*.local
+.env.local
+.env.*.local
+.env.production
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db
+
+# Android — only commit app source, exclude SDK and build artifacts
+android/app/build/
+android/.gradle/
+android/build/
+android/build-tools/
+android/platforms/
+android/system-images/
+android/sources/
+android/extras/
+android/licenses/
+android/emulator/
+android/tools/
+android/ndk/
+android/ndk-bundle/
+android/platform-tools/
+android/cmdline-tools/
+android/skins/
+android/patcher/
+android/local.properties
+*.keystore
+!debug.keystore
+
+# Capacitor cache
+.capacitor/

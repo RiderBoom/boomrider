@@ -1,0 +1,96 @@
+{
+  "name": "BoomRider - สั่งอาหารออนไลน์",
+  "short_name": "BoomRider",
+  "description": "แอปสั่งอาหารและส่งพัสดุออนไลน์ ส่งเร็ว ราคาถูก ครอบคลุมทั่วกรุงเทพ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f97316",
+  "orientation": "portrait-primary",
+  "lang": "th",
+  "dir": "ltr",
+  "categories": ["food", "lifestyle", "shopping"],
+  "icons": [
+    {
+      "src": "/icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "สั่งอาหาร",
+      "short_name": "อาหาร",
+      "description": "สั่งอาหารจากร้านใกล้บ้าน",
+      "url": "/?service=food",
+      "icons": [{ "src": "/icons/shortcut-food.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "ส่งพัสดุ",
+      "short_name": "พัสดุ",
+      "description": "ส่งพัสดุด่วนถึงที่",
+      "url": "/?service=parcel",
+      "icons": [{ "src": "/icons/shortcut-parcel.png", "sizes": "96x96" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/home.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "หน้าแรก BoomRider"
+    }
+  ],
+  "prefer_related_applications": false,
+  "related_applications": [
+    {
+      "platform": "play",
+      "url": "https://play.google.com/store/apps/details?id=app.boomrider",
+      "id": "app.boomrider"
+    }
+  ]
+}

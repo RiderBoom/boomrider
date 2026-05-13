@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "495738557416",
+    "project_id": "boomrider-6b098",
+    "storage_bucket": "boomrider-6b098.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:495738557416:android:bd9962a7abc290a3a7ca5d",
+        "android_client_info": {
+          "package_name": "com.boomrider.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "495738557416-sqoskt6gmusb0q918fl2qs8ler075e41.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_OcHRhD-K80JBCqPUfxw5n8vgvRvsM3c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "495738557416-sqoskt6gmusb0q918fl2qs8ler075e41.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

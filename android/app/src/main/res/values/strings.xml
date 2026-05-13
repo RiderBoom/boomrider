@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BoomRider</string>
+    <string name="title_activity_main">BoomRider</string>
+    <string name="package_name">com.boomrider.app</string>
+    <string name="custom_url_scheme">com.boomrider.app</string>
+</resources>

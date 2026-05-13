@@ -1,0 +1,183 @@
+/* App-level overrides — global styles live in index.css */
+
+/* Root mobile container */
+#root {
+  max-width: 430px;     /* Max iPhone Pro width */
+  margin: 0 auto;
+  height: 100dvh;       /* Dynamic viewport height for mobile */
+  overflow: hidden;
+  position: relative;
+  background: #f9fafb;
+  box-shadow: 0 0 80px rgba(0,0,0,0.12);  /* Lift effect on desktop */
+}
+
+/* Full-bleed on small screens */
+@media (max-width: 430px) {
+  #root { box-shadow: none; }
+}
+
+/* ===== Restaurant Card World-Class ===== */
+.restaurant-card {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transition: transform 0.25s cubic-bezier(0.22,1,0.36,1),
+              box-shadow 0.25s ease;
+  cursor: pointer;
+}
+
+.restaurant-card:active {
+  transform: scale(0.97);
+}
+
+.restaurant-card-img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+.restaurant-card-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.restaurant-card-closed-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+}
+
+/* ===== Featured Banner ===== */
+.featured-banner {
+  background: linear-gradient(135deg, #f97316 0%, #dc2626 100%);
+  border-radius: 20px;
+  padding: 20px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.featured-banner::before {
+  content: '';
+  position: absolute;
+  top: -30px; right: -30px;
+  width: 120px; height: 120px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 50%;
+}
+
+.featured-banner::after {
+  content: '';
+  position: absolute;
+  bottom: -40px; right: 20px;
+  width: 160px; height: 160px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 50%;
+}
+
+/* ===== Promo Card ===== */
+.promo-card {
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #fbbf24;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ===== Bottom Sheet ===== */
+.bottom-sheet {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: #fff;
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -8px 40px rgba(0,0,0,0.15);
+  padding: 12px 0 0;
+  animation: slide-in-from-bottom 0.35s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+
+.bottom-sheet-handle {
+  width: 40px; height: 4px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  margin: 0 auto 12px;
+}
+
+/* ===== Category Pills ===== */
+.category-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 64px;
+}
+
+.category-pill.active {
+  background: #fff7ed;
+  border-color: #f97316;
+}
+
+.category-pill:active { transform: scale(0.94); }
+
+/* ===== Order Tracker ===== */
+.tracker-line {
+  position: absolute;
+  left: 20px; top: 0; bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, #f97316, #fed7aa);
+}
+
+.tracker-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid #f97316;
+  background: #fff;
+  position: relative;
+  z-index: 1;
+  transition: all 0.3s ease;
+}
+
+.tracker-dot.filled {
+  background: #f97316;
+}
+
+/* ===== Header ===== */
+.app-header {
+  background: linear-gradient(180deg, #fff 85%, transparent 100%);
+  padding: 16px 16px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* ===== Safe Area Spacing ===== */
+.bottom-nav-bar {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}

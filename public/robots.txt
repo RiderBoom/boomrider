@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+
+# Block admin and API paths from indexing
+Disallow: /api/
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /.well-known/
+
+# Crawl delay for polite crawling
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://boomrider.app/sitemap.xml
