@@ -56,3 +56,5 @@ android/local.properties
 
 # Capacitor cache
 .capacitor/
+
+.vercel
