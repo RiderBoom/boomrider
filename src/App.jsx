@@ -543,13 +543,16 @@ export default function SuperDeliveryApp() {
         notifySystem("สำเร็จ", "เข้าสู่ระบบเรียบร้อย!", "success");
         return;
       } catch (err) {
+        console.error('[Login Error]', err.code, err.message);
         const msg = err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
           ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
           : err.code === 'auth/user-not-found'
           ? 'ไม่พบบัญชีนี้ในระบบ'
           : err.code === 'auth/unauthorized-domain'
           ? 'Domain ยังไม่ได้รับอนุญาต กรุณาเพิ่ม domain ใน Firebase Console'
-          : (err.message || 'เกิดข้อผิดพลาด');
+          : err.code === 'auth/too-many-requests'
+          ? 'ลองใหม่ภายหลัง (ส่งคำขอมากเกินไป)'
+          : (err.code || err.message || 'เกิดข้อผิดพลาด');
         return notifySystem("ผิดพลาด", msg, "error");
       }
     }
@@ -638,13 +641,16 @@ export default function SuperDeliveryApp() {
         notifySystem("สำเร็จ", "สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ", "success");
         return;
       } catch (err) {
+        console.error('[Register Error]', err.code, err.message);
         const msg = err.code === 'auth/email-already-in-use'
-          ? 'อีเมลนี้ถูกใช้งานแล้ว'
+          ? 'อีเมลนี้ถูกใช้งานแล้ว — ลองเข้าสู่ระบบแทน'
           : err.code === 'auth/weak-password'
           ? 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'
           : err.code === 'auth/unauthorized-domain'
           ? 'Domain ยังไม่ได้รับอนุญาต กรุณาเพิ่ม domain ใน Firebase Console'
-          : (err.message || 'เกิดข้อผิดพลาด');
+          : err.code === 'auth/invalid-email'
+          ? 'รูปแบบอีเมลไม่ถูกต้อง'
+          : (err.code || err.message || 'เกิดข้อผิดพลาด');
         return notifySystem("ผิดพลาด", msg, "error");
       }
     }
@@ -2429,6 +2435,7 @@ export default function SuperDeliveryApp() {
       {/* Authentication Screen - World Class */}
       {!isLoggedIn ? (
         <div className="min-h-screen flex flex-col" style={{background: 'linear-gradient(160deg, #fff7ed 0%, #fff 40%, #eff6ff 100%)'}}>
+          <ToastContainer toasts={toasts} removeToast={removeToast} />
           {/* Hero Section */}
           <div className="flex-1 flex flex-col items-center justify-center px-6 pt-12 pb-6">
             {/* Logo */}
