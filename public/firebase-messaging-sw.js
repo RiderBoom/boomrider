@@ -1,22 +1,18 @@
 // Firebase Cloud Messaging Service Worker
-// ไฟล์นี้ต้องอยู่ที่ root ของ public เพื่อให้ Firebase หาเจอ
-
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-// ใส่ config เดียวกับ src/firebase/config.js
 firebase.initializeApp({
-  apiKey:            self.__FIREBASE_API_KEY__            || '',
-  authDomain:        self.__FIREBASE_AUTH_DOMAIN__        || '',
-  projectId:         self.__FIREBASE_PROJECT_ID__         || '',
-  storageBucket:     self.__FIREBASE_STORAGE_BUCKET__     || '',
-  messagingSenderId: self.__FIREBASE_MESSAGING_SENDER_ID__ || '',
-  appId:             self.__FIREBASE_APP_ID__             || '',
+  apiKey:            'AIzaSyDhLD7_h0EFJyY2cMfBHQGNckX7Jr-xysk',
+  authDomain:        'boomrider-6b098.firebaseapp.com',
+  projectId:         'boomrider-6b098',
+  storageBucket:     'boomrider-6b098.firebasestorage.app',
+  messagingSenderId: '495738557416',
+  appId:             '1:495738557416:web:92ef59f5520af662a7ca5d',
 });
 
 const messaging = firebase.messaging();
 
-// Background message handler
 messaging.onBackgroundMessage((payload) => {
   const { title, body, icon, badge, image } = payload.notification || {};
   const notifTitle = title || 'BoomRider';
@@ -33,15 +29,12 @@ messaging.onBackgroundMessage((payload) => {
       { action: 'dismiss', title: 'ปิด' },
     ],
   };
-
   self.registration.showNotification(notifTitle, notifOptions);
 });
 
-// Notification click
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   if (event.action === 'dismiss') return;
-
   const url = event.notification.data?.url || '/';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
