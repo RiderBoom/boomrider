@@ -442,8 +442,12 @@ export default function SuperDeliveryApp() {
     // Firebase Auth state observer
     if (FIREBASE_ENABLED) {
       const unsubscribe = onAuthChange(async (firebaseUser) => {
-        if (firebaseUser && !localStorage.getItem('boomrider_user')) {
-          // Firebase login but no local session — bootstrap from Firebase
+        if (firebaseUser) {
+          // Bootstrap or refresh session from Firebase user
+          const savedRaw = localStorage.getItem('boomrider_user');
+          const saved = savedRaw ? JSON.parse(savedRaw) : null;
+          // Skip if already logged in as this exact Firebase user
+          if (saved && saved.id === firebaseUser.uid) return;
           const profile = {
             id: firebaseUser.uid,
             name: firebaseUser.displayName || firebaseUser.email || 'ผู้ใช้ใหม่',
@@ -458,9 +462,9 @@ export default function SuperDeliveryApp() {
             email: firebaseUser.email || '',
             profile,
             roles: ['customer'],
-            wallet: 0,
-            walletHistory: [],
-            addresses: [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }],
+            wallet: saved?.wallet !== undefined ? saved.wallet : 0,
+            walletHistory: saved?.walletHistory || [],
+            addresses: saved?.addresses || [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }],
           };
           setCurrentUser(newUser);
           setIsLoggedIn(true);
@@ -473,6 +477,16 @@ export default function SuperDeliveryApp() {
             const fcmToken = await requestNotificationPermission();
             if (fcmToken) await saveFcmToken(firebaseUser.uid, fcmToken);
           } catch (_) {}
+        } else {
+          // Firebase signed out — clear only if session was Firebase-based
+          const savedRaw = localStorage.getItem('boomrider_user');
+          const saved = savedRaw ? JSON.parse(savedRaw) : null;
+          if (saved && saved.id && saved.id.length > 20) {
+            // Firebase UIDs are long strings; local IDs are short
+            localStorage.removeItem('boomrider_user');
+            setIsLoggedIn(false);
+            setCurrentUser(null);
+          }
         }
       });
 
@@ -496,12 +510,45 @@ export default function SuperDeliveryApp() {
     // Firebase Auth (when configured)
     if (FIREBASE_ENABLED && loginForm.email) {
       try {
-        await loginWithEmail(loginForm.email, loginForm.password);
+        const fbUser = await loginWithEmail(loginForm.email, loginForm.password);
+        const savedRaw = localStorage.getItem('boomrider_user');
+        const saved = savedRaw ? JSON.parse(savedRaw) : null;
+        const profile = {
+          id: fbUser.uid,
+          name: fbUser.displayName || saved?.name || loginForm.email,
+          phone: fbUser.phoneNumber || saved?.phone || '',
+          email: fbUser.email || loginForm.email,
+          image: fbUser.photoURL || saved?.profile?.image || null,
+          location: USER_LOCATION,
+        };
+        const user = {
+          id: fbUser.uid,
+          name: profile.name,
+          phone: profile.phone,
+          email: profile.email,
+          profile,
+          roles: saved?.roles || ['customer'],
+          wallet: saved?.wallet ?? 0,
+          walletHistory: saved?.walletHistory || [],
+          addresses: saved?.addresses || [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }],
+        };
+        localStorage.setItem('boomrider_user', JSON.stringify(user));
+        setCurrentUser(user);
+        setIsLoggedIn(true);
+        setUserProfile(profile);
+        setUserRoles(user.roles);
+        setUserWallet(user.wallet);
+        setWalletHistory(user.walletHistory);
+        setUserAddresses(user.addresses);
         notifySystem("สำเร็จ", "เข้าสู่ระบบเรียบร้อย!", "success");
         return;
       } catch (err) {
-        const msg = err.code === 'auth/invalid-credential'
+        const msg = err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
           ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
+          : err.code === 'auth/user-not-found'
+          ? 'ไม่พบบัญชีนี้ในระบบ'
+          : err.code === 'auth/unauthorized-domain'
+          ? 'Domain ยังไม่ได้รับอนุญาต กรุณาเพิ่ม domain ใน Firebase Console'
           : (err.message || 'เกิดข้อผิดพลาด');
         return notifySystem("ผิดพลาด", msg, "error");
       }
@@ -557,12 +604,43 @@ export default function SuperDeliveryApp() {
     // Firebase register (when configured and email provided)
     if (FIREBASE_ENABLED && registerForm.email) {
       try {
-        await registerWithEmail(registerForm.email, registerForm.password, registerForm.name);
+        const fbUser = await registerWithEmail(registerForm.email, registerForm.password, registerForm.name);
+        const profile = {
+          id: fbUser.uid,
+          name: registerForm.name,
+          phone: registerForm.phone,
+          email: registerForm.email,
+          image: null,
+          location: USER_LOCATION,
+        };
+        const newUser = {
+          id: fbUser.uid,
+          name: registerForm.name,
+          phone: registerForm.phone,
+          email: registerForm.email,
+          profile,
+          roles: ['customer'],
+          wallet: 0,
+          walletHistory: [],
+          addresses: [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }],
+        };
+        localStorage.setItem('boomrider_user', JSON.stringify(newUser));
+        setCurrentUser(newUser);
+        setIsLoggedIn(true);
+        setUserProfile(profile);
+        setUserRoles(['customer']);
+        setUserWallet(0);
+        setWalletHistory([]);
+        setUserAddresses(newUser.addresses);
         notifySystem("สำเร็จ", "สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ", "success");
         return;
       } catch (err) {
         const msg = err.code === 'auth/email-already-in-use'
           ? 'อีเมลนี้ถูกใช้งานแล้ว'
+          : err.code === 'auth/weak-password'
+          ? 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'
+          : err.code === 'auth/unauthorized-domain'
+          ? 'Domain ยังไม่ได้รับอนุญาต กรุณาเพิ่ม domain ใน Firebase Console'
           : (err.message || 'เกิดข้อผิดพลาด');
         return notifySystem("ผิดพลาด", msg, "error");
       }
