@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { X, MessageCircle, Send, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -15,6 +16,8 @@ const ChatModal = () => {
   if (!activeChat) return null;
 
   const messages = chats[activeChat.id] || [];
+  // Render via portal so position:fixed escapes overflow:hidden in #app-scroll
+  const portal = document.getElementById('modal-root') || document.body;
   const canDelete = activeRole === 'admin' || activeRole === 'customer';
 
   const handleSend = () => {
@@ -44,8 +47,8 @@ const ChatModal = () => {
                  : chatId.startsWith('support-')? 'bg-purple-600'
                  : 'bg-green-600';
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[9999] p-0 sm:p-4">
+  const modal = (
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[99999] p-0 sm:p-4">
       <div className="bg-white w-full sm:max-w-md h-[85vh] sm:h-[520px] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-fade-in-up">
 
         {/* ── Header ── */}
@@ -130,6 +133,8 @@ const ChatModal = () => {
       </div>
     </div>
   );
+  // Use portal so the modal renders at body level, escaping any overflow:hidden parent
+  return ReactDOM.createPortal(modal, portal);
 };
 
 export default ChatModal;

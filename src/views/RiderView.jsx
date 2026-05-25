@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Bike, User, MessageSquare, Camera, Image as ImageIcon, AlertCircle,
   ToggleLeft, ToggleRight, TrendingUp, Clock, DollarSign, Star, Loader, MapPin,
+  XCircle, X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
@@ -17,6 +18,8 @@ export default function RiderView() {
     riderJobPhotos,
     acceptOrder,
     updateOrderStatus,
+    requestCancelByRole,
+    hasPendingCancelRequest,
     handleRiderPhotoUpload,
     openChatWindow,
     setProfileSubView, setActiveTab,
@@ -28,6 +31,11 @@ export default function RiderView() {
   const [acceptingId, setAcceptingId] = useState(null); // orderId ที่กำลัง pending
   const [savingLocation, setSavingLocation] = useState(false);
   const [pendingLocation, setPendingLocation] = useState(null); // ตำแหน่งที่เลือกบนแผนที่ แต่ยังไม่ save
+
+  // ── state สำหรับ Modal ขอยกเลิกงาน (ส่งไป Admin) ──────────────────────────
+  const [showRiderCancelModal, setShowRiderCancelModal] = useState(false);
+  const [riderCancelOrderId, setRiderCancelOrderId]     = useState(null);
+  const [riderCancelReason, setRiderCancelReason]       = useState('');
 
   // Online/offline toggle (persisted per rider)
   const [isOnline, setIsOnline] = useState(() => {
@@ -205,31 +213,71 @@ export default function RiderView() {
       <div className="px-4 space-y-4">
         {riderTab === 'jobs' && availableJobs.map(job => (
           <div key={job.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-            <div className="flex justify-between mb-2">
-              <span className="font-bold">{job.restaurantName || 'ส่งพัสดุ'}</span>
-              <span className="text-green-400 font-bold">฿{(job.riderIncome || 0).toFixed(0)}</span>
+            {/* Header: ร้าน / ประเภทงาน + รายได้ */}
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <span className="font-bold text-white">{job.restaurantName || (job.type === 'parcel' ? '📦 ส่งพัสดุ' : 'งาน')}</span>
+                <div className="text-xs text-gray-500 mt-0.5">#{job.id.slice(-6)}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-green-400 font-bold text-base">฿{(job.riderIncome || 0).toFixed(0)}</div>
+                <div className="text-xs text-gray-500">รายได้ไรเดอร์</div>
+              </div>
             </div>
-            {job.paymentMethod === 'cash' && (
-              <div className="mb-2 text-xs bg-blue-900/50 text-blue-200 px-2 py-1 rounded inline-block">
-                💰 เก็บเงินสด: ฿{(job.grandTotal || 0).toLocaleString()}
+
+            {/* ยอดรวมออเดอร์ + วิธีชำระ */}
+            <div className={`mb-2 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2 ${
+              job.paymentMethod === 'cash'
+                ? 'bg-blue-900/60 text-blue-200'
+                : 'bg-gray-700 text-gray-300'
+            }`}>
+              {job.paymentMethod === 'cash'
+                ? <>💰 <span>เก็บเงินสดจากลูกค้า: <strong>฿{(job.grandTotal || 0).toLocaleString()}</strong></span></>
+                : <>👛 <span>ชำระผ่าน Wallet · ยอดรวม: ฿{(job.grandTotal || 0).toLocaleString()}</span></>
+              }
+            </div>
+
+            {/* แผนที่ */}
+            <div className="mb-3 rounded-lg overflow-hidden border border-gray-600">
+              <InteractiveMap mode="view" userLocation={job.location} shopLocation={job.pickupLocation} className="h-36" />
+            </div>
+
+            {/* ที่อยู่ */}
+            <div className="text-sm text-gray-400 mb-1.5 space-y-1">
+              <div>📍 {job.type === 'parcel' ? `รับที่: ${job.pickup}` : `ร้าน: ${job.restaurantName}`}</div>
+              {job.type === 'parcel' && job.dropoff && (
+                <div>🏁 ส่งที่: {job.dropoff}</div>
+              )}
+              {job.type === 'food' && job.address && (
+                <div>🏠 ส่งที่: {job.address}</div>
+              )}
+            </div>
+
+            {/* รายการอาหาร (food orders) */}
+            {job.type === 'food' && job.items && job.items.length > 0 && (
+              <div className="bg-gray-700/50 rounded-lg px-3 py-2 mb-2">
+                <p className="text-xs text-gray-400 font-bold mb-1">🍱 รายการสั่ง ({job.items.length} รายการ)</p>
+                {job.items.slice(0, 3).map((item, i) => (
+                  <div key={i} className="text-xs text-gray-300 flex justify-between">
+                    <span>· {item.name} {item.qty > 1 ? `x${item.qty}` : ''}</span>
+                    <span>฿{((item.price || 0) * (item.qty || 1)).toFixed(0)}</span>
+                  </div>
+                ))}
+                {job.items.length > 3 && (
+                  <p className="text-xs text-gray-500 mt-0.5">+{job.items.length - 3} รายการ</p>
+                )}
               </div>
             )}
-            <div className="mb-3 rounded-lg overflow-hidden border border-gray-600">
-              <InteractiveMap mode="view" userLocation={job.location} shopLocation={job.pickupLocation} className="h-40" />
-            </div>
-            <div className="text-sm text-gray-400 mb-2">
-              📍 {job.type === 'parcel' ? `จาก: ${job.pickup}` : `ร้าน: ${job.restaurantName}`}
-            </div>
-            {job.type === 'parcel' && job.dropoff && (
-              <div className="text-sm text-gray-400 mb-1">🏁 ถึง: {job.dropoff}</div>
-            )}
-            <div className="text-sm text-gray-400 mb-3">
-              📏 ระยะจากคุณ:{' '}
-              {job.pickupLocation
+
+            {/* ระยะทาง */}
+            <div className="text-xs text-gray-500 mb-3 flex gap-3">
+              <span>📏 จากคุณ: {job.pickupLocation
                 ? `${getDistanceFromLatLonInKm(myLocation.lat, myLocation.lng, job.pickupLocation.lat, job.pickupLocation.lng).toFixed(1)} กม.`
-                : 'ไม่ทราบระยะ'}
-              {job.distance > 0 && ` | ระยะส่ง: ${job.distance.toFixed(1)} กม.`}
+                : 'ไม่ทราบ'}</span>
+              {job.distance > 0 && <span>🛵 ระยะส่ง: {job.distance.toFixed(1)} กม.</span>}
             </div>
+
+            {/* ปุ่มรับงาน */}
             <button
               disabled={acceptingId === job.id}
               onClick={async () => {
@@ -240,13 +288,13 @@ export default function RiderView() {
               className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
                 acceptingId === job.id
                   ? 'bg-gray-600 cursor-not-allowed text-gray-400'
-                  : 'bg-green-500 hover:bg-green-400 active:scale-95 text-white'
+                  : 'bg-green-500 hover:bg-green-400 active:scale-95 text-white shadow-lg shadow-green-900/40'
               }`}
             >
               {acceptingId === job.id ? (
                 <><Loader size={16} className="animate-spin" /> กำลังรับงาน...</>
               ) : (
-                <>รับงาน ฿{(job.riderIncome || 0).toFixed(0)}</>
+                <>✅ รับงาน — ได้รับ ฿{(job.riderIncome || 0).toFixed(0)}</>
               )}
             </button>
           </div>
@@ -420,10 +468,25 @@ export default function RiderView() {
                     {/* Chat button */}
                     <button
                       onClick={() => openChatWindow(job.id + '-rider', job.customerName || 'ลูกค้า', 'rider')}
-                      className="w-full bg-gray-700 py-2 rounded-lg mb-3 flex items-center justify-center font-bold text-sm hover:bg-gray-600"
+                      className="w-full bg-gray-700 py-2 rounded-lg mb-2 flex items-center justify-center font-bold text-sm hover:bg-gray-600"
                     >
                       <MessageSquare size={16} className="mr-2" /> แชทกับลูกค้า
                     </button>
+
+                    {/* ขอยกเลิกงาน → Admin */}
+                    {hasPendingCancelRequest(job.id) ? (
+                      <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg px-3 py-2 mb-3 flex items-center gap-2">
+                        <Clock size={13} className="text-yellow-400 shrink-0" />
+                        <p className="text-yellow-300 text-xs font-bold">⏳ รอ Admin อนุมัติการยกเลิก</p>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setRiderCancelOrderId(job.id); setRiderCancelReason(''); setShowRiderCancelModal(true); }}
+                        className="w-full py-1.5 rounded-lg border border-red-800/50 text-red-400 text-xs font-bold flex items-center justify-center gap-1 hover:bg-red-900/20 mb-3 transition-all"
+                      >
+                        ✕ ขอยกเลิกงานนี้ (ส่ง Admin)
+                      </button>
+                    )}
 
                     {/* ── Step: rider_accepted → picking_up ── */}
                     {job.status === 'rider_accepted' && (
@@ -574,6 +637,73 @@ export default function RiderView() {
           </div>
         )}
       </div>
+
+      {/* ── Modal ขอยกเลิกงาน (Rider → Admin) ───────────────────────────── */}
+      {showRiderCancelModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-gray-700">
+            <div className="bg-red-900 px-5 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-2 text-white">
+                <XCircle size={20} />
+                <h3 className="font-bold text-base">ขอยกเลิกงาน (รอ Admin อนุมัติ)</h3>
+              </div>
+              <button onClick={() => setShowRiderCancelModal(false)} className="text-white/70 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5">
+              <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-xl px-3 py-2 mb-4 flex items-start gap-2">
+                <span className="text-yellow-400 mt-0.5">⚠️</span>
+                <p className="text-xs text-yellow-300">คำขอยกเลิกจะถูกส่งให้ <strong>Admin</strong> อนุมัติก่อน Admin อาจปฏิเสธหรืออนุมัติการยกเลิก</p>
+              </div>
+              <p className="text-sm text-gray-300 mb-3">ระบุเหตุผลที่ต้องการยกเลิกงาน</p>
+              <div className="space-y-2 mb-3">
+                {['ไม่สามารถเข้าถึงจุดรับสินค้า', 'รถเสีย / เกิดอุบัติเหตุ', 'ลูกค้าไม่รับสาย', 'อื่นๆ'].map(preset => (
+                  <button
+                    key={preset}
+                    onClick={() => setRiderCancelReason(preset)}
+                    className={`w-full text-left text-sm px-3 py-2 rounded-lg border transition-all ${
+                      riderCancelReason === preset
+                        ? 'bg-red-900/60 border-red-500 text-red-300 font-semibold'
+                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {riderCancelReason === preset ? '● ' : '○ '}{preset}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={riderCancelReason}
+                onChange={e => setRiderCancelReason(e.target.value)}
+                placeholder="หรือพิมพ์เหตุผลเพิ่มเติม..."
+                className="w-full bg-gray-700 border border-gray-600 rounded-xl p-3 text-sm text-white placeholder-gray-500 resize-none h-16 focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+            </div>
+            <div className="flex gap-2 px-5 pb-5">
+              <button
+                onClick={() => setShowRiderCancelModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-gray-700 text-gray-300 font-bold text-sm hover:bg-gray-600 active:scale-95 transition-all"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => {
+                  requestCancelByRole(riderCancelOrderId, riderCancelReason, 'rider');
+                  setShowRiderCancelModal(false);
+                }}
+                disabled={!riderCancelReason.trim()}
+                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 ${
+                  riderCancelReason.trim()
+                    ? 'bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-900/50'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                ส่งคำขอถึง Admin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

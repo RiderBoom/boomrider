@@ -1628,6 +1628,38 @@ export function AppProvider({ children }) {
   };
 
   /**
+   * ── Cancel request by Merchant or Rider → ส่งขอ Admin อนุมัติ ─────────────
+   */
+  const requestCancelByRole = (orderId, reason, role) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    if (hasPendingCancelRequest(orderId)) {
+      return notifySystem('รออนุมัติ', 'คำขอยกเลิกกำลังรอ Admin อนุมัติอยู่แล้ว', 'info');
+    }
+    const roleName = role === 'merchant' ? 'ร้านค้า' : role === 'rider' ? 'ไรเดอร์' : 'ผู้ใช้';
+    const newReq = {
+      id: generateId(),
+      type: 'cancel_order',
+      userId: userProfile.id || currentUser?.uid || '',
+      user: `${roleName}: ${userProfile.name || ''}`,
+      timestamp: new Date().toLocaleString('th-TH'),
+      data: {
+        orderId:        order.id,
+        orderType:      order.type,
+        restaurantName: order.restaurantName || (order.type === 'parcel' ? 'ส่งพัสดุ' : '-'),
+        grandTotal:     order.grandTotal || 0,
+        paymentMethod:  order.paymentMethod,
+        prevStatus:     order.status,
+        reason:         reason?.trim() || 'ไม่ระบุเหตุผล',
+        requestedBy:    role,
+      },
+    };
+    if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});
+    setPendingRequests(prev => [newReq, ...prev]);
+    notifySystem('ส่งคำขอแล้ว ✅', 'ส่งคำขอยกเลิกถึง Admin เรียบร้อย รอการอนุมัติ', 'info');
+  };
+
+  /**
    * ── Force Refresh: โหลดข้อมูลใหม่จาก Firestore + STATUS_RANK merge ─────────
    * ใช้เป็น fallback เมื่อ onSnapshot disconnect (เช่น network ไม่ดีบนมือถือ)
    * หรือเมื่อ user กด "รีเฟรช" ด้วยตัวเอง
@@ -2047,6 +2079,7 @@ export function AppProvider({ children }) {
     initiateCancelOrder,
     confirmCancelOrder,
     requestCancelOrder,
+    requestCancelByRole,
     hasPendingCancelRequest,
     forceRefresh,
 

@@ -30,8 +30,10 @@ export default function MerchantView() {
     setActiveTab,
     syncRoles, grantRole, userRoles,
     handleUpdateShopLocation,
-    initiateCancelOrder, confirmCancelOrder,
+    initiateCancelOrder,
+    requestCancelByRole,
     showCancelModal, setShowCancelModal,
+    selectedOrderToCancel,
     cancelReasonInput, setCancelReasonInput,
   } = useApp();
 
@@ -414,10 +416,10 @@ export default function MerchantView() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
             {/* Header */}
-            <div className="bg-red-500 px-5 py-4 flex justify-between items-center">
+            <div className="bg-orange-500 px-5 py-4 flex justify-between items-center">
               <div className="flex items-center gap-2 text-white">
                 <XCircle size={20} />
-                <h3 className="font-bold text-base">ยืนยันการยกเลิกออเดอร์</h3>
+                <h3 className="font-bold text-base">ขอยกเลิกออเดอร์ (รอ Admin อนุมัติ)</h3>
               </div>
               <button onClick={() => setShowCancelModal(false)} className="text-white/80 hover:text-white">
                 <X size={20} />
@@ -425,8 +427,12 @@ export default function MerchantView() {
             </div>
             {/* Body */}
             <div className="p-5">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 mb-3 flex items-start gap-2">
+                <span className="text-yellow-600 mt-0.5">⚠️</span>
+                <p className="text-xs text-yellow-700">คำขอยกเลิกจะถูกส่งให้ <strong>Admin</strong> อนุมัติก่อน ระบบจะคืนเงินให้ลูกค้าหลัง Admin ยืนยัน</p>
+              </div>
               <p className="text-sm text-gray-600 mb-3">
-                กรุณาระบุเหตุผลการยกเลิก เพื่อแจ้งให้ลูกค้าทราบ
+                กรุณาระบุเหตุผล เพื่อให้ Admin พิจารณา
               </p>
               <div className="space-y-2 mb-4">
                 {['สินค้าหมด / ร้านปิด', 'วัตถุดิบไม่พร้อม', 'ปริมาณสั่งมากเกินไป', 'อื่นๆ'].map(preset => (
@@ -462,15 +468,18 @@ export default function MerchantView() {
                 ไม่ยกเลิก
               </button>
               <button
-                onClick={confirmCancelOrder}
+                onClick={() => {
+                  requestCancelByRole(selectedOrderToCancel, cancelReasonInput, 'merchant');
+                  setShowCancelModal(false);
+                }}
                 disabled={!cancelReasonInput.trim()}
                 className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 ${
                   cancelReasonInput.trim()
-                    ? 'bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-100'
+                    ? 'bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-100'
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 }`}
               >
-                ยืนยันยกเลิก
+                ส่งคำขอถึง Admin
               </button>
             </div>
           </div>
