@@ -62,6 +62,20 @@ export const uploadDeliveryProof = (orderId, type, file) =>
 export const uploadMenuPhoto = (shopId, itemId, file) =>
   uploadFile(file, `menus/${shopId}/${itemId}.${file.name.split('.').pop()}`);
 
+// ===== Upload from base64 Data URL =====
+
+/**
+ * Upload a base64 data URL to Firebase Storage and return the download URL.
+ * Used when we only have a base64 string (e.g. from FileReader.readAsDataURL).
+ */
+export const uploadDataUrl = async (dataUrl, path) => {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const storageRef = ref(storage, path);
+  const snapshot = await uploadBytes(storageRef, blob);
+  return getDownloadURL(snapshot.ref);
+};
+
 // ===== Delete File =====
 
 export const deleteFile = async (path) => {
