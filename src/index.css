@@ -3,7 +3,12 @@
 @tailwind utilities;
 
 /* ===== Base Reset ===== */
-html, body, #root {
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* html / body / #root = ล็อคขนาดไว้ที่ 100vh — ห้าม scroll ที่ level นี้ */
+html, body {
   height: 100%;
   width: 100%;
   margin: 0;
@@ -13,6 +18,23 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* === THE scroll container — ทุก scroll เกิดที่นี่เท่านั้น === */
+#app-scroll {
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;                  /* รับ mouse wheel + touchpad + touch scroll */
+  -webkit-overflow-scrolling: touch; /* iOS momentum scroll */
+  overscroll-behavior-y: none;       /* ป้องกัน rubber-band / pull-to-refresh */
+  scroll-behavior: smooth;
 }
 
 /* ===== Custom Scrollbar ===== */
@@ -108,9 +130,9 @@ html, body, #root {
 .stagger > *:nth-child(5) { animation-delay: 240ms; }
 .stagger > *:nth-child(6) { animation-delay: 300ms; }
 
-/* Animate-in utilities (used in toast) */
+/* Animate-in utilities */
 .animate-in { animation-fill-mode: both; }
-.slide-in-from-right { animation-name: slide-in-from-right; animation-duration: 0.3s; animation-timing-function: cubic-bezier(0.22,1,0.36,1); }
+.slide-in-from-right  { animation-name: slide-in-from-right;  animation-duration: 0.3s;  animation-timing-function: cubic-bezier(0.22,1,0.36,1); }
 .slide-in-from-bottom { animation-name: slide-in-from-bottom; animation-duration: 0.35s; animation-timing-function: cubic-bezier(0.22,1,0.36,1); }
 
 /* ===== Skeleton Loading ===== */
@@ -120,7 +142,6 @@ html, body, #root {
   animation: shimmer 1.4s ease infinite;
   border-radius: 8px;
 }
-
 .skeleton-text   { height: 14px; border-radius: 4px; }
 .skeleton-title  { height: 20px; border-radius: 4px; }
 .skeleton-card   { height: 180px; border-radius: 16px; }
@@ -129,30 +150,22 @@ html, body, #root {
 
 /* ===== Glass Morphism ===== */
 .glass {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255,255,255,0.75);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255,255,255,0.3);
 }
-
 .glass-dark {
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0,0,0,0.4);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255,255,255,0.1);
 }
 
 /* ===== Card Effects ===== */
-.card-hover {
-  transition: transform 0.2s cubic-bezier(0.22,1,0.36,1), box-shadow 0.2s ease;
-}
-.card-hover:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 20px 40px rgba(0,0,0,0.12);
-}
-.card-hover:active {
-  transform: translateY(0) scale(0.98);
-}
+.card-hover { transition: transform 0.2s cubic-bezier(0.22,1,0.36,1), box-shadow 0.2s ease; }
+.card-hover:hover  { transform: translateY(-3px); box-shadow: 0 20px 40px rgba(0,0,0,0.12); }
+.card-hover:active { transform: translateY(0) scale(0.98); }
 
 /* ===== Buttons ===== */
 .btn-primary {
@@ -160,7 +173,6 @@ html, body, #root {
          transition-all duration-200 active:scale-95 hover:bg-orange-600
          shadow-lg shadow-orange-200 hover:shadow-orange-300;
 }
-
 .btn-secondary {
   @apply bg-white text-orange-500 font-semibold py-3 px-6 rounded-2xl
          border-2 border-orange-200 transition-all duration-200
@@ -176,9 +188,7 @@ html, body, #root {
 }
 
 /* ===== Badge ===== */
-.badge {
-  @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold;
-}
+.badge { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold; }
 
 /* ===== Gradient Text ===== */
 .gradient-text {
@@ -187,7 +197,6 @@ html, body, #root {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-
 .gradient-text-blue {
   background: linear-gradient(135deg, #3b82f6, #8b5cf6);
   -webkit-background-clip: text;
@@ -200,78 +209,48 @@ html, body, #root {
   @apply flex flex-col items-center justify-center gap-0.5
          flex-1 py-2 transition-all duration-200 relative;
 }
-
-.bottom-nav-item.active {
-  @apply text-orange-500;
-}
-
+.bottom-nav-item.active { @apply text-orange-500; }
 .bottom-nav-item .nav-dot {
   @apply absolute top-1 w-1 h-1 rounded-full bg-orange-500
          transition-all duration-300 opacity-0;
 }
-
-.bottom-nav-item.active .nav-dot {
-  @apply opacity-100;
-}
+.bottom-nav-item.active .nav-dot { @apply opacity-100; }
 
 /* ===== Order Status Steps ===== */
-.status-step {
-  @apply flex items-center gap-3 p-3 rounded-2xl transition-all duration-300;
-}
-
-.status-step.active {
-  @apply bg-orange-50 border border-orange-200;
-}
+.status-step { @apply flex items-center gap-3 p-3 rounded-2xl transition-all duration-300; }
+.status-step.active { @apply bg-orange-50 border border-orange-200; }
 
 /* ===== Rider Card ===== */
 .rider-online-pulse {
   @apply absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white;
 }
-
 .rider-online-pulse::after {
   content: '';
   @apply absolute inset-0 rounded-full bg-green-500 animate-ping opacity-75;
 }
 
 /* ===== Map Overlay ===== */
-.map-gradient-top {
-  background: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, transparent 100%);
-}
-.map-gradient-bottom {
-  background: linear-gradient(0deg, rgba(255,255,255,0.9) 0%, transparent 100%);
-}
-
-/* ===== Pull to Refresh ===== */
-.ptr-indicator {
-  @apply flex items-center justify-center py-3 text-orange-500 text-sm gap-2;
-}
+.map-gradient-top    { background: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, transparent 100%); }
+.map-gradient-bottom { background: linear-gradient(0deg,   rgba(255,255,255,0.9) 0%, transparent 100%); }
 
 /* ===== Page Transitions ===== */
-.page-enter {
-  opacity: 0;
-  transform: translateY(12px);
-}
-
+.page-enter        { opacity: 0; transform: translateY(12px); }
 .page-enter-active {
-  opacity: 1;
-  transform: translateY(0);
+  opacity: 1; transform: translateY(0);
   transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22,1,0.36,1);
 }
 
-/* ===== Safe Area Support (iPhone notch) ===== */
+/* ===== Safe Area Support (notch / home indicator) ===== */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
-.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pt-safe { padding-top:    env(safe-area-inset-top, 0px); }
 
 /* ===== Typography Scale ===== */
-.text-display   { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; line-height: 1.1; }
-.text-headline  { font-size: clamp(1.25rem, 3vw, 1.75rem); font-weight: 700; }
-.text-subhead   { font-size: 1rem; font-weight: 500; }
+.text-display  { font-size: clamp(2rem, 5vw, 3rem);    font-weight: 800; line-height: 1.1; }
+.text-headline { font-size: clamp(1.25rem, 3vw, 1.75rem); font-weight: 700; }
+.text-subhead  { font-size: 1rem; font-weight: 500; }
 
 /* ===== Focus Ring ===== */
-:focus-visible {
-  outline: 2px solid #f97316;
-  outline-offset: 2px;
-}
+:focus-visible { outline: 2px solid #f97316; outline-offset: 2px; }
 
 /* ===== Reduced Motion ===== */
 @media (prefers-reduced-motion: reduce) {
