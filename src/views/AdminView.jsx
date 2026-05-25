@@ -77,6 +77,7 @@ export default function AdminView() {
     toggleRestaurantStatus, toggleRiderBan,
     openChatWindow, openProofModal, openImagePreview,
     notifySystem,
+    deleteChat,
     // Promo
     promoCodes, createPromoCode, togglePromoCode, deletePromoCode,
     // Admin tools
@@ -124,7 +125,13 @@ export default function AdminView() {
   // ── Derived metrics ──────────────────────────────────────────────────────
   const totalGP   = orders.reduce((s, o) => s + (o.adminGP || 0), 0);
   const gmv       = orders.reduce((s, o) => s + (o.grandTotal || 0), 0);
-  const supportChats = Object.keys(chats).filter(k => k.startsWith('support-'));
+
+  // ── Chat groupings (admin sees ALL chats) ────────────────────────────────
+  const allChatIds     = Object.keys(chats);
+  const supportChats   = allChatIds.filter(k => k.startsWith('support-'));
+  const merchantChats  = allChatIds.filter(k => k.endsWith('-merchant'));
+  const riderChats     = allChatIds.filter(k => k.endsWith('-rider'));
+  const totalChatCount = allChatIds.length;
 
   // Today's date string (Thai locale day)
   const todayStr = new Date().toLocaleDateString('th-TH');
@@ -174,7 +181,7 @@ export default function AdminView() {
     { id: 'users',       label: 'ผู้ใช้',     icon: Users },
     { id: 'management',  label: 'จัดการระบบ', icon: Sliders },
     { id: 'promotions',  label: 'โปรโมชั่น',  icon: Tag,     badge: promoCodes.filter(p => p.active).length },
-    { id: 'messages',    label: 'ข้อความ',    icon: MessageSquare, badge: supportChats.length },
+    { id: 'messages',    label: 'ข้อความ',    icon: MessageSquare, badge: totalChatCount || null },
     { id: 'settings',    label: 'ตั้งค่า',    icon: CreditCard },
   ];
 
@@ -740,31 +747,113 @@ export default function AdminView() {
 
       {/* ── MESSAGES ──────────────────────────────────────────────────── */}
       {adminTab === 'messages' && (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b"><h2 className="font-bold text-xl flex items-center gap-2"><MessageSquare className="text-green-600" /> ข้อความจากลูกค้า ({supportChats.length})</h2></div>
-          {supportChats.length === 0 ? (
-            <div className="p-10 text-center text-gray-400"><MessageSquare size={36} className="mx-auto mb-2 opacity-20" />ไม่มีข้อความใหม่</div>
-          ) : (
-            <div className="divide-y">
-              {supportChats.map(chatId => {
-                const userId = chatId.split('-')[1];
-                const msgs = chats[chatId] || [];
-                const lastMsg = msgs[msgs.length - 1];
-                return (
-                  <div key={chatId} className="p-4 hover:bg-gray-50 flex justify-between items-center cursor-pointer" onClick={() => openChatWindow(chatId, `ลูกค้า (${userId})`, 'customer')}>
-                    <div>
-                      <div className="font-bold text-sm">ลูกค้า ID: {userId.slice(0, 8)}...</div>
-                      <div className="text-sm text-gray-500 truncate w-64">{lastMsg?.text || 'เริ่มสนทนา'}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-gray-400">{lastMsg?.time}</div>
-                      <div className="text-xs text-green-600 font-bold">{msgs.length} ข้อความ</div>
-                    </div>
-                  </div>
-                );
-              })}
+        <div className="space-y-4">
+
+          {totalChatCount === 0 && (
+            <div className="bg-white rounded-xl p-10 text-center text-gray-400 shadow-sm">
+              <MessageSquare size={36} className="mx-auto mb-2 opacity-20" />ไม่มีข้อความ
             </div>
           )}
+
+          {/* Support chats (ลูกค้า ↔ Admin) */}
+          {supportChats.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-purple-50">
+                <h3 className="font-bold flex items-center gap-2 text-purple-700">
+                  <MessageSquare size={16} /> ลูกค้า ↔ เจ้าหน้าที่ ({supportChats.length})
+                </h3>
+              </div>
+              <div className="divide-y">
+                {supportChats.map(chatId => {
+                  const userId = chatId.replace('support-', '');
+                  const msgs = chats[chatId] || [];
+                  const lastMsg = msgs[msgs.length - 1];
+                  return (
+                    <div key={chatId} className="p-4 hover:bg-gray-50 flex justify-between items-center gap-2">
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openChatWindow(chatId, `ลูกค้า ${userId.slice(0,6)}...`, 'admin')}>
+                        <div className="font-bold text-sm text-purple-700">ลูกค้า: {userId.slice(0, 8)}...</div>
+                        <div className="text-xs text-gray-500 truncate">{lastMsg?.text || 'เริ่มสนทนา'}</div>
+                        <div className="text-[10px] text-gray-400">{lastMsg?.time} · {msgs.length} ข้อความ</div>
+                      </div>
+                      <button onClick={() => { if(window.confirm('ลบแชทนี้?')) deleteChat(chatId); }}
+                        className="p-2 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 flex-shrink-0" title="ลบแชท">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Merchant chats (ลูกค้า ↔ ร้านค้า) */}
+          {merchantChats.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-orange-50">
+                <h3 className="font-bold flex items-center gap-2 text-orange-700">
+                  <MessageSquare size={16} /> ลูกค้า ↔ ร้านค้า ({merchantChats.length})
+                </h3>
+              </div>
+              <div className="divide-y">
+                {merchantChats.map(chatId => {
+                  const orderId = chatId.replace('-merchant', '');
+                  const order   = orders.find(o => o.id === orderId);
+                  const msgs    = chats[chatId] || [];
+                  const lastMsg = msgs[msgs.length - 1];
+                  return (
+                    <div key={chatId} className="p-4 hover:bg-gray-50 flex justify-between items-center gap-2">
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openChatWindow(chatId, order ? `${order.customerName} ↔ ${order.restaurantName}` : `ออร์เดอร์ ${orderId.slice(0,6)}`, 'admin')}>
+                        <div className="font-bold text-sm text-orange-700">
+                          {order ? `${order.customerName} ↔ ${order.restaurantName}` : `ออร์เดอร์ ${orderId.slice(0,6)}...`}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">{lastMsg?.text || 'เริ่มสนทนา'}</div>
+                        <div className="text-[10px] text-gray-400">{lastMsg?.time} · {msgs.length} ข้อความ</div>
+                      </div>
+                      <button onClick={() => { if(window.confirm('ลบแชทนี้?')) deleteChat(chatId); }}
+                        className="p-2 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 flex-shrink-0" title="ลบแชท">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Rider chats (ลูกค้า ↔ ไรเดอร์) */}
+          {riderChats.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-blue-50">
+                <h3 className="font-bold flex items-center gap-2 text-blue-700">
+                  <MessageSquare size={16} /> ลูกค้า ↔ ไรเดอร์ ({riderChats.length})
+                </h3>
+              </div>
+              <div className="divide-y">
+                {riderChats.map(chatId => {
+                  const orderId = chatId.replace('-rider', '');
+                  const order   = orders.find(o => o.id === orderId);
+                  const msgs    = chats[chatId] || [];
+                  const lastMsg = msgs[msgs.length - 1];
+                  return (
+                    <div key={chatId} className="p-4 hover:bg-gray-50 flex justify-between items-center gap-2">
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openChatWindow(chatId, order ? `${order.customerName} ↔ ไรเดอร์` : `ออร์เดอร์ ${orderId.slice(0,6)}`, 'admin')}>
+                        <div className="font-bold text-sm text-blue-700">
+                          {order ? `${order.customerName} ↔ ${order.riderName || 'ไรเดอร์'}` : `ออร์เดอร์ ${orderId.slice(0,6)}...`}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">{lastMsg?.text || 'เริ่มสนทนา'}</div>
+                        <div className="text-[10px] text-gray-400">{lastMsg?.time} · {msgs.length} ข้อความ</div>
+                      </div>
+                      <button onClick={() => { if(window.confirm('ลบแชทนี้?')) deleteChat(chatId); }}
+                        className="p-2 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 flex-shrink-0" title="ลบแชท">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 

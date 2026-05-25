@@ -105,7 +105,12 @@ export function AppProvider({ children }) {
 
   // --- Chat State ---
   const [activeChat, setActiveChat] = useState(null);
-  const [chats, setChats] = useState({});
+  const [chats, setChats] = useState(() => {
+    try {
+      const saved = localStorage.getItem('boomrider_chats');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
 
   // --- Parcel Map State ---
   const [parcelMapTarget, setParcelMapTarget] = useState(null);
@@ -666,18 +671,38 @@ export function AppProvider({ children }) {
   }, [parcelDetails.pickupLocation, parcelDetails.dropoffLocation, appConfig]);
 
   // --- Chat ---
+  // Persist chats to localStorage whenever they change
+  useEffect(() => {
+    try { localStorage.setItem('boomrider_chats', JSON.stringify(chats)); } catch {}
+  }, [chats]);
+
   const openChatWindow = (id, title, role) => {
-    if (!chats[id]) {
-      setChats(prev => ({ ...prev, [id]: [] }));
-    }
+    setChats(prev => prev[id] ? prev : { ...prev, [id]: [] });
     setActiveChat({ id, title, role });
   };
   const closeChatWindow = () => setActiveChat(null);
+
   const sendMessage = (text) => {
     if (!text.trim() || !activeChat) return;
-    const sender = activeRole;
-    const newMessage = { text, sender, time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) };
+    const newMessage = {
+      text: text.trim(),
+      sender: activeRole,
+      senderName: activeRole === 'admin' ? 'เจ้าหน้าที่'
+                : activeRole === 'rider'  ? 'ไรเดอร์'
+                : activeRole === 'merchant' ? 'ร้านค้า'
+                : userProfile?.name || 'ลูกค้า',
+      time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+    };
     setChats(prev => ({ ...prev, [activeChat.id]: [...(prev[activeChat.id] || []), newMessage] }));
+  };
+
+  const deleteChat = (chatId) => {
+    setChats(prev => {
+      const next = { ...prev };
+      delete next[chatId];
+      return next;
+    });
+    if (activeChat?.id === chatId) setActiveChat(null);
   };
 
   // --- Location helpers ---
@@ -1970,6 +1995,7 @@ export function AppProvider({ children }) {
     openChatWindow,
     closeChatWindow,
     sendMessage,
+    deleteChat,
 
     // Toast
     toasts,
