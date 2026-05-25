@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper functions ──────────────────────────────────────────────────────
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null
+          && request.auth.uid == 'aYYsXGKYRmObbUGYPP3lyheln9Q2';
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // ─── Restaurants — ทุกคนอ่านได้, Admin/เจ้าของร้านแก้ไขได้ ──────────────
+    match /restaurants/{restaurantId} {
+      allow read:   if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+                    || (isAuth() && resource.data.ownerId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // ─── Menu Items — ทุกคนอ่านได้, Admin/เจ้าของร้านแก้ไขได้ ──────────────
+    match /menu_items/{restaurantId} {
+      allow read: if true;
+      allow write: if isAdmin()
+                   || (isAuth() && exists(/databases/$(database)/documents/restaurants/$(restaurantId))
+                       && get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerId == request.auth.uid);
+    }
+
+    // ─── Orders ───────────────────────────────────────────────────────────────
+    // ทุก user ที่ login อ่านได้ทั้งหมด — ไรเดอร์ต้องเห็น ready_to_pickup
+    // ทุก collection query (onSnapshot) จึงทำงานได้โดยไม่ถูก block
+    // riderUid  = Firebase UID ของไรเดอร์ที่รับงาน  (set ตอน acceptOrder)
+    // merchantUid = Firebase UID ของเจ้าของร้าน     (set ตอน placeOrder)
+    match /orders/{orderId} {
+      allow read:   if isAuth();
+      allow create: if isAuth();
+      allow update: if isAdmin()
+                    || (isAuth() && (
+                          resource.data.customerId    == request.auth.uid
+                          || resource.data.riderId    == request.auth.uid
+                          || resource.data.riderUid   == request.auth.uid
+                          || resource.data.merchantUid == request.auth.uid
+                          // backward compat: parcel orders ที่ยังไม่มี riderUid/merchantUid
+                          // (สร้างก่อน field เหล่านี้จะถูก set ตอน acceptOrder)
+                          // จำกัดเฉพาะ ready_to_pickup ให้ไรเดอร์รับงานได้
+                          || (resource.data.riderUid == null
+                              && resource.data.status == 'ready_to_pickup')
+                       ));
+      allow delete: if isAdmin();
+    }
+
+    // ─── Pending Requests — User สร้างได้, Admin จัดการได้ ──────────────────
+    match /pending_requests/{reqId} {
+      // Admin อ่านทั้งหมด, User อ่านเฉพาะของตัวเอง
+      // ใช้ get แทน resource สำหรับ list queries ที่ไม่รู้ document ล่วงหน้า
+      allow read: if isAdmin()
+                  || (isAuth() && (
+                        resource == null
+                        || resource.data.userId == request.auth.uid
+                     ));
+      allow create: if isAuth();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── User Profiles — อ่าน/เขียนเฉพาะของตัวเอง, Admin อ่านทั้งหมด ────────
+    match /users/{userId} {
+      allow read:  if isAdmin() || isOwner(userId);
+      allow write: if isAdmin() || isOwner(userId);
+    }
+
+    // ─── Wallets — อ่าน/เขียนเฉพาะของตัวเอง, Admin จัดการได้ ───────────────
+    // ── ยอมให้ auth user เพิ่มยอดได้ (income / refund จากระบบ) ─────────────
+    // เฉพาะ balance ≥ เดิม — ป้องกันการลดยอดของคนอื่น
+    // TODO: ย้ายไปใช้ Cloud Functions เพื่อ validate server-side
+    match /wallets/{userId} {
+      allow read:  if isAdmin() || isOwner(userId);
+      allow write: if isAdmin()
+                   || isOwner(userId)
+                   || (isAuth() && request.resource.data.balance >= resource.data.balance);
+    }
+
+    // ─── System Config — ทุกคนอ่านได้, Admin เขียนได้ ───────────────────────
+    match /system/{document} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ─── Riders — ทุก user ที่ login อ่านได้, Admin สร้าง/ลบ, ไรเดอร์อัปเดตตัวเอง ─
+    match /riders/{riderId} {
+      allow read:   if isAuth();
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+                    || (isAuth() && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // ─── Admin Notifications ─────────────────────────────────────────────────
+    match /admin_notifs/{notifId} {
+      allow read:  if isAdmin();
+      allow write: if isAuth();
+    }
+  }
+}
