@@ -1115,21 +1115,20 @@ export default function CustomerView() {
                         </div>
                       )}
                       {/* ── ปุ่ม Chat ── */}
-                      <div className="p-3 flex gap-2 border-t border-gray-50">
+                      <div className="p-3 flex flex-wrap gap-2 border-t border-gray-50">
                         {order.type === 'food' && (
-                          <button onClick={() => openChatWindow(order.id + '-merchant', order.restaurantName || 'ร้านค้า', 'merchant')} className="flex-1 bg-orange-50 text-orange-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-orange-100 active:scale-95 transition-all">
+                          <button onClick={() => openChatWindow(order.id + '-merchant', order.restaurantName || 'ร้านค้า', 'customer')} className="flex-1 min-w-[80px] bg-orange-50 text-orange-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-orange-100 active:scale-95 transition-all">
                             <MessageSquare size={13} /> แชทร้านค้า
                           </button>
                         )}
-                        {order.riderId ? (
-                          <button onClick={() => openChatWindow(order.id + '-rider', 'ไรเดอร์', 'rider')} className="flex-1 bg-green-50 text-green-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-green-100 active:scale-95 transition-all">
+                        {order.riderId && (
+                          <button onClick={() => openChatWindow(order.id + '-rider', 'ไรเดอร์', 'customer')} className="flex-1 min-w-[80px] bg-green-50 text-green-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-green-100 active:scale-95 transition-all">
                             <Bike size={13} /> แชทไรเดอร์
                           </button>
-                        ) : (
-                          <button onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'customer')} className="flex-1 bg-blue-50 text-blue-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-100 active:scale-95 transition-all">
-                            <MessageSquare size={13} /> แชท Support
-                          </button>
                         )}
+                        <button onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'customer')} className="flex-1 min-w-[80px] bg-blue-50 text-blue-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-100 active:scale-95 transition-all">
+                          <MessageSquare size={13} /> Support
+                        </button>
                       </div>
                     </div>
                   );

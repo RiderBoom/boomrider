@@ -465,13 +465,29 @@ export default function RiderView() {
                       <div>👤 ลูกค้า: {job.customerName} {job.customerPhone ? `· ${job.customerPhone}` : ''}</div>
                     </div>
 
-                    {/* Chat button */}
-                    <button
-                      onClick={() => openChatWindow(job.id + '-rider', job.customerName || 'ลูกค้า', 'rider')}
-                      className="w-full bg-gray-700 py-2 rounded-lg mb-2 flex items-center justify-center font-bold text-sm hover:bg-gray-600"
-                    >
-                      <MessageSquare size={16} className="mr-2" /> แชทกับลูกค้า
-                    </button>
+                    {/* Chat buttons — ลูกค้า / ร้านค้า / Admin */}
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        onClick={() => openChatWindow(job.id + '-rider', job.customerName || 'ลูกค้า', 'rider')}
+                        className="flex-1 bg-gray-700 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-gray-600 active:scale-95 transition-all"
+                      >
+                        <MessageSquare size={13} className="mr-1" /> แชทลูกค้า
+                      </button>
+                      {job.type === 'food' && (
+                        <button
+                          onClick={() => openChatWindow(job.id + '-rider-merchant', job.restaurantName || 'ร้านค้า', 'rider')}
+                          className="flex-1 bg-orange-900/40 text-orange-300 border border-orange-700/50 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-orange-900/60 active:scale-95 transition-all"
+                        >
+                          <MessageSquare size={13} className="mr-1" /> แชทร้านค้า
+                        </button>
+                      )}
+                      <button
+                        onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'rider')}
+                        className="flex-1 bg-blue-900/40 text-blue-300 border border-blue-700/50 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-blue-900/60 active:scale-95 transition-all"
+                      >
+                        <MessageSquare size={13} className="mr-1" /> Admin
+                      </button>
+                    </div>
 
                     {/* ขอยกเลิกงาน → Admin */}
                     {hasPendingCancelRequest(job.id) ? (
@@ -574,6 +590,14 @@ export default function RiderView() {
 
         {riderTab === 'history' && (
           <div>
+            {/* ── ติดต่อ Admin ── */}
+            <button
+              onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'rider')}
+              className="w-full mb-4 bg-blue-900/30 border border-blue-700/40 text-blue-300 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-900/50 active:scale-95 transition-all"
+            >
+              <MessageSquare size={16} /> ติดต่อเจ้าหน้าที่ (Admin)
+            </button>
+
             {/* ── Earnings summary ── */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">

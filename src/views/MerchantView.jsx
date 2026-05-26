@@ -491,6 +491,7 @@ export default function MerchantView() {
 
 // ── OrderCard component ──────────────────────────────────────────────────────
 function OrderCard({ order, updateOrderStatus, openChatWindow, onCancel, highlight }) {
+  const { userProfile } = useApp();
   const borderColor = highlight === 'orange' ? 'border-orange-400' : 'border-blue-400';
   const badgeBg = {
     pending:         'bg-yellow-100 text-yellow-800',
@@ -534,13 +535,27 @@ function OrderCard({ order, updateOrderStatus, openChatWindow, onCancel, highlig
         </div>
       </div>
 
-      {/* ปุ่มควบคุม — แถวบน */}
+      {/* ปุ่มควบคุม — แถวบน: แชท */}
       <div className="flex gap-2 mb-2">
         <button
-          onClick={() => openChatWindow(order.id + '-merchant', order.customerName, 'merchant')}
-          className="flex-1 bg-orange-50 text-orange-600 border border-orange-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-orange-100"
+          onClick={() => openChatWindow(order.id + '-merchant', order.customerName || 'ลูกค้า', 'merchant')}
+          className="flex-1 bg-orange-50 text-orange-600 border border-orange-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-orange-100 active:scale-95 transition-all"
         >
           <MessageSquare size={14} className="mr-1" /> แชทลูกค้า
+        </button>
+        {order.riderId && (
+          <button
+            onClick={() => openChatWindow(order.id + '-rider-merchant', 'ไรเดอร์', 'merchant')}
+            className="flex-1 bg-green-50 text-green-600 border border-green-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-green-100 active:scale-95 transition-all"
+          >
+            <MessageSquare size={14} className="mr-1" /> แชทไรเดอร์
+          </button>
+        )}
+        <button
+          onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'merchant')}
+          className="flex-1 bg-blue-50 text-blue-600 border border-blue-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-blue-100 active:scale-95 transition-all"
+        >
+          <MessageSquare size={14} className="mr-1" /> Admin
         </button>
 
         {order.status === 'pending' && (

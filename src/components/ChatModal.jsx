@@ -42,7 +42,8 @@ const ChatModal = () => {
 
   // Header colour per chat type
   const chatId = activeChat.id || '';
-  const headerBg = chatId.endsWith('-rider')    ? 'bg-blue-600'
+  const headerBg = chatId.endsWith('-rider-merchant') ? 'bg-teal-600'
+                 : chatId.endsWith('-rider')    ? 'bg-blue-600'
                  : chatId.endsWith('-merchant') ? 'bg-orange-500'
                  : chatId.startsWith('support-')? 'bg-purple-600'
                  : 'bg-green-600';
@@ -58,9 +59,10 @@ const ChatModal = () => {
             <div>
               <h3 className="font-bold text-base leading-tight">{activeChat.title}</h3>
               <span className="text-[11px] bg-white/20 px-2 py-0.5 rounded-full">
-                {chatId.endsWith('-rider') ? 'ลูกค้า ↔ ไรเดอร์'
+                {chatId.endsWith('-rider-merchant') ? 'ไรเดอร์ ↔ ร้านค้า'
+                 : chatId.endsWith('-rider')    ? 'ลูกค้า ↔ ไรเดอร์'
                  : chatId.endsWith('-merchant') ? 'ลูกค้า ↔ ร้านค้า'
-                 : chatId.startsWith('support-') ? 'ลูกค้า ↔ เจ้าหน้าที่'
+                 : chatId.startsWith('support-') ? 'ผู้ใช้ ↔ เจ้าหน้าที่'
                  : 'แชท'}
               </span>
             </div>

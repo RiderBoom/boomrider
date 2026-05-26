@@ -127,13 +127,14 @@ export default function AdminView() {
   const gmv       = orders.reduce((s, o) => s + (o.grandTotal || 0), 0);
 
   // ── Chat groupings (admin sees ALL chats) ────────────────────────────────
-  const allChatIds     = Object.keys(chats);
-  // รองรับทั้ง 2 format: 'support-{userId}' (profile page) และ '{orderId}-support' (order view)
-  const supportChats   = allChatIds.filter(k => k.startsWith('support-') || k.endsWith('-support'));
-  const merchantChats  = allChatIds.filter(k => k.endsWith('-merchant'));
-  const riderChats     = allChatIds.filter(k => k.endsWith('-rider'));
-  const totalChatCount = allChatIds.length;
-  // นับ unread: support chats ที่ข้อความล่าสุดมาจาก customer/user (ไม่ใช่ admin)
+  const allChatIds       = Object.keys(chats);
+  const supportChats     = allChatIds.filter(k => k.startsWith('support-') || k.endsWith('-support'));
+  // -rider-merchant ต้องกรองก่อน -merchant และ -rider เพื่อป้องกัน false-match
+  const riderMerchantChats = allChatIds.filter(k => k.endsWith('-rider-merchant'));
+  const merchantChats    = allChatIds.filter(k => k.endsWith('-merchant') && !k.endsWith('-rider-merchant'));
+  const riderChats       = allChatIds.filter(k => k.endsWith('-rider') && !k.endsWith('-rider-merchant'));
+  const totalChatCount   = allChatIds.length;
+  // นับ unread: support chats ที่ข้อความล่าสุดมาจาก non-admin
   const unreadSupportCount = supportChats.filter(id => {
     const msgs = chats[id] || [];
     const last = msgs[msgs.length - 1];
@@ -877,6 +878,40 @@ export default function AdminView() {
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openChatWindow(chatId, order ? `${order.customerName} ↔ ไรเดอร์` : `ออร์เดอร์ ${orderId.slice(0,6)}`, 'admin')}>
                         <div className="font-bold text-sm text-blue-700">
                           {order ? `${order.customerName} ↔ ${order.riderName || 'ไรเดอร์'}` : `ออร์เดอร์ ${orderId.slice(0,6)}...`}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">{lastMsg?.text || 'เริ่มสนทนา'}</div>
+                        <div className="text-[10px] text-gray-400">{lastMsg?.time} · {msgs.length} ข้อความ</div>
+                      </div>
+                      <button onClick={() => { if(window.confirm('ลบแชทนี้?')) deleteChat(chatId); }}
+                        className="p-2 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 flex-shrink-0" title="ลบแชท">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Rider ↔ Merchant chats */}
+          {riderMerchantChats.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-teal-50">
+                <h3 className="font-bold flex items-center gap-2 text-teal-700">
+                  <MessageSquare size={16} /> ไรเดอร์ ↔ ร้านค้า ({riderMerchantChats.length})
+                </h3>
+              </div>
+              <div className="divide-y">
+                {riderMerchantChats.map(chatId => {
+                  const orderId = chatId.replace('-rider-merchant', '');
+                  const order   = orders.find(o => o.id === orderId);
+                  const msgs    = chats[chatId] || [];
+                  const lastMsg = msgs[msgs.length - 1];
+                  return (
+                    <div key={chatId} className="p-4 hover:bg-gray-50 flex justify-between items-center gap-2">
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openChatWindow(chatId, order ? `ไรเดอร์ ↔ ${order.restaurantName}` : `ออร์เดอร์ ${orderId.slice(0,6)}`, 'admin')}>
+                        <div className="font-bold text-sm text-teal-700">
+                          {order ? `ไรเดอร์ ↔ ${order.restaurantName || 'ร้านค้า'}` : `ออร์เดอร์ ${orderId.slice(0,6)}...`}
                         </div>
                         <div className="text-xs text-gray-500 truncate">{lastMsg?.text || 'เริ่มสนทนา'}</div>
                         <div className="text-[10px] text-gray-400">{lastMsg?.time} · {msgs.length} ข้อความ</div>
