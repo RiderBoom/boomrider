@@ -333,6 +333,30 @@ export default function CustomerView() {
                   </div>
                 </div>
                 <div><label className="text-sm text-gray-500">น้ำหนักพัสดุ (kg)</label><input value={parcelDetails.weight} onChange={e => setParcelDetails({ ...parcelDetails, weight: e.target.value })} type="number" className="border rounded-lg p-2 mt-1 w-full" /></div>
+                {/* ── ข้อมูลผู้รับ ── */}
+                <div className="bg-blue-50 rounded-xl p-3 space-y-2 border border-blue-100">
+                  <p className="text-xs font-bold text-blue-700">📬 ข้อมูลผู้รับ (สำหรับให้ไรเดอร์ติดต่อ)</p>
+                  <div>
+                    <label className="text-xs text-gray-500">ชื่อผู้รับ</label>
+                    <input
+                      value={parcelDetails.receiverName || ''}
+                      onChange={e => setParcelDetails({ ...parcelDetails, receiverName: e.target.value })}
+                      type="text"
+                      placeholder="ชื่อ-นามสกุลผู้รับ"
+                      className="border rounded-lg p-2 mt-1 w-full text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">เบอร์โทรผู้รับ</label>
+                    <input
+                      value={parcelDetails.receiverPhone || ''}
+                      onChange={e => setParcelDetails({ ...parcelDetails, receiverPhone: e.target.value })}
+                      type="tel"
+                      placeholder="0xx-xxx-xxxx"
+                      className="border rounded-lg p-2 mt-1 w-full text-sm"
+                    />
+                  </div>
+                </div>
 
                 {parcelDistance > 0 && (
                   <div className="bg-blue-50 p-2 rounded text-center text-sm text-blue-800 font-bold my-2">
@@ -504,7 +528,7 @@ export default function CustomerView() {
                 <button onClick={() => setProfileSubView('wallet')} className="flex-1 bg-gradient-to-r from-green-600 to-green-500 p-4 rounded-2xl shadow-lg text-white flex justify-between items-center">
                   <div className="flex items-center"><Wallet className="mr-2" /><span className="font-bold text-sm">฿{userWallet.toFixed(2)}</span></div>
                 </button>
-                <button onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'admin')} className="flex-1 bg-blue-600 p-4 rounded-2xl shadow-lg text-white flex justify-center items-center font-bold text-sm">
+                <button onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'customer')} className="flex-1 bg-blue-600 p-4 rounded-2xl shadow-lg text-white flex justify-center items-center font-bold text-sm">
                   <MessageSquare className="mr-2" /> ติดต่อเจ้าหน้าที่
                 </button>
               </div>
@@ -1114,19 +1138,27 @@ export default function CustomerView() {
                           </p>
                         </div>
                       )}
-                      {/* ── ปุ่ม Chat ── */}
+                      {/* ── ติดต่อ ── */}
                       <div className="p-3 flex flex-wrap gap-2 border-t border-gray-50">
-                        {order.type === 'food' && (
-                          <button onClick={() => openChatWindow(order.id + '-merchant', order.restaurantName || 'ร้านค้า', 'customer')} className="flex-1 min-w-[80px] bg-orange-50 text-orange-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-orange-100 active:scale-95 transition-all">
-                            <MessageSquare size={13} /> แชทร้านค้า
-                          </button>
-                        )}
-                        {order.riderId && (
-                          <button onClick={() => openChatWindow(order.id + '-rider', 'ไรเดอร์', 'customer')} className="flex-1 min-w-[80px] bg-green-50 text-green-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-green-100 active:scale-95 transition-all">
-                            <Bike size={13} /> แชทไรเดอร์
-                          </button>
-                        )}
-                        <button onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'customer')} className="flex-1 min-w-[80px] bg-blue-50 text-blue-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-100 active:scale-95 transition-all">
+                        {order.type === 'food' && (() => {
+                          // ใช้ restaurantPhone จาก order ก่อน (ฝังตอน placeOrder) fallback หา restaurants array
+                          const phone = order.restaurantPhone || restaurants.find(r => r.id === order.restaurantId)?.phone;
+                          return phone ? (
+                            <a href={`tel:${phone}`} className="flex-1 min-w-[110px] bg-orange-50 text-orange-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-orange-100 active:scale-95 transition-all">
+                              📞 <span>{phone}</span>
+                            </a>
+                          ) : null;
+                        })()}
+                        {order.riderId && (() => {
+                          // ใช้ riderPhone จาก order ก่อน (ฝังตอน acceptOrder) fallback หา riders array
+                          const phone = order.riderPhone || riders.find(r => r.id === order.riderId)?.phone;
+                          return phone ? (
+                            <a href={`tel:${phone}`} className="flex-1 min-w-[110px] bg-green-50 text-green-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-green-100 active:scale-95 transition-all">
+                              📞 <span>{phone}</span>
+                            </a>
+                          ) : null;
+                        })()}
+                        <button onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'customer')} className="flex-1 min-w-[110px] bg-blue-50 text-blue-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-100 active:scale-95 transition-all">
                           <MessageSquare size={13} /> Support
                         </button>
                       </div>

@@ -71,7 +71,7 @@ export function AppProvider({ children }) {
   // --- Cart & Order State ---
   const [cart, setCart] = useState([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
-  const [parcelDetails, setParcelDetails] = useState({ pickup: '', dropoff: '', weight: '1', distance: 0 });
+  const [parcelDetails, setParcelDetails] = useState({ pickup: '', dropoff: '', weight: '1', distance: 0, receiverName: '', receiverPhone: '' });
   const [paymentMethod, setPaymentMethod] = useState('wallet');
 
   // --- Form & Modal State ---
@@ -142,6 +142,10 @@ export function AppProvider({ children }) {
   // ── ติดตาม orders ที่เพิ่งสร้างแต่ยังไม่ถูกยืนยันจาก Firestore ──────────────
   // ใช้เพื่อกันไม่ให้ orders เก่าใน localStorage ค้างอยู่ในรายการ
   const pendingLocalOrderIdsRef = React.useRef(new Set());
+  // ── ติดตามจำนวนข้อความต่อ chatId เพื่อ detect "ข้อความใหม่" real-time ─────────
+  const lastChatCountsRef = React.useRef({});
+  // ── ป้องกัน notification ซ้ำตอน initial load ─────────────────────────────────
+  const chatSubInitializedRef = React.useRef(false);
 
   // --- Global Wallet Store ---
   const [globalWallets, setGlobalWallets] = useState(() => {
@@ -498,6 +502,22 @@ export function AppProvider({ children }) {
                     'success',
                   ), 0);
                 }
+
+                // ── แจ้งเตือนลูกค้าว่าออเดอร์ถูกยกเลิก ──────────────────
+                const justCancelled = cloudOrders.filter(co =>
+                  co.status === 'cancelled' &&
+                  co.customerId === uid &&
+                  !seenOrderIdsRef.current.has(`${co.id}_cancelled`),
+                );
+                if (justCancelled.length > 0) {
+                  justCancelled.forEach(co => seenOrderIdsRef.current.add(`${co.id}_cancelled`));
+                  const reason = justCancelled[0].cancelReason ? `: ${justCancelled[0].cancelReason}` : '';
+                  setTimeout(() => notifySystem(
+                    '❌ ออเดอร์ถูกยกเลิก',
+                    `#${justCancelled[0].id.slice(-8)}${reason}`,
+                    'error',
+                  ), 0);
+                }
               }
 
               // mark order ใหม่ทั้งหมดว่าเห็นแล้ว
@@ -593,12 +613,63 @@ export function AppProvider({ children }) {
           window.__boomriderUnsubChats();
           window.__boomriderUnsubChats = null;
         }
+        // reset chat notification state ทุกครั้งที่ login ใหม่
+        lastChatCountsRef.current = {};
+        chatSubInitializedRef.current = false;
+
+        // ── ใช้ firebaseUser.uid แทน uid (ซึ่งไม่ได้ประกาศใน scope นี้) ──────
+        const fbUid = firebaseUser.uid;
+        const isAdminSession = fbUid === ADMIN_UID;
+
         const unsubChats = subscribeToChats((cloudChats) => {
+          // ── ตรวจหาข้อความใหม่ (ข้าม initial snapshot) ─────────────────
+          if (!chatSubInitializedRef.current) {
+            // initial load — บันทึกจำนวนข้อความปัจจุบันโดยไม่ notify
+            Object.entries(cloudChats).forEach(([id, msgs]) => {
+              lastChatCountsRef.current[id] = (msgs || []).length;
+            });
+            chatSubInitializedRef.current = true;
+          } else {
+            // subsequent updates — ตรวจหาข้อความใหม่
+            Object.entries(cloudChats).forEach(([chatId, msgs]) => {
+              if (!msgs || msgs.length === 0) return;
+              const prevCount = lastChatCountsRef.current[chatId] || 0;
+              if (msgs.length <= prevCount) return; // ไม่มีข้อความใหม่
+
+              const newMsgs = msgs.slice(prevCount);
+              lastChatCountsRef.current[chatId] = msgs.length;
+
+              // ── Admin: แจ้งเตือนเมื่อลูกค้าส่งข้อความ support ──────────
+              if (isAdminSession && chatId.startsWith('support-')) {
+                const hasNewFromUser = newMsgs.some(m => m.sender !== 'admin');
+                if (hasNewFromUser) {
+                  const lastMsg = newMsgs.filter(m => m.sender !== 'admin').pop();
+                  setTimeout(() => notifySystem(
+                    '💬 ข้อความใหม่จากลูกค้า',
+                    `${lastMsg.senderName || 'ลูกค้า'}: ${String(lastMsg.text || '').substring(0, 60)}`,
+                    'info',
+                  ), 0);
+                }
+              }
+
+              // ── ลูกค้า: แจ้งเตือนเมื่อ Admin ตอบกลับ support chat ของตัวเอง ─
+              if (!isAdminSession && chatId === `support-${fbUid}`) {
+                const adminReply = newMsgs.find(m => m.sender === 'admin');
+                if (adminReply) {
+                  setTimeout(() => notifySystem(
+                    '💬 เจ้าหน้าที่ตอบกลับแล้ว',
+                    String(adminReply.text || '').substring(0, 60),
+                    'info',
+                  ), 0);
+                }
+              }
+            });
+          }
+
+          // ── Merge cloud chats → local state ─────────────────────────────
           setChats(prev => {
-            // Merge: รักษา local-only chats ที่ยังไม่ได้ sync, อัปเดต cloud chats
             const merged = { ...prev };
             Object.entries(cloudChats).forEach(([id, msgs]) => {
-              // ถ้า cloud มีข้อความมากกว่า (หรือเท่ากัน) → ใช้ cloud
               if (!prev[id] || msgs.length >= (prev[id] || []).length) {
                 merged[id] = msgs;
               }
@@ -894,6 +965,7 @@ export function AppProvider({ children }) {
       riderIncome,
       restaurantId: cart[0].restaurantId,
       restaurantName: cart[0].restaurantName,
+      restaurantPhone: restaurants.find(r => r.id === cart[0].restaurantId)?.phone || '',
       // ── merchantUid = Firebase UID ของเจ้าของร้าน (ใช้ใน Firestore rules) ──
       merchantUid: restaurants.find(r => r.id === cart[0].restaurantId)?.ownerId || null,
       status: 'pending',
@@ -977,8 +1049,12 @@ export function AppProvider({ children }) {
       customerName:   userProfile.name,
       customerPhone:  userProfile.phone,
       customerId:     userProfile.id || currentUser?.id,
+      // ── ผู้รับ (receiver) ─────────────────────────────────────────────
+      receiverName:   parcelDetails.receiverName  || '',
+      receiverPhone:  parcelDetails.receiverPhone || '',
       timestamp:      new Date().toLocaleString('th-TH'),
       riderId:        null,
+      riderUid:       null,    // ต้องมี field นี้เพื่อให้ Firestore rule ทำงาน
       riderLocation:  null,
       pickupPhoto:    null,
       deliveryPhoto:  null,
@@ -995,7 +1071,7 @@ export function AppProvider({ children }) {
     notifySystem("เรียกรถสำเร็จ", `ค่าส่ง ฿${grandTotal} — กำลังค้นหาไรเดอร์...`, "success");
     setTimeout(() => notifySystem("ไรเดอร์", "มีงานส่งพัสดุใหม่เข้ามา!", "warning"), 1000);
 
-    setParcelDetails({ pickup: '', dropoff: '', weight: '1', distance: 0, pickupLocation: null, dropoffLocation: null });
+    setParcelDetails({ pickup: '', dropoff: '', weight: '1', distance: 0, pickupLocation: null, dropoffLocation: null, receiverName: '', receiverPhone: '' });
     setParcelMapTarget(null);
     setParcelEstimate(0);
     setParcelDistance(0);
@@ -1023,6 +1099,10 @@ export function AppProvider({ children }) {
     // riderId = internal rider document id (ใช้ใน app logic)
     // riderUid = Firebase auth UID (ใช้ใน Firestore rules)
     const riderUid = currentUser?.id || null;
+    // ── ดึงข้อมูลไรเดอร์เพื่อฝัง phone/name ลงใน order ──────────────────
+    const riderInfo = riders.find(r => r.id === riderId);
+    const riderPhone = riderInfo?.phone || '';
+    const riderName  = riderInfo?.name  || '';
 
     if (FIREBASE_ENABLED) {
       // ── Atomic Firestore Transaction ────────────────────────────────────
@@ -1032,8 +1112,10 @@ export function AppProvider({ children }) {
         // ── อัปเดต local state ทันที (ไม่รอ onSnapshot ซึ่งอาจช้า) ──────
         setOrders(prev => prev.map(o => {
           if (o.id !== orderId) return o;
-          return { ...o, status: 'rider_accepted', riderId, riderUid, riderLocation: riderLocation || o.pickupLocation };
+          return { ...o, status: 'rider_accepted', riderId, riderUid, riderPhone, riderName, riderLocation: riderLocation || o.pickupLocation };
         }));
+        // ── บันทึก riderPhone/riderName ลง Firestore ด้วย ─────────────────
+        updateOrderStatusInDB(orderId, { riderPhone, riderName }).catch(() => {});
 
         notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย — ไปรับงานได้เลย', 'success');
         return true;
@@ -1049,7 +1131,10 @@ export function AppProvider({ children }) {
       }
     } else {
       // ── Offline fallback (local state only) ─────────────────────────────
-      updateOrderStatus(orderId, 'rider_accepted', riderId);
+      setOrders(prev => prev.map(o => {
+        if (o.id !== orderId) return o;
+        return { ...o, status: 'rider_accepted', riderId, riderPhone, riderName };
+      }));
       notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย', 'success');
       return true;
     }
@@ -1503,7 +1588,7 @@ export function AppProvider({ children }) {
   }, []);
 
   // --- Admin Logic ---
-  const handleApproveRequest = (req) => {
+  const handleApproveRequest = async (req) => {
     if (req.type === 'topup') {
       const topupDesc = `เติมเงิน ฿${req.data.amount} (อนุมัติโดย Admin)`;
       creditWallet(req.userId, req.data.amount, topupDesc);
@@ -1511,8 +1596,27 @@ export function AppProvider({ children }) {
       if (FIREBASE_ENABLED) creditWalletInDB(req.userId, req.data.amount, topupDesc).catch(() => {});
       notifySystem("Admin", `อนุมัติเติมเงิน ฿${req.data.amount} ให้ ${req.user} เรียบร้อย`, "success");
     } else if (req.type === 'withdraw') {
-      const reqWallet = globalWallets[req.userId]?.balance ?? 0;
-      if (reqWallet < req.data.amount) return notifySystem("ผิดพลาด", `${req.user} มียอดเงินไม่พอ (มี ฿${reqWallet})`, "error");
+      // ── ดึงยอดจาก Firestore โดยตรง (globalWallets ของ Admin อาจ stale/ว่างเปล่า) ──
+      // Admin อยู่คนละ device กับลูกค้า → localStorage ของ Admin ไม่รู้ยอดจริง
+      let liveBalance = globalWallets[req.userId]?.balance ?? 0;
+      if (FIREBASE_ENABLED) {
+        try {
+          const cloudWallet = await loadWallet(req.userId);
+          if (cloudWallet !== null && cloudWallet !== undefined) {
+            liveBalance = cloudWallet.balance ?? 0;
+            // sync ยอดจาก Firestore เข้า globalWallets ของ Admin ด้วย
+            setGlobalWallets(prev => ({
+              ...prev,
+              [req.userId]: { balance: liveBalance, history: cloudWallet.history || [] },
+            }));
+          }
+        } catch (_) {
+          // network error → fallback ใช้ localStorage
+        }
+      }
+      if (liveBalance < req.data.amount) {
+        return notifySystem("ผิดพลาด", `${req.user} มียอดเงินไม่พอ (มี ฿${liveBalance.toLocaleString()}, ต้องการ ฿${Number(req.data.amount).toLocaleString()})`, "error");
+      }
       const withdrawDesc = `ถอนเงิน ฿${req.data.amount} (อนุมัติโดย Admin)`;
       creditWallet(req.userId, -req.data.amount, withdrawDesc);
       // ── sync ยอดกลับ Firestore ของ user นั้น ──────────────────────────────
@@ -1987,6 +2091,8 @@ export function AppProvider({ children }) {
       window.__boomriderUnsubChats();
       window.__boomriderUnsubChats = null;
     }
+    lastChatCountsRef.current = {};
+    chatSubInitializedRef.current = false;
     setIsLoggedIn(false);
     setCurrentUser(null);
     setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });

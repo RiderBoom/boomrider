@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ChefHat, LogOut, Camera, ToggleRight, ToggleLeft,
-  Plus, Edit, Trash2, MessageSquare, Save,
+  Plus, Edit, Trash2, Save,
   Image as ImageIcon, Check, MapPin, Loader, Bell,
   Clock, CheckCircle, History, X, XCircle,
 } from 'lucide-react';
@@ -185,7 +185,6 @@ export default function MerchantView() {
                   key={order.id}
                   order={order}
                   updateOrderStatus={updateOrderStatus}
-                  openChatWindow={openChatWindow}
                   onCancel={initiateCancelOrder}
                   highlight="orange"
                 />
@@ -210,7 +209,6 @@ export default function MerchantView() {
                   key={order.id}
                   order={order}
                   updateOrderStatus={updateOrderStatus}
-                  openChatWindow={openChatWindow}
                   onCancel={initiateCancelOrder}
                   highlight="blue"
                 />
@@ -490,8 +488,8 @@ export default function MerchantView() {
 }
 
 // ── OrderCard component ──────────────────────────────────────────────────────
-function OrderCard({ order, updateOrderStatus, openChatWindow, onCancel, highlight }) {
-  const { userProfile } = useApp();
+function OrderCard({ order, updateOrderStatus, onCancel, highlight }) {
+  const { userProfile, riders } = useApp();
   const borderColor = highlight === 'orange' ? 'border-orange-400' : 'border-blue-400';
   const badgeBg = {
     pending:         'bg-yellow-100 text-yellow-800',
@@ -535,29 +533,34 @@ function OrderCard({ order, updateOrderStatus, openChatWindow, onCancel, highlig
         </div>
       </div>
 
-      {/* ปุ่มควบคุม — แถวบน: แชท */}
-      <div className="flex gap-2 mb-2">
-        <button
-          onClick={() => openChatWindow(order.id + '-merchant', order.customerName || 'ลูกค้า', 'merchant')}
-          className="flex-1 bg-orange-50 text-orange-600 border border-orange-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-orange-100 active:scale-95 transition-all"
-        >
-          <MessageSquare size={14} className="mr-1" /> แชทลูกค้า
-        </button>
-        {order.riderId && (
-          <button
-            onClick={() => openChatWindow(order.id + '-rider-merchant', 'ไรเดอร์', 'merchant')}
-            className="flex-1 bg-green-50 text-green-600 border border-green-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-green-100 active:scale-95 transition-all"
-          >
-            <MessageSquare size={14} className="mr-1" /> แชทไรเดอร์
-          </button>
-        )}
-        <button
-          onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'merchant')}
-          className="flex-1 bg-blue-50 text-blue-600 border border-blue-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-blue-100 active:scale-95 transition-all"
-        >
-          <MessageSquare size={14} className="mr-1" /> Admin
-        </button>
+      {/* ── เบอร์ติดต่อ ── */}
+      {(order.customerPhone || order.riderId) && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {order.customerPhone && (
+            <a
+              href={`tel:${order.customerPhone}`}
+              className="flex-1 min-w-[110px] bg-orange-50 text-orange-600 border border-orange-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-orange-100 active:scale-95 transition-all"
+            >
+              📞 <span className="ml-1">{order.customerPhone}</span>
+            </a>
+          )}
+          {order.riderId && (() => {
+            // ใช้ riderPhone จาก order ก่อน (ฝังตอน acceptOrder) fallback หา riders array
+            const phone = order.riderPhone || riders.find(r => r.id === order.riderId)?.phone;
+            return phone ? (
+              <a
+                href={`tel:${phone}`}
+                className="flex-1 min-w-[110px] bg-green-50 text-green-600 border border-green-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-green-100 active:scale-95 transition-all"
+              >
+                📞 <span className="ml-1">{phone}</span>
+              </a>
+            ) : null;
+          })()}
+        </div>
+      )}
 
+      {/* ปุ่มควบคุม — สถานะออเดอร์ */}
+      <div className="flex gap-2 mb-2">
         {order.status === 'pending' && (
           <button
             onClick={() => updateOrderStatus(order.id, 'preparing')}

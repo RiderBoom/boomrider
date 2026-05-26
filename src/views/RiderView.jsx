@@ -13,7 +13,7 @@ export default function RiderView() {
   const {
     activeRole, setActiveRole,
     riderTab, setRiderTab,
-    orders, riders, appConfig,
+    orders, riders, restaurants, appConfig,
     userProfile, currentUser,
     riderJobPhotos,
     acceptOrder,
@@ -277,6 +277,27 @@ export default function RiderView() {
               {job.distance > 0 && <span>🛵 ระยะส่ง: {job.distance.toFixed(1)} กม.</span>}
             </div>
 
+            {/* ── เบอร์ติดต่อ (พัสดุ) ── */}
+            {job.type === 'parcel' && (job.customerPhone || job.receiverPhone) && (
+              <div className="bg-gray-700/60 rounded-lg px-3 py-2 mb-3 space-y-1.5">
+                <p className="text-xs text-gray-400 font-bold">📞 ติดต่อ</p>
+                {job.customerPhone && (
+                  <a href={`tel:${job.customerPhone}`} className="flex items-center gap-2 text-xs text-green-300 hover:text-green-200">
+                    <span className="bg-gray-600 px-2 py-0.5 rounded text-gray-400">ผู้ส่ง</span>
+                    <span className="font-bold">{job.customerName || 'ลูกค้า'}</span>
+                    <span className="underline">{job.customerPhone}</span>
+                  </a>
+                )}
+                {job.receiverPhone && (
+                  <a href={`tel:${job.receiverPhone}`} className="flex items-center gap-2 text-xs text-blue-300 hover:text-blue-200">
+                    <span className="bg-gray-600 px-2 py-0.5 rounded text-gray-400">ผู้รับ</span>
+                    <span className="font-bold">{job.receiverName || 'ผู้รับ'}</span>
+                    <span className="underline">{job.receiverPhone}</span>
+                  </a>
+                )}
+              </div>
+            )}
+
             {/* ปุ่มรับงาน */}
             <button
               disabled={acceptingId === job.id}
@@ -462,28 +483,44 @@ export default function RiderView() {
                       {job.type === 'food' && <div>🏪 รับที่: {job.restaurantName}</div>}
                       {job.type === 'parcel' && <div>📦 รับที่: {job.pickup}</div>}
                       <div>📍 ส่งที่: {job.address || job.dropoff || 'ที่อยู่ลูกค้า'}</div>
-                      <div>👤 ลูกค้า: {job.customerName} {job.customerPhone ? `· ${job.customerPhone}` : ''}</div>
+                      <div>👤 ผู้ส่ง: {job.customerName} {job.customerPhone ? `· ${job.customerPhone}` : ''}</div>
+                      {job.type === 'parcel' && job.receiverName && (
+                        <div>📬 ผู้รับ: {job.receiverName} {job.receiverPhone ? `· ${job.receiverPhone}` : ''}</div>
+                      )}
                     </div>
 
-                    {/* Chat buttons — ลูกค้า / ร้านค้า / Admin */}
-                    <div className="flex gap-2 mb-2">
-                      <button
-                        onClick={() => openChatWindow(job.id + '-rider', job.customerName || 'ลูกค้า', 'rider')}
-                        className="flex-1 bg-gray-700 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-gray-600 active:scale-95 transition-all"
-                      >
-                        <MessageSquare size={13} className="mr-1" /> แชทลูกค้า
-                      </button>
-                      {job.type === 'food' && (
-                        <button
-                          onClick={() => openChatWindow(job.id + '-rider-merchant', job.restaurantName || 'ร้านค้า', 'rider')}
-                          className="flex-1 bg-orange-900/40 text-orange-300 border border-orange-700/50 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-orange-900/60 active:scale-95 transition-all"
+                    {/* ── ติดต่อ ── */}
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {job.customerPhone && (
+                        <a
+                          href={`tel:${job.customerPhone}`}
+                          className="flex-1 min-w-[110px] bg-gray-700 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-gray-600 active:scale-95 transition-all"
                         >
-                          <MessageSquare size={13} className="mr-1" /> แชทร้านค้า
-                        </button>
+                          📞 <span className="ml-1">{job.customerPhone}</span>
+                        </a>
                       )}
+                      {job.type === 'parcel' && job.receiverPhone && (
+                        <a
+                          href={`tel:${job.receiverPhone}`}
+                          className="flex-1 min-w-[110px] bg-blue-900/40 text-blue-300 border border-blue-700/50 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-blue-900/60 active:scale-95 transition-all"
+                        >
+                          📞 <span className="ml-1">{job.receiverPhone}</span>
+                        </a>
+                      )}
+                      {job.type === 'food' && (() => {
+                        const phone = job.restaurantPhone || restaurants.find(r => r.id === job.restaurantId)?.phone;
+                        return phone ? (
+                          <a
+                            href={`tel:${phone}`}
+                            className="flex-1 min-w-[110px] bg-orange-900/40 text-orange-300 border border-orange-700/50 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-orange-900/60 active:scale-95 transition-all"
+                          >
+                            📞 <span className="ml-1">{phone}</span>
+                          </a>
+                        ) : null;
+                      })()}
                       <button
                         onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'rider')}
-                        className="flex-1 bg-blue-900/40 text-blue-300 border border-blue-700/50 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-blue-900/60 active:scale-95 transition-all"
+                        className="flex-1 min-w-[110px] bg-blue-900/40 text-blue-300 border border-blue-700/50 py-2 rounded-lg flex items-center justify-center font-bold text-xs hover:bg-blue-900/60 active:scale-95 transition-all"
                       >
                         <MessageSquare size={13} className="mr-1" /> Admin
                       </button>

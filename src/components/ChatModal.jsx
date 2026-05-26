@@ -33,10 +33,11 @@ const ChatModal = () => {
     }
   };
 
-  // Sender display name
+  // Sender display name — admin เสมอแสดงเป็น 'เจ้าหน้าที่' ไม่ว่า senderName จะเป็นอะไร
   const senderLabel = (msg) => {
+    if (msg.sender === 'admin') return 'เจ้าหน้าที่';
     if (msg.senderName) return msg.senderName;
-    const map = { admin: 'เจ้าหน้าที่', rider: 'ไรเดอร์', merchant: 'ร้านค้า', customer: 'ลูกค้า' };
+    const map = { rider: 'ไรเดอร์', merchant: 'ร้านค้า', customer: 'ลูกค้า' };
     return map[msg.sender] || msg.sender;
   };
 

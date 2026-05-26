@@ -48,10 +48,9 @@ service cloud.firestore {
                           || resource.data.riderId    == request.auth.uid
                           || resource.data.riderUid   == request.auth.uid
                           || resource.data.merchantUid == request.auth.uid
-                          // backward compat: parcel orders ที่ยังไม่มี riderUid/merchantUid
-                          // (สร้างก่อน field เหล่านี้จะถูก set ตอน acceptOrder)
-                          // จำกัดเฉพาะ ready_to_pickup ให้ไรเดอร์รับงานได้
-                          || (resource.data.riderUid == null
+                          // ไรเดอร์รับงาน: riderId == null (explicit null ทั้ง food + parcel)
+                          // ใช้ riderId แทน riderUid เพราะ parcel orders ไม่มี field riderUid
+                          || (resource.data.riderId == null
                               && resource.data.status == 'ready_to_pickup')
                        ));
       allow delete: if isAdmin();
@@ -101,6 +100,14 @@ service cloud.firestore {
       allow update: if isAdmin()
                     || (isAuth() && resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
+    }
+
+    // ─── Chats — ทุก user ที่ login อ่าน/เขียนได้ ──────────────────────────
+    // ระบบแชทต้องการให้ทุกฝ่าย (customer, rider, merchant, admin) ส่งข้อความได้
+    // Admin ต้องอ่านทุก chat ได้, User เขียนได้ในทุก chat ที่เกี่ยวข้อง
+    match /chats/{chatId} {
+      allow read:  if isAuth();
+      allow write: if isAuth();
     }
 
     // ─── Admin Notifications ─────────────────────────────────────────────────
