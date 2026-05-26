@@ -13,7 +13,7 @@ import {
   saveWallet, loadWallet, creditWalletInDB,
   saveRestaurant, loadRestaurants, deleteRestaurantFromDB,
   saveMenuItems, loadMenuItems,
-  savePendingRequest, deletePendingRequest, loadPendingRequests,
+  savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
   saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation,
   saveUserProfile, loadUserProfile,
   safeLocalSet,
@@ -220,7 +220,8 @@ export function AppProvider({ children }) {
           setMenuItems(cloudMenus);
           safeLocalSet('boomrider_menu_items', cloudMenus);
         }
-        if (cloudPending && cloudPending.length > 0) {
+        // อัปเดตเสมอ (รวมถึงกรณี Admin อนุมัติหมดแล้ว = array ว่าง)
+        if (cloudPending !== null) {
           setPendingRequests(cloudPending);
           safeLocalSet('boomrider_pending_requests', cloudPending);
         }
@@ -572,6 +573,18 @@ export function AppProvider({ children }) {
           },
         );
         window.__boomriderUnsubOrders = unsubOrders;
+
+        // ── Subscribe real-time pending_requests (onSnapshot) ────────────
+        // ทำให้ user เห็นทันทีเมื่อ Admin อนุมัติ/ปฏิเสธคำขอยกเลิก
+        if (window.__boomriderUnsubPending) {
+          window.__boomriderUnsubPending();
+          window.__boomriderUnsubPending = null;
+        }
+        const unsubPending = subscribeToPendingRequests((cloudPending) => {
+          setPendingRequests(cloudPending);
+          safeLocalSet('boomrider_pending_requests', cloudPending);
+        });
+        window.__boomriderUnsubPending = unsubPending;
 
         // ── โหลด wallet ──────────────────────────────────────────────────
         try {
@@ -1501,7 +1514,9 @@ export function AppProvider({ children }) {
     } else if (req.type === 'cancel_order') {
       // ── ยกเลิก order + คืนเงิน (ถ้า wallet) ────────────────────────────
       const targetOrder = orders.find(o => o.id === req.data.orderId);
-      const cancelReason = `ลูกค้าขอยกเลิก: ${req.data.reason}`;
+      const requestedBy = req.data.requestedBy;
+      const roleName = requestedBy === 'rider' ? 'ไรเดอร์' : requestedBy === 'merchant' ? 'ร้านค้า' : 'ลูกค้า';
+      const cancelReason = `${roleName}ขอยกเลิก: ${req.data.reason}`;
       if (targetOrder && !['cancelled', 'completed'].includes(targetOrder.status)) {
         const cancelledOrder = { ...targetOrder, status: 'cancelled', cancelReason };
         setOrders(prev => prev.map(o => o.id === req.data.orderId ? cancelledOrder : o));
@@ -1918,10 +1933,14 @@ export function AppProvider({ children }) {
 
   // Bug fix: reset to clean empty profile instead of hardcoded user
   const handleLogout = () => {
-    // ยกเลิก real-time subscription ก่อน logout
+    // ยกเลิก real-time subscriptions ก่อน logout
     if (window.__boomriderUnsubOrders) {
       window.__boomriderUnsubOrders();
       window.__boomriderUnsubOrders = null;
+    }
+    if (window.__boomriderUnsubPending) {
+      window.__boomriderUnsubPending();
+      window.__boomriderUnsubPending = null;
     }
     setIsLoggedIn(false);
     setCurrentUser(null);

@@ -249,6 +249,29 @@ export const loadPendingRequests = async () => {
   } catch { return null; }
 };
 
+/**
+ * ── Real-time Pending Requests Subscription ────────────────────────────────
+ * Subscribe to Firestore pending_requests ด้วย onSnapshot
+ * ทำให้ทุก device เห็นการเปลี่ยนแปลงทันทีเมื่อ Admin อนุมัติ/ปฏิเสธ
+ * @param {function} callback — รับ array ของ requests ทุกครั้งที่มีการเปลี่ยนแปลง
+ * @param {function} [onError]
+ * @returns {function} unsubscribe
+ */
+export const subscribeToPendingRequests = (callback, onError) => {
+  const q = query(collection(db, 'pending_requests'), orderBy('updatedAt', 'desc'));
+  return onSnapshot(q, (snap) => {
+    const requests = snap.docs.map(d => {
+      const data = d.data();
+      if (data.updatedAt?.toDate) delete data.updatedAt;
+      return data;
+    });
+    callback(requests);
+  }, (err) => {
+    if (import.meta.env.DEV) console.error('[subscribeToPendingRequests]', err.code, err.message);
+    if (onError) onError(err);
+  });
+};
+
 // ===== User Profiles ==========================================================
 
 export const saveUserProfile = async (userId, data) => {
