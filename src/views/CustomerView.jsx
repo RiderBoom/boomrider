@@ -1126,7 +1126,7 @@ export default function CustomerView() {
                             <Bike size={13} /> แชทไรเดอร์
                           </button>
                         ) : (
-                          <button onClick={() => openChatWindow(order.id + '-support', 'Support', 'customer')} className="flex-1 bg-blue-50 text-blue-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-100 active:scale-95 transition-all">
+                          <button onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'customer')} className="flex-1 bg-blue-50 text-blue-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-100 active:scale-95 transition-all">
                             <MessageSquare size={13} /> แชท Support
                           </button>
                         )}

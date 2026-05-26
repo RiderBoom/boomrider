@@ -391,3 +391,52 @@ export const loadRiders = async () => {
 export const deleteRiderFromDB = async (id) => {
   try { await deleteDoc(doc(db, 'riders', String(id))); } catch {}
 };
+
+// ===== Chats ==================================================================
+
+/**
+ * บันทึก/อัปเดต messages ของ chat ลง Firestore
+ * ใช้ merge:true เพื่อไม่เขียนทับ fields อื่น
+ */
+export const saveChat = async (chatId, messages) => {
+  if (!chatId) return;
+  try {
+    await setDoc(doc(db, 'chats', String(chatId)), {
+      messages: (messages || []).slice(-300), // เก็บสูงสุด 300 ข้อความ
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[saveChat]', err?.code, err?.message);
+  }
+};
+
+export const loadAllChats = async () => {
+  try {
+    const snap = await getDocs(collection(db, 'chats'));
+    const result = {};
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.messages) result[d.id] = data.messages;
+    });
+    return result;
+  } catch { return null; }
+};
+
+/**
+ * Real-time subscription สำหรับ chats ทั้งหมด
+ * Admin เห็นทุก chat, User เห็นเฉพาะของตัวเอง (Firestore rules ควบคุม)
+ */
+export const subscribeToChats = (callback, onError) => {
+  const q = collection(db, 'chats');
+  return onSnapshot(q, (snap) => {
+    const allChats = {};
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.messages) allChats[d.id] = data.messages;
+    });
+    callback(allChats);
+  }, (err) => {
+    if (import.meta.env.DEV) console.error('[subscribeToChats]', err.code, err.message);
+    if (onError) onError(err);
+  });
+};

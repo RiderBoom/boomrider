@@ -128,10 +128,17 @@ export default function AdminView() {
 
   // ── Chat groupings (admin sees ALL chats) ────────────────────────────────
   const allChatIds     = Object.keys(chats);
-  const supportChats   = allChatIds.filter(k => k.startsWith('support-'));
+  // รองรับทั้ง 2 format: 'support-{userId}' (profile page) และ '{orderId}-support' (order view)
+  const supportChats   = allChatIds.filter(k => k.startsWith('support-') || k.endsWith('-support'));
   const merchantChats  = allChatIds.filter(k => k.endsWith('-merchant'));
   const riderChats     = allChatIds.filter(k => k.endsWith('-rider'));
   const totalChatCount = allChatIds.length;
+  // นับ unread: support chats ที่ข้อความล่าสุดมาจาก customer/user (ไม่ใช่ admin)
+  const unreadSupportCount = supportChats.filter(id => {
+    const msgs = chats[id] || [];
+    const last = msgs[msgs.length - 1];
+    return last && last.sender !== 'admin';
+  }).length;
 
   // Today's date string (Thai locale day)
   const todayStr = new Date().toLocaleDateString('th-TH');
@@ -181,7 +188,7 @@ export default function AdminView() {
     { id: 'users',       label: 'ผู้ใช้',     icon: Users },
     { id: 'management',  label: 'จัดการระบบ', icon: Sliders },
     { id: 'promotions',  label: 'โปรโมชั่น',  icon: Tag,     badge: promoCodes.filter(p => p.active).length },
-    { id: 'messages',    label: 'ข้อความ',    icon: MessageSquare, badge: totalChatCount || null },
+    { id: 'messages',    label: 'ข้อความ',    icon: MessageSquare, badge: (unreadSupportCount || totalChatCount) || null },
     { id: 'settings',    label: 'ตั้งค่า',    icon: CreditCard },
   ];
 
@@ -758,23 +765,54 @@ export default function AdminView() {
           {/* Support chats (ลูกค้า ↔ Admin) */}
           {supportChats.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="p-4 border-b bg-purple-50">
+              <div className="p-4 border-b bg-purple-50 flex items-center justify-between">
                 <h3 className="font-bold flex items-center gap-2 text-purple-700">
                   <MessageSquare size={16} /> ลูกค้า ↔ เจ้าหน้าที่ ({supportChats.length})
                 </h3>
+                {unreadSupportCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {unreadSupportCount} ใหม่
+                  </span>
+                )}
               </div>
               <div className="divide-y">
                 {supportChats.map(chatId => {
-                  const userId = chatId.replace('support-', '');
-                  const msgs = chats[chatId] || [];
+                  // รองรับทั้ง 'support-{userId}' และ '{orderId}-support'
+                  const isOrderFormat = chatId.endsWith('-support');
+                  const identifier   = isOrderFormat
+                    ? chatId.replace('-support', '')
+                    : chatId.replace('support-', '');
+                  // หาชื่อลูกค้าจาก order (ถ้าเป็น orderId format)
+                  const relatedOrder = isOrderFormat
+                    ? orders.find(o => o.id === identifier)
+                    : null;
+                  const displayName  = relatedOrder
+                    ? `ออเดอร์ #${identifier.slice(-6)} (${relatedOrder.customerName || 'ลูกค้า'})`
+                    : `ลูกค้า: ${identifier.slice(0, 8)}...`;
+                  const chatTitle    = relatedOrder
+                    ? `Support — ออเดอร์ #${identifier.slice(-6)}`
+                    : `ลูกค้า ${identifier.slice(0, 8)}...`;
+
+                  const msgs    = chats[chatId] || [];
                   const lastMsg = msgs[msgs.length - 1];
+                  const hasUnread = lastMsg && lastMsg.sender !== 'admin';
+
                   return (
-                    <div key={chatId} className="p-4 hover:bg-gray-50 flex justify-between items-center gap-2">
-                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openChatWindow(chatId, `ลูกค้า ${userId.slice(0,6)}...`, 'admin')}>
-                        <div className="font-bold text-sm text-purple-700">ลูกค้า: {userId.slice(0, 8)}...</div>
+                    <div key={chatId} className={`p-4 hover:bg-gray-50 flex justify-between items-center gap-2 ${hasUnread ? 'bg-purple-50/60' : ''}`}>
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openChatWindow(chatId, chatTitle, 'admin')}>
+                        <div className="font-bold text-sm text-purple-700 flex items-center gap-2">
+                          {displayName}
+                          {hasUnread && <span className="w-2 h-2 bg-red-500 rounded-full inline-block" />}
+                        </div>
                         <div className="text-xs text-gray-500 truncate">{lastMsg?.text || 'เริ่มสนทนา'}</div>
                         <div className="text-[10px] text-gray-400">{lastMsg?.time} · {msgs.length} ข้อความ</div>
                       </div>
+                      <button
+                        onClick={() => openChatWindow(chatId, chatTitle, 'admin')}
+                        className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 active:scale-95 transition-all flex-shrink-0"
+                      >
+                        ตอบกลับ
+                      </button>
                       <button onClick={() => { if(window.confirm('ลบแชทนี้?')) deleteChat(chatId); }}
                         className="p-2 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 flex-shrink-0" title="ลบแชท">
                         <Trash2 size={16} />

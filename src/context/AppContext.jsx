@@ -15,6 +15,7 @@ import {
   saveMenuItems, loadMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
   saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation,
+  saveChat, loadAllChats, subscribeToChats,
   saveUserProfile, loadUserProfile,
   safeLocalSet,
   acceptOrderTransaction, subscribeToOrders,
@@ -586,6 +587,39 @@ export function AppProvider({ children }) {
         });
         window.__boomriderUnsubPending = unsubPending;
 
+        // ── Subscribe real-time chats (onSnapshot) ───────────────────────
+        // ทำให้ Admin และลูกค้าส่ง/รับข้อความข้าม device ได้แบบ real-time
+        if (window.__boomriderUnsubChats) {
+          window.__boomriderUnsubChats();
+          window.__boomriderUnsubChats = null;
+        }
+        const unsubChats = subscribeToChats((cloudChats) => {
+          setChats(prev => {
+            // Merge: รักษา local-only chats ที่ยังไม่ได้ sync, อัปเดต cloud chats
+            const merged = { ...prev };
+            Object.entries(cloudChats).forEach(([id, msgs]) => {
+              // ถ้า cloud มีข้อความมากกว่า (หรือเท่ากัน) → ใช้ cloud
+              if (!prev[id] || msgs.length >= (prev[id] || []).length) {
+                merged[id] = msgs;
+              }
+            });
+            try { localStorage.setItem('boomrider_chats', JSON.stringify(merged)); } catch {}
+            return merged;
+          });
+        });
+        window.__boomriderUnsubChats = unsubChats;
+
+        // โหลด chats ครั้งแรก (เผื่อ onSnapshot ช้า)
+        loadAllChats().then(cloudChats => {
+          if (cloudChats && Object.keys(cloudChats).length > 0) {
+            setChats(prev => {
+              const merged = { ...prev, ...cloudChats };
+              try { localStorage.setItem('boomrider_chats', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
+          }
+        }).catch(() => {});
+
         // ── โหลด wallet ──────────────────────────────────────────────────
         try {
           const cloudWallet = await loadWallet(firebaseUser.uid);
@@ -706,7 +740,14 @@ export function AppProvider({ children }) {
                 : userProfile?.name || 'ลูกค้า',
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     };
-    setChats(prev => ({ ...prev, [activeChat.id]: [...(prev[activeChat.id] || []), newMessage] }));
+    setChats(prev => {
+      const updated = { ...prev, [activeChat.id]: [...(prev[activeChat.id] || []), newMessage] };
+      // Sync to Firestore ทันทีที่ส่งข้อความ (ทำให้ cross-device ทำงานได้)
+      if (FIREBASE_ENABLED) {
+        saveChat(activeChat.id, updated[activeChat.id]).catch(() => {});
+      }
+      return updated;
+    });
   };
 
   const deleteChat = (chatId) => {
@@ -1941,6 +1982,10 @@ export function AppProvider({ children }) {
     if (window.__boomriderUnsubPending) {
       window.__boomriderUnsubPending();
       window.__boomriderUnsubPending = null;
+    }
+    if (window.__boomriderUnsubChats) {
+      window.__boomriderUnsubChats();
+      window.__boomriderUnsubChats = null;
     }
     setIsLoggedIn(false);
     setCurrentUser(null);
