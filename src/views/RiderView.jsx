@@ -46,6 +46,16 @@ export default function RiderView() {
   const [walletAccNo, setWalletAccNo] = useState('');
   const [submittingWallet, setSubmittingWallet] = useState(false);
 
+  // ── Reset wallet form เมื่อ user เปลี่ยน (ป้องกัน stale form ข้าม account) ──
+  const _walletUid = userProfile.id || currentUser?.id || '';
+  React.useEffect(() => {
+    setWalletAction(null);
+    setWalletAmount('');
+    setWalletBank('');
+    setWalletAccName('');
+    setWalletAccNo('');
+  }, [_walletUid]);
+
   // ── state สำหรับ Modal ขอยกเลิกงาน (ส่งไป Admin) ──────────────────────────
   const [showRiderCancelModal, setShowRiderCancelModal] = useState(false);
   const [riderCancelOrderId, setRiderCancelOrderId]     = useState(null);
@@ -644,24 +654,27 @@ export default function RiderView() {
 
         {/* ═══════════════════════════ WALLET TAB ═══════════════════════════ */}
         {riderTab === 'wallet' && (() => {
-          const myUid    = userProfile.id || currentUser?.id || '';
+          // ── data vars (ใช้ _walletUid จาก outer scope เสมอ) ───────────────
           const creditBal = multiWallet?.rider_credit?.balance ?? 0;
           const mainBal   = multiWallet?.rider_main?.balance   ?? 0;
 
-          // คำขอที่รอ Admin ของไรเดอร์นี้
-          const myPending = pendingRequests.filter(r =>
-            r.userId === myUid && ['topup', 'withdraw'].includes(r.type) &&
-            ['rider_credit', 'rider_main'].includes(r.walletType)
+          const walletPending = pendingRequests.filter(r =>
+            r.userId === _walletUid &&
+            (r.type === 'topup' || r.type === 'withdraw') &&
+            (r.walletType === 'rider_credit' || r.walletType === 'rider_main')
           );
-          // ประวัติธุรกรรม (Firestore logs)
-          const myLogs = txLogs.filter(l =>
-            l.user_id === myUid &&
-            ['rider_credit', 'rider_main'].includes(l.target_wallet_type)
+
+          const walletLogs = txLogs.filter(l =>
+            l.user_id === _walletUid &&
+            (l.target_wallet_type === 'rider_credit' || l.target_wallet_type === 'rider_main')
           ).slice(0, 40);
 
           const resetForm = () => {
-            setWalletAction(null); setWalletAmount('');
-            setWalletBank(''); setWalletAccName(''); setWalletAccNo('');
+            setWalletAction(null);
+            setWalletAmount('');
+            setWalletBank('');
+            setWalletAccName('');
+            setWalletAccNo('');
           };
 
           const handleSubmit = () => {
@@ -681,44 +694,65 @@ export default function RiderView() {
             }
           };
 
-          const StatusIcon = ({ status }) => (
-            <span>{status === 'success' ? '✅' : status === 'pending_approval' ? '⏳' : status === 'rejected' ? '❌' : '⏳'}</span>
-          );
+          const statusEmoji = (s) =>
+            s === 'success' || s === 'completed' ? '✅'
+            : s === 'rejected' ? '❌'
+            : '⏳';
 
           return (
-            <div className="pb-4">
+            <div className="pb-6">
 
-              {/* ── ยอดกระเป๋า ─────────────────────────────────────────────── */}
+              {/* ── ยอดกระเป๋า 2 ใบ ─────────────────────────────────────────── */}
               <div className="grid grid-cols-2 gap-3 mb-4">
+
                 {/* rider_credit */}
-                <div className="bg-gray-800 border border-yellow-600/40 rounded-2xl p-4">
+                <div className="bg-gray-800 border border-yellow-600/40 rounded-2xl p-4 flex flex-col">
                   <div className="flex items-center gap-1.5 mb-2">
-                    <CreditCard size={14} className="text-yellow-400" />
-                    <span className="text-xs text-yellow-300 font-bold">เครดิต GP</span>
+                    <CreditCard size={14} className="text-yellow-400 shrink-0" />
+                    <span className="text-xs text-yellow-300 font-bold truncate">เครดิต GP</span>
                   </div>
-                  <div className="text-2xl font-black text-yellow-400">฿{creditBal.toLocaleString()}</div>
-                  <p className="text-[10px] text-gray-500 mt-1 leading-tight">บัฟเฟอร์จ่าย GP<br/>ถ้ามีจะได้ค่าส่งเต็ม</p>
+                  <div className="text-2xl font-black text-yellow-400 mb-1">
+                    ฿{Number(creditBal).toLocaleString()}
+                  </div>
+                  <p className="text-[10px] text-gray-500 leading-tight mb-3 flex-1">
+                    บัฟเฟอร์จ่าย GP<br/>ถ้ามีจะได้ค่าส่งเต็ม
+                  </p>
                   <button
-                    onClick={() => { setWalletAction(walletAction === 'topup_credit' ? null : 'topup_credit'); setWalletAmount(''); }}
-                    className={`mt-2.5 w-full text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all ${
-                      walletAction === 'topup_credit' ? 'bg-yellow-500 text-white' : 'bg-yellow-700/30 text-yellow-300 hover:bg-yellow-700/50'
+                    onClick={() => {
+                      setWalletAction(walletAction === 'topup_credit' ? null : 'topup_credit');
+                      setWalletAmount('');
+                    }}
+                    className={`w-full text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all ${
+                      walletAction === 'topup_credit'
+                        ? 'bg-yellow-500 text-white'
+                        : 'bg-yellow-700/30 text-yellow-300 hover:bg-yellow-700/50'
                     }`}
                   >
                     <ArrowUpCircle size={13} /> เติมเครดิต
                   </button>
                 </div>
+
                 {/* rider_main */}
-                <div className="bg-gray-800 border border-green-600/40 rounded-2xl p-4">
+                <div className="bg-gray-800 border border-green-600/40 rounded-2xl p-4 flex flex-col">
                   <div className="flex items-center gap-1.5 mb-2">
-                    <Wallet size={14} className="text-green-400" />
-                    <span className="text-xs text-green-300 font-bold">รายได้ค่าส่ง</span>
+                    <Wallet size={14} className="text-green-400 shrink-0" />
+                    <span className="text-xs text-green-300 font-bold truncate">รายได้ค่าส่ง</span>
                   </div>
-                  <div className="text-2xl font-black text-green-400">฿{mainBal.toLocaleString()}</div>
-                  <p className="text-[10px] text-gray-500 mt-1 leading-tight">รายได้จากการส่ง<br/>ถอนได้เมื่อ Admin อนุมัติ</p>
+                  <div className="text-2xl font-black text-green-400 mb-1">
+                    ฿{Number(mainBal).toLocaleString()}
+                  </div>
+                  <p className="text-[10px] text-gray-500 leading-tight mb-3 flex-1">
+                    รายได้จากการส่ง<br/>ถอนได้เมื่อ Admin อนุมัติ
+                  </p>
                   <button
-                    onClick={() => { setWalletAction(walletAction === 'withdraw_main' ? null : 'withdraw_main'); setWalletAmount(''); }}
-                    className={`mt-2.5 w-full text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all ${
-                      walletAction === 'withdraw_main' ? 'bg-green-500 text-white' : 'bg-green-700/30 text-green-300 hover:bg-green-700/50'
+                    onClick={() => {
+                      setWalletAction(walletAction === 'withdraw_main' ? null : 'withdraw_main');
+                      setWalletAmount('');
+                    }}
+                    className={`w-full text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all ${
+                      walletAction === 'withdraw_main'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-green-700/30 text-green-300 hover:bg-green-700/50'
                     }`}
                   >
                     <ArrowDownCircle size={13} /> ถอนเงิน
@@ -733,11 +767,14 @@ export default function RiderView() {
                     <h3 className="font-bold text-white text-sm">
                       {walletAction === 'topup_credit' ? '💳 ขอเติมเครดิต GP' : '💸 ขอถอนรายได้ค่าส่ง'}
                     </h3>
-                    <button onClick={resetForm} className="text-gray-500 text-lg leading-none">×</button>
+                    <button
+                      onClick={resetForm}
+                      className="text-gray-400 hover:text-white w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-700 transition-all"
+                    >✕</button>
                   </div>
 
                   {walletAction === 'topup_credit' && (
-                    <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-3 mb-3 text-xs text-yellow-300">
+                    <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-3 mb-3 text-xs text-yellow-300 leading-relaxed">
                       💡 โอนเงินมาที่บัญชีแอดมิน แล้วแจ้งรายละเอียดด้านล่าง Admin จะเติมเครดิตให้ภายใน 24 ชม.
                     </div>
                   )}
@@ -748,28 +785,44 @@ export default function RiderView() {
                   )}
 
                   <div className="space-y-2">
-                    <input type="number" placeholder="จำนวนเงิน (฿) *"
-                      value={walletAmount} onChange={e => setWalletAmount(e.target.value)}
-                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none"
+                    <input
+                      type="number"
+                      placeholder={walletAction === 'withdraw_main' ? `จำนวนเงิน (สูงสุด ฿${Number(mainBal).toLocaleString()})` : 'จำนวนเงิน (฿) *'}
+                      value={walletAmount}
+                      onChange={e => setWalletAmount(e.target.value)}
+                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none placeholder-gray-500"
                     />
-                    <input type="text" placeholder="ชื่อธนาคาร (เช่น กสิกร, SCB) *"
-                      value={walletBank} onChange={e => setWalletBank(e.target.value)}
-                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none"
+                    <input
+                      type="text"
+                      placeholder="ชื่อธนาคาร (เช่น กสิกร, SCB) *"
+                      value={walletBank}
+                      onChange={e => setWalletBank(e.target.value)}
+                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none placeholder-gray-500"
                     />
-                    <input type="text" placeholder="ชื่อบัญชี *"
-                      value={walletAccName} onChange={e => setWalletAccName(e.target.value)}
-                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none"
+                    <input
+                      type="text"
+                      placeholder="ชื่อบัญชี *"
+                      value={walletAccName}
+                      onChange={e => setWalletAccName(e.target.value)}
+                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none placeholder-gray-500"
                     />
-                    <input type="text" placeholder="เลขบัญชี *"
-                      value={walletAccNo} onChange={e => setWalletAccNo(e.target.value)}
-                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none"
+                    <input
+                      type="text"
+                      placeholder="เลขบัญชี *"
+                      value={walletAccNo}
+                      onChange={e => setWalletAccNo(e.target.value)}
+                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none placeholder-gray-500"
                     />
                   </div>
 
                   <button
                     onClick={handleSubmit}
-                    disabled={submittingWallet || !walletAmount || !walletBank || !walletAccName || !walletAccNo ||
-                      (walletAction === 'withdraw_main' && (parseFloat(walletAmount) > mainBal || mainBal <= 0))}
+                    disabled={
+                      submittingWallet ||
+                      !walletAmount || parseFloat(walletAmount) <= 0 ||
+                      !walletBank || !walletAccName || !walletAccNo ||
+                      (walletAction === 'withdraw_main' && (parseFloat(walletAmount) > mainBal || mainBal <= 0))
+                    }
                     className="w-full mt-3 bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-white py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {submittingWallet ? '⏳ กำลังส่ง...' : '📨 ส่งคำขอให้ Admin'}
@@ -778,58 +831,82 @@ export default function RiderView() {
               )}
 
               {/* ── คำขอที่รอ Admin ──────────────────────────────────────────── */}
-              {myPending.length > 0 && (
+              {walletPending.length > 0 && (
                 <div className="mb-4">
                   <h4 className="text-xs text-yellow-400 font-bold uppercase mb-2 flex items-center gap-1">
-                    ⏳ รอ Admin อนุมัติ ({myPending.length})
+                    ⏳ รอ Admin อนุมัติ ({walletPending.length})
                   </h4>
                   <div className="space-y-2">
-                    {myPending.map(req => (
-                      <div key={req.id} className="bg-gray-800 border border-yellow-700/30 rounded-xl p-3">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mr-2 ${
-                              req.type === 'topup' ? 'bg-blue-900/50 text-blue-300' : 'bg-orange-900/50 text-orange-300'
-                            }`}>{req.type === 'topup' ? '💰 เติมเงิน' : '💸 ถอนเงิน'}</span>
-                            <span className="text-[10px] text-gray-400">{req.walletType}</span>
+                    {walletPending.map((req, idx) => {
+                      const amt = req.data?.amount ?? req.amount ?? 0;
+                      const wt  = req.walletType || req.data?.walletType || '—';
+                      return (
+                        <div key={req.id || idx} className="bg-gray-800 border border-yellow-700/30 rounded-xl p-3">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                req.type === 'topup'
+                                  ? 'bg-blue-900/50 text-blue-300'
+                                  : 'bg-orange-900/50 text-orange-300'
+                              }`}>
+                                {req.type === 'topup' ? '💰 เติมเงิน' : '💸 ถอนเงิน'}
+                              </span>
+                              <span className="text-[10px] text-gray-400 bg-gray-700 px-1.5 py-0.5 rounded">{wt}</span>
+                            </div>
+                            <span className="font-bold text-white text-sm ml-2">฿{Number(amt).toLocaleString()}</span>
                           </div>
-                          <span className="font-bold text-white text-sm">฿{Number(req.data.amount).toLocaleString()}</span>
+                          <div className="text-[10px] text-gray-500 mt-1">{req.timestamp || ''}</div>
                         </div>
-                        <div className="text-[10px] text-gray-500 mt-1">{req.timestamp}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {/* ── ประวัติธุรกรรม ────────────────────────────────────────────── */}
-              <h4 className="text-xs text-gray-500 font-bold uppercase mb-2">ประวัติธุรกรรม</h4>
-              {myLogs.length === 0 ? (
+              <h4 className="text-xs text-gray-500 font-bold uppercase mb-2 tracking-wide">ประวัติธุรกรรม</h4>
+              {walletLogs.length === 0 ? (
                 <div className="text-center text-gray-600 py-8">
                   <Wallet size={32} className="mx-auto mb-2 opacity-20" />
-                  <p className="text-sm">ยังไม่มีประวัติ — รายได้จะแสดงเมื่อส่งงานสำเร็จ</p>
+                  <p className="text-sm text-gray-500">ยังไม่มีประวัติ — รายได้จะแสดงเมื่อส่งงานสำเร็จ</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {myLogs.map((log, i) => (
-                    <div key={log.id || i} className="bg-gray-800 rounded-xl p-3 border border-gray-700">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1 min-w-0 mr-2">
-                          <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded inline-block mb-1 ${
-                            log.target_wallet_type === 'rider_credit' ? 'bg-yellow-900/40 text-yellow-300' : 'bg-green-900/40 text-green-300'
-                          }`}>{log.target_wallet_type}</div>
-                          <div className="text-xs text-gray-300 truncate">{log.description}</div>
-                          <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1">
-                            <StatusIcon status={log.status} /> {log.status}
-                            {log.balance_after != null && ` · คงเหลือ ฿${Number(log.balance_after).toLocaleString()}`}
+                  {walletLogs.map((log, i) => {
+                    const logAmt    = log.amount ?? 0;
+                    const logDesc   = log.description || '—';
+                    const logStatus = log.status || 'pending';
+                    const logWt     = log.target_wallet_type || '';
+                    const logBal    = log.balance_after;
+                    return (
+                      <div key={log.id || i} className="bg-gray-800 rounded-xl p-3 border border-gray-700/80">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            {logWt ? (
+                              <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded inline-block mb-1 ${
+                                logWt === 'rider_credit'
+                                  ? 'bg-yellow-900/40 text-yellow-300'
+                                  : 'bg-green-900/40 text-green-300'
+                              }`}>
+                                {logWt === 'rider_credit' ? '🎯 เครดิต GP' : '🛵 รายได้ค่าส่ง'}
+                              </div>
+                            ) : null}
+                            <div className="text-xs text-gray-300 truncate">{logDesc}</div>
+                            <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1 flex-wrap">
+                              <span>{statusEmoji(logStatus)}</span>
+                              <span>{logStatus}</span>
+                              {logBal != null && (
+                                <span>· คงเหลือ ฿{Number(logBal).toLocaleString()}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className={`font-bold text-sm flex-shrink-0 ${logAmt >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {logAmt >= 0 ? '+' : ''}฿{Math.abs(logAmt).toLocaleString()}
                           </div>
                         </div>
-                        <div className={`font-bold text-sm flex-shrink-0 ${(log.amount ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {(log.amount ?? 0) >= 0 ? '+' : ''}฿{Math.abs(log.amount ?? 0).toLocaleString()}
-                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
