@@ -516,6 +516,12 @@ export default function AdminView() {
                           req.type === 'rider_reg'      ? '🛵 สมัครไรเดอร์'      :
                           req.type
                         }</span>
+                        {/* walletType badge — shows which sub-wallet to credit/debit */}
+                        {(req.type === 'topup' || req.type === 'withdraw') && (req.walletType || req.data?.walletType) && (() => {
+                          const wt = req.walletType || req.data?.walletType;
+                          const wtLabel = wt === 'rider_credit' ? '🎯 เครดิต GP' : wt === 'rider_main' ? '🛵 รายได้ไรเดอร์' : wt === 'shop_settlement' ? '🏪 รายได้ร้าน' : wt === 'admin_platform' ? '🏛 Platform' : wt;
+                          return <span className="px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-700">{wtLabel}</span>;
+                        })()}
                         <span className="text-xs text-gray-400">{req.timestamp}</span>
                       </div>
                       <div className="font-bold text-gray-800 mb-1">
@@ -557,9 +563,16 @@ export default function AdminView() {
                       )}
                       {req.type === 'withdraw' && (
                         <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-100 mt-1">
-                          <p>ธนาคาร: <strong>{req.data.bank}</strong></p>
-                          <p>เลขบัญชี: <strong>{req.data.account}</strong></p>
-                          <p>ชื่อบัญชี: <strong>{req.data.name}</strong></p>
+                          <p>ธนาคาร: <strong>{req.data.bank || '—'}</strong></p>
+                          <p>เลขบัญชี: <strong>{req.data.accountNumber || req.data.account || '—'}</strong></p>
+                          <p>ชื่อบัญชี: <strong>{req.data.accountName || req.data.name || '—'}</strong></p>
+                        </div>
+                      )}
+                      {req.type === 'topup' && (req.data.bank || req.data.accountName || req.data.accountNumber) && (
+                        <div className="text-sm text-gray-600 bg-blue-50 p-2 rounded border border-blue-100 mt-1">
+                          {req.data.bank && <p>โอนจากธนาคาร: <strong>{req.data.bank}</strong></p>}
+                          {(req.data.accountName || req.data.name) && <p>ชื่อบัญชี: <strong>{req.data.accountName || req.data.name}</strong></p>}
+                          {(req.data.accountNumber || req.data.account) && <p>เลขบัญชี: <strong>{req.data.accountNumber || req.data.account}</strong></p>}
                         </div>
                       )}
                       {req.type === 'topup' && req.data.slipImage && (

@@ -28,19 +28,22 @@ export default function RiderView() {
     // Multi-wallet
     multiWallet,
     txLogs,
-    requestWithdrawalByType,
-    requestDepositByType,
+    pendingRequests,
+    requestTopUp,
+    requestWithdraw,
   } = useApp();
 
   // ── state สำหรับปุ่ม "รับงาน" ──────────────────────────────────────────────
-  const [acceptingId, setAcceptingId] = useState(null); // orderId ที่กำลัง pending
+  const [acceptingId, setAcceptingId] = useState(null);
   const [savingLocation, setSavingLocation] = useState(false);
-  const [pendingLocation, setPendingLocation] = useState(null); // ตำแหน่งที่เลือกบนแผนที่ แต่ยังไม่ save
+  const [pendingLocation, setPendingLocation] = useState(null);
 
   // ── state สำหรับ Wallet tab ──────────────────────────────────────────────
   const [walletAction, setWalletAction] = useState(null); // null | 'topup_credit' | 'withdraw_main'
   const [walletAmount, setWalletAmount] = useState('');
-  const [walletBankInfo, setWalletBankInfo] = useState({ bank: '', accountName: '', accountNumber: '' });
+  const [walletBank, setWalletBank] = useState('');
+  const [walletAccName, setWalletAccName] = useState('');
+  const [walletAccNo, setWalletAccNo] = useState('');
   const [submittingWallet, setSubmittingWallet] = useState(false);
 
   // ── state สำหรับ Modal ขอยกเลิกงาน (ส่งไป Admin) ──────────────────────────
@@ -641,118 +644,170 @@ export default function RiderView() {
 
         {/* ═══════════════════════════ WALLET TAB ═══════════════════════════ */}
         {riderTab === 'wallet' && (() => {
+          const myUid    = userProfile.id || currentUser?.id || '';
           const creditBal = multiWallet?.rider_credit?.balance ?? 0;
           const mainBal   = multiWallet?.rider_main?.balance   ?? 0;
-          const myUidForLog = userProfile.id || currentUser?.id;
-          const myLogs = txLogs.filter(l => l.user_id === myUidForLog &&
-            ['rider_credit', 'rider_main'].includes(l.target_wallet_type)
-          ).slice(0, 50);
 
-          const handleSubmitWallet = async () => {
+          // คำขอที่รอ Admin ของไรเดอร์นี้
+          const myPending = pendingRequests.filter(r =>
+            r.userId === myUid && ['topup', 'withdraw'].includes(r.type) &&
+            ['rider_credit', 'rider_main'].includes(r.walletType)
+          );
+          // ประวัติธุรกรรม (Firestore logs)
+          const myLogs = txLogs.filter(l =>
+            l.user_id === myUid &&
+            ['rider_credit', 'rider_main'].includes(l.target_wallet_type)
+          ).slice(0, 40);
+
+          const resetForm = () => {
+            setWalletAction(null); setWalletAmount('');
+            setWalletBank(''); setWalletAccName(''); setWalletAccNo('');
+          };
+
+          const handleSubmit = () => {
             const amt = parseFloat(walletAmount);
             if (!amt || amt <= 0) return;
+            const bankInfo = { bank: walletBank, accountName: walletAccName, accountNumber: walletAccNo };
             setSubmittingWallet(true);
             try {
               if (walletAction === 'topup_credit') {
-                await requestDepositByType('rider_credit', amt, walletBankInfo, `เติมเครดิต rider_credit ฿${amt}`);
+                requestTopUp(amt, null, 'rider_credit', bankInfo);
               } else if (walletAction === 'withdraw_main') {
-                await requestWithdrawalByType('rider_main', amt, walletBankInfo, `ถอนรายได้ ฿${amt}`);
+                requestWithdraw(amt, bankInfo, 'rider_main');
               }
-              setWalletAction(null); setWalletAmount('');
-              setWalletBankInfo({ bank: '', accountName: '', accountNumber: '' });
+              resetForm();
             } finally {
               setSubmittingWallet(false);
             }
           };
 
+          const StatusIcon = ({ status }) => (
+            <span>{status === 'success' ? '✅' : status === 'pending_approval' ? '⏳' : status === 'rejected' ? '❌' : '⏳'}</span>
+          );
+
           return (
-            <div>
-              {/* Balance Cards */}
+            <div className="pb-4">
+
+              {/* ── ยอดกระเป๋า ─────────────────────────────────────────────── */}
               <div className="grid grid-cols-2 gap-3 mb-4">
                 {/* rider_credit */}
-                <div className="bg-gray-800 border border-yellow-700/40 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-1">
+                <div className="bg-gray-800 border border-yellow-600/40 rounded-2xl p-4">
+                  <div className="flex items-center gap-1.5 mb-2">
                     <CreditCard size={14} className="text-yellow-400" />
                     <span className="text-xs text-yellow-300 font-bold">เครดิต GP</span>
                   </div>
-                  <div className="text-2xl font-bold text-yellow-400">฿{creditBal.toLocaleString()}</div>
-                  <p className="text-[10px] text-gray-500 mt-1">ใช้จ่าย GP ค่าคอมมิชชั่น</p>
+                  <div className="text-2xl font-black text-yellow-400">฿{creditBal.toLocaleString()}</div>
+                  <p className="text-[10px] text-gray-500 mt-1 leading-tight">บัฟเฟอร์จ่าย GP<br/>ถ้ามีจะได้ค่าส่งเต็ม</p>
                   <button
-                    onClick={() => { setWalletAction('topup_credit'); setWalletAmount(''); }}
-                    className="mt-2 w-full bg-yellow-700/40 text-yellow-300 text-xs py-1.5 rounded-lg font-bold flex items-center justify-center gap-1"
+                    onClick={() => { setWalletAction(walletAction === 'topup_credit' ? null : 'topup_credit'); setWalletAmount(''); }}
+                    className={`mt-2.5 w-full text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all ${
+                      walletAction === 'topup_credit' ? 'bg-yellow-500 text-white' : 'bg-yellow-700/30 text-yellow-300 hover:bg-yellow-700/50'
+                    }`}
                   >
                     <ArrowUpCircle size={13} /> เติมเครดิต
                   </button>
                 </div>
                 {/* rider_main */}
-                <div className="bg-gray-800 border border-green-700/40 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-1">
+                <div className="bg-gray-800 border border-green-600/40 rounded-2xl p-4">
+                  <div className="flex items-center gap-1.5 mb-2">
                     <Wallet size={14} className="text-green-400" />
                     <span className="text-xs text-green-300 font-bold">รายได้ค่าส่ง</span>
                   </div>
-                  <div className="text-2xl font-bold text-green-400">฿{mainBal.toLocaleString()}</div>
-                  <p className="text-[10px] text-gray-500 mt-1">ถอนได้</p>
+                  <div className="text-2xl font-black text-green-400">฿{mainBal.toLocaleString()}</div>
+                  <p className="text-[10px] text-gray-500 mt-1 leading-tight">รายได้จากการส่ง<br/>ถอนได้เมื่อ Admin อนุมัติ</p>
                   <button
-                    onClick={() => { setWalletAction('withdraw_main'); setWalletAmount(''); }}
-                    className="mt-2 w-full bg-green-700/40 text-green-300 text-xs py-1.5 rounded-lg font-bold flex items-center justify-center gap-1"
+                    onClick={() => { setWalletAction(walletAction === 'withdraw_main' ? null : 'withdraw_main'); setWalletAmount(''); }}
+                    className={`mt-2.5 w-full text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all ${
+                      walletAction === 'withdraw_main' ? 'bg-green-500 text-white' : 'bg-green-700/30 text-green-300 hover:bg-green-700/50'
+                    }`}
                   >
                     <ArrowDownCircle size={13} /> ถอนเงิน
                   </button>
                 </div>
               </div>
 
-              {/* Action Form */}
+              {/* ── ฟอร์มส่งคำขอ ────────────────────────────────────────────── */}
               {walletAction && (
-                <div className="bg-gray-800 border border-gray-600 rounded-xl p-4 mb-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-bold text-sm text-white">
-                      {walletAction === 'topup_credit' ? '💳 เติมเครดิต GP' : '💸 ถอนรายได้ค่าส่ง'}
+                <div className="bg-gray-800 border border-gray-600 rounded-2xl p-4 mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-white text-sm">
+                      {walletAction === 'topup_credit' ? '💳 ขอเติมเครดิต GP' : '💸 ขอถอนรายได้ค่าส่ง'}
                     </h3>
-                    <button onClick={() => setWalletAction(null)} className="text-gray-400 text-xs">✕ ปิด</button>
+                    <button onClick={resetForm} className="text-gray-500 text-lg leading-none">×</button>
                   </div>
-                  {walletAction === 'withdraw_main' && mainBal <= 0 && (
-                    <p className="text-xs text-red-400 mb-2">ยอดรายได้ = ฿0 ไม่สามารถถอนได้</p>
+
+                  {walletAction === 'topup_credit' && (
+                    <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-3 mb-3 text-xs text-yellow-300">
+                      💡 โอนเงินมาที่บัญชีแอดมิน แล้วแจ้งรายละเอียดด้านล่าง Admin จะเติมเครดิตให้ภายใน 24 ชม.
+                    </div>
                   )}
-                  <input
-                    type="number" placeholder="จำนวนเงิน (฿)"
-                    value={walletAmount}
-                    onChange={e => setWalletAmount(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm mb-2 border border-gray-600"
-                  />
-                  <input
-                    type="text" placeholder="ธนาคาร (เช่น กสิกร)"
-                    value={walletBankInfo.bank}
-                    onChange={e => setWalletBankInfo(p => ({ ...p, bank: e.target.value }))}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm mb-2 border border-gray-600"
-                  />
-                  <input
-                    type="text" placeholder="ชื่อบัญชี"
-                    value={walletBankInfo.accountName}
-                    onChange={e => setWalletBankInfo(p => ({ ...p, accountName: e.target.value }))}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm mb-2 border border-gray-600"
-                  />
-                  <input
-                    type="text" placeholder="เลขบัญชี"
-                    value={walletBankInfo.accountNumber}
-                    onChange={e => setWalletBankInfo(p => ({ ...p, accountNumber: e.target.value }))}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm mb-3 border border-gray-600"
-                  />
+                  {walletAction === 'withdraw_main' && mainBal <= 0 && (
+                    <div className="bg-red-900/20 border border-red-700/30 rounded-xl p-3 mb-3 text-xs text-red-300">
+                      ⚠️ ยอดรายได้ค่าส่ง = ฿0 ยังไม่สามารถถอนได้
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <input type="number" placeholder="จำนวนเงิน (฿) *"
+                      value={walletAmount} onChange={e => setWalletAmount(e.target.value)}
+                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none"
+                    />
+                    <input type="text" placeholder="ชื่อธนาคาร (เช่น กสิกร, SCB) *"
+                      value={walletBank} onChange={e => setWalletBank(e.target.value)}
+                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none"
+                    />
+                    <input type="text" placeholder="ชื่อบัญชี *"
+                      value={walletAccName} onChange={e => setWalletAccName(e.target.value)}
+                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none"
+                    />
+                    <input type="text" placeholder="เลขบัญชี *"
+                      value={walletAccNo} onChange={e => setWalletAccNo(e.target.value)}
+                      className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-yellow-500 outline-none"
+                    />
+                  </div>
+
                   <button
-                    onClick={handleSubmitWallet}
-                    disabled={submittingWallet || !walletAmount}
-                    className="w-full bg-yellow-600 text-white py-2.5 rounded-xl font-bold text-sm disabled:opacity-50"
+                    onClick={handleSubmit}
+                    disabled={submittingWallet || !walletAmount || !walletBank || !walletAccName || !walletAccNo ||
+                      (walletAction === 'withdraw_main' && (parseFloat(walletAmount) > mainBal || mainBal <= 0))}
+                    className="w-full mt-3 bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-white py-3 rounded-xl font-bold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {submittingWallet ? '⏳ กำลังส่ง…' : 'ส่งคำขอ'}
+                    {submittingWallet ? '⏳ กำลังส่ง...' : '📨 ส่งคำขอให้ Admin'}
                   </button>
                 </div>
               )}
 
-              {/* Transaction Log */}
+              {/* ── คำขอที่รอ Admin ──────────────────────────────────────────── */}
+              {myPending.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-xs text-yellow-400 font-bold uppercase mb-2 flex items-center gap-1">
+                    ⏳ รอ Admin อนุมัติ ({myPending.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {myPending.map(req => (
+                      <div key={req.id} className="bg-gray-800 border border-yellow-700/30 rounded-xl p-3">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mr-2 ${
+                              req.type === 'topup' ? 'bg-blue-900/50 text-blue-300' : 'bg-orange-900/50 text-orange-300'
+                            }`}>{req.type === 'topup' ? '💰 เติมเงิน' : '💸 ถอนเงิน'}</span>
+                            <span className="text-[10px] text-gray-400">{req.walletType}</span>
+                          </div>
+                          <span className="font-bold text-white text-sm">฿{Number(req.data.amount).toLocaleString()}</span>
+                        </div>
+                        <div className="text-[10px] text-gray-500 mt-1">{req.timestamp}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── ประวัติธุรกรรม ────────────────────────────────────────────── */}
               <h4 className="text-xs text-gray-500 font-bold uppercase mb-2">ประวัติธุรกรรม</h4>
               {myLogs.length === 0 ? (
                 <div className="text-center text-gray-600 py-8">
                   <Wallet size={32} className="mx-auto mb-2 opacity-20" />
-                  <p className="text-sm">ยังไม่มีประวัติธุรกรรม</p>
+                  <p className="text-sm">ยังไม่มีประวัติ — รายได้จะแสดงเมื่อส่งงานสำเร็จ</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -760,12 +815,12 @@ export default function RiderView() {
                     <div key={log.id || i} className="bg-gray-800 rounded-xl p-3 border border-gray-700">
                       <div className="flex justify-between items-start">
                         <div className="flex-1 min-w-0 mr-2">
-                          <div className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded inline-block mb-1 ${
+                          <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded inline-block mb-1 ${
                             log.target_wallet_type === 'rider_credit' ? 'bg-yellow-900/40 text-yellow-300' : 'bg-green-900/40 text-green-300'
                           }`}>{log.target_wallet_type}</div>
                           <div className="text-xs text-gray-300 truncate">{log.description}</div>
-                          <div className="text-[10px] text-gray-500 mt-0.5">
-                            {log.status === 'success' ? '✅' : log.status === 'pending_approval' ? '⏳' : log.status === 'rejected' ? '❌' : '🔄'} {log.status}
+                          <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1">
+                            <StatusIcon status={log.status} /> {log.status}
                             {log.balance_after != null && ` · คงเหลือ ฿${Number(log.balance_after).toLocaleString()}`}
                           </div>
                         </div>

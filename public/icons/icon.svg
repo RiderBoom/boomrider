@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </linearGradient>
+  </defs>
+
+  <!-- พื้นหลัง gradient ส้ม -->
+  <rect width="512" height="512" rx="102" ry="102" fill="url(#bg)"/>
+
+  <!-- กลุ่ม content: scale ตามขนาด icon -->
+  <g transform="scale(1)">
+
+    <!-- มอเตอร์ไซค์ (Lucide Bike icon ดัดแปลง, centered at 256,195) -->
+    <g transform="translate(256,192) scale(9.5)"
+       fill="none" stroke="white" stroke-width="2.2"
+       stroke-linecap="round" stroke-linejoin="round">
+      <!-- ล้อหลัง -->
+      <circle cx="-7" cy="6"  r="5"/>
+      <!-- ล้อหน้า -->
+      <circle cx="7"  cy="6"  r="5"/>
+      <!-- โครง body -->
+      <path d="M-7,6 L-1,-3 L4,-3"/>
+      <path d="M 0,0 L7,6"/>
+      <path d="M-1,-3 L1,2 L7,6"/>
+      <!-- แฮนด์เดิ้ล -->
+      <path d="M4,-3 L6,-6 L9,-6"/>
+      <!-- ที่นั่ง -->
+      <line x1="-3" y1="-3" x2="4" y2="-3" stroke-width="2.8"/>
+    </g>
+
+    <!-- ข้อความ BoomRider -->
+    <text
+      x="256" y="348"
+      text-anchor="middle"
+      dominant-baseline="middle"
+      font-family="Arial Black, Arial, Helvetica, sans-serif"
+      font-weight="900"
+      font-size="80"
+      letter-spacing="-3"
+      fill="white"
+    >BoomRider</text>
+
+    <!-- เส้น underline accent -->
+    <rect x="128" y="364" width="256" height="7" rx="3.5" fill="rgba(255,255,255,0.35)"/>
+
+  </g>
+</svg>

@@ -1,14 +1,13 @@
 {
   "name": "BoomRider - สั่งอาหารออนไลน์",
   "short_name": "BoomRider",
-  "description": "แอปสั่งอาหารและส่งพัสดุออนไลน์ ส่งเร็ว ราคาถูก ครอบคลุมทั่วกรุงเทพ",
+  "description": "แอปสั่งอาหารและส่งพัสดุออนไลน์ ส่งเร็ว ราคาถูก",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#f97316",
   "theme_color": "#f97316",
   "orientation": "portrait-primary",
   "lang": "th",
-  "dir": "ltr",
   "categories": ["food", "lifestyle", "shopping"],
   "icons": [
     {
@@ -60,37 +59,5 @@
       "purpose": "any maskable"
     }
   ],
-  "shortcuts": [
-    {
-      "name": "สั่งอาหาร",
-      "short_name": "อาหาร",
-      "description": "สั่งอาหารจากร้านใกล้บ้าน",
-      "url": "/?service=food",
-      "icons": [{ "src": "/icons/shortcut-food.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "ส่งพัสดุ",
-      "short_name": "พัสดุ",
-      "description": "ส่งพัสดุด่วนถึงที่",
-      "url": "/?service=parcel",
-      "icons": [{ "src": "/icons/shortcut-parcel.png", "sizes": "96x96" }]
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshots/home.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "หน้าแรก BoomRider"
-    }
-  ],
-  "prefer_related_applications": false,
-  "related_applications": [
-    {
-      "platform": "play",
-      "url": "https://play.google.com/store/apps/details?id=app.boomrider",
-      "id": "app.boomrider"
-    }
-  ]
+  "prefer_related_applications": false
 }

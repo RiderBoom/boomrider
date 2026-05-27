@@ -39,8 +39,8 @@ export default function MerchantView() {
     // Multi-wallet
     multiWallet,
     txLogs,
-    requestWithdrawalByType,
-    requestDepositByType,
+    pendingRequests,
+    requestWithdraw,
   } = useApp();
 
   const [pendingShopLocation, setPendingShopLocation] = useState(null);
@@ -431,17 +431,25 @@ export default function MerchantView() {
       {/* ── กระเป๋าเงินร้านค้า (shop_settlement) ──────────────────────── */}
       {merchantTab === 'wallet' && (() => {
         const settleBal = multiWallet?.shop_settlement?.balance ?? 0;
-        const myUidForLog = userProfile.id || currentUser?.id;
-        const myLogs = txLogs.filter(l => l.user_id === myUidForLog &&
+        const myUid = userProfile.id || currentUser?.id;
+        const myLogs = txLogs.filter(l => l.user_id === myUid &&
           l.target_wallet_type === 'shop_settlement'
         ).slice(0, 50);
 
-        const handleSubmitWithdraw = async () => {
+        // คำขอที่รอ Admin อนุมัติ
+        const myPending = pendingRequests.filter(r =>
+          r.userId === myUid &&
+          ['topup', 'withdraw'].includes(r.type) &&
+          r.walletType === 'shop_settlement'
+        );
+
+        const handleSubmitWithdraw = () => {
           const amt = parseFloat(walletAmount);
-          if (!amt || amt <= 0) return;
+          if (!amt || amt <= 0) return notifySystem('ผิดพลาด', 'กรุณาระบุจำนวนเงิน', 'error');
+          if (amt > settleBal) return notifySystem('ยอดไม่พอ', `รายได้ที่ถอนได้ ฿${settleBal.toLocaleString()}`, 'error');
           setSubmittingWallet(true);
           try {
-            await requestWithdrawalByType('shop_settlement', amt, walletBankInfo, `ถอนรายได้ร้าน ฿${amt}`);
+            requestWithdraw(amt, walletBankInfo, 'shop_settlement');
             setWalletAction(null); setWalletAmount('');
             setWalletBankInfo({ bank: '', accountName: '', accountNumber: '' });
           } finally {
@@ -512,6 +520,28 @@ export default function MerchantView() {
                 >
                   {submittingWallet ? '⏳ กำลังส่ง…' : 'ยืนยันขอถอนเงิน'}
                 </button>
+              </div>
+            )}
+
+            {/* Pending Requests */}
+            {myPending.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-xs text-gray-500 font-bold uppercase mb-2 flex items-center gap-1">
+                  ⏳ คำขอรอ Admin อนุมัติ ({myPending.length})
+                </h4>
+                <div className="space-y-2">
+                  {myPending.map(req => (
+                    <div key={req.id} className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex justify-between items-center">
+                      <div>
+                        <div className="text-xs font-bold text-yellow-700">
+                          {req.type === 'topup' ? '💰 เติมเงิน' : '💸 ถอนเงิน'} ฿{Number(req.data?.amount ?? 0).toLocaleString()}
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{req.timestamp}</div>
+                      </div>
+                      <span className="text-[10px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-bold">รอ Admin</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
