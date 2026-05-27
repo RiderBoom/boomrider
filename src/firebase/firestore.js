@@ -641,21 +641,39 @@ export const atomicOrderCompletion = async ({
     const sData = sSnap?.exists() ? sSnap.data() : {};
 
     // ── Rider ────────────────────────────────────────────────────────────────
+    // GP หัก: ดึงจาก rider_credit ก่อน ถ้าไม่พอ → หักจาก rider_main (ค่าส่งที่เพิ่งได้)
+    // ไม่มีการบล็อก — ไรเดอร์รับงานได้เสมอ
     if (riderRef) {
-      const creditBal = _getSubBal(rData, 'rider_credit');
-      if (riderGP > 0 && creditBal < riderGP) {
-        throw new Error(`INSUFFICIENT_RIDER_CREDIT: need ฿${riderGP}, have ฿${creditBal}`);
-      }
-      bals.riderCreditBefore = creditBal;
-      bals.riderCreditAfter  = parseFloat((creditBal - riderGP).toFixed(2));
-      bals.riderMainBefore   = _getSubBal(rData, 'rider_main');
-      bals.riderMainAfter    = parseFloat((bals.riderMainBefore + deliveryFee).toFixed(2));
+      const creditBal    = _getSubBal(rData, 'rider_credit');
+      const riderMainBal = _getSubBal(rData, 'rider_main');
 
-      let upd = _applySubWallet(rData, 'rider_credit', bals.riderCreditAfter, {
-        id: `rc_${Date.now()}`, date: _thNow(), desc: `GP หัก ${orderLabel}`, amount: -riderGP,
-      });
+      // GP ส่วนที่ดึงจาก rider_credit (เท่าที่มี)
+      const gpFromCredit = parseFloat(Math.min(Math.max(0, creditBal), riderGP).toFixed(2));
+      // GP ส่วนที่เหลือ → หักตรงจากค่าส่งที่ได้รับ (rider_main)
+      const gpFromMain   = parseFloat((riderGP - gpFromCredit).toFixed(2));
+      // รายได้สุทธิเข้า rider_main = ค่าส่งทั้งหมด − GP ที่หักจาก main
+      const netMainEarning = parseFloat((deliveryFee - gpFromMain).toFixed(2));
+
+      bals.riderCreditBefore = creditBal;
+      bals.riderCreditAfter  = parseFloat((creditBal - gpFromCredit).toFixed(2));
+      bals.riderMainBefore   = riderMainBal;
+      bals.riderMainAfter    = parseFloat((riderMainBal + netMainEarning).toFixed(2));
+      bals.gpFromCredit      = gpFromCredit;
+      bals.gpFromMain        = gpFromMain;
+
+      // สร้าง wallet entries — แสดงให้ชัดเจนว่า GP มาจากที่ไหน
+      let upd = rData;
+      if (gpFromCredit > 0) {
+        upd = _applySubWallet(upd, 'rider_credit', bals.riderCreditAfter, {
+          id: `rc_${Date.now()}`, date: _thNow(),
+          desc: `GP หัก ${orderLabel} (จากเครดิต)`, amount: -gpFromCredit,
+        });
+      }
+      const mainDesc = gpFromMain > 0
+        ? `ค่าส่ง ${orderLabel} (หักGP ฿${gpFromMain} จากค่าส่ง)`
+        : `ค่าส่ง ${orderLabel}`;
       upd = _applySubWallet(upd, 'rider_main', bals.riderMainAfter, {
-        id: `rm_${Date.now()}`, date: _thNow(), desc: `ค่าส่ง ${orderLabel}`, amount: deliveryFee,
+        id: `rm_${Date.now()}`, date: _thNow(), desc: mainDesc, amount: netMainEarning,
       });
       tx.set(riderRef, upd, { merge: true });
     }
@@ -688,17 +706,22 @@ export const atomicOrderCompletion = async ({
   // ── Write transaction logs (after commit) ─────────────────────────────────
   const logs = [];
   if (riderUid) {
-    if (riderGP > 0) logs.push(createTransactionLog({
+    // log การหัก GP จาก rider_credit (เฉพาะที่หักได้จริง)
+    if ((bals.gpFromCredit ?? 0) > 0) logs.push(createTransactionLog({
       order_id: orderId, user_id: riderUid,
       target_wallet_type: 'rider_credit', type: 'platform_gp_deduct', status: 'success',
-      amount: -riderGP, balance_before: bals.riderCreditBefore, balance_after: bals.riderCreditAfter,
-      description: `GP หัก ค่าส่ง ${orderLabel}`,
+      amount: -(bals.gpFromCredit), balance_before: bals.riderCreditBefore, balance_after: bals.riderCreditAfter,
+      description: `GP หัก (จากเครดิต) ${orderLabel}`,
     }));
+    // log รายได้สุทธิเข้า rider_main (ค่าส่ง − GP ที่หักจาก main)
     if (deliveryFee > 0) logs.push(createTransactionLog({
       order_id: orderId, user_id: riderUid,
       target_wallet_type: 'rider_main', type: 'delivery_fee', status: 'success',
-      amount: deliveryFee, balance_before: bals.riderMainBefore, balance_after: bals.riderMainAfter,
-      description: `ค่าส่ง ${orderLabel}`,
+      amount: bals.riderMainAfter - bals.riderMainBefore,
+      balance_before: bals.riderMainBefore, balance_after: bals.riderMainAfter,
+      description: (bals.gpFromMain ?? 0) > 0
+        ? `ค่าส่ง ${orderLabel} (หักGP ฿${bals.gpFromMain} จากค่าส่ง)`
+        : `ค่าส่ง ${orderLabel}`,
     }));
   }
   if (adminUid && totalAdminGP > 0) logs.push(createTransactionLog({

@@ -1165,19 +1165,21 @@ export function AppProvider({ children }) {
     const riderName  = riderInfo?.name  || '';
 
     if (FIREBASE_ENABLED) {
-      // ── ตรวจสอบ rider_credit balance ก่อนรับงาน ─────────────────────────
+      // ── แจ้งเตือน (ไม่บล็อก) ถ้า rider_credit ต่ำ ────────────────────────
+      // GP จะถูกหักจาก rider_main (ค่าส่ง) แทนโดยอัตโนมัติเมื่อส่งสำเร็จ
+      // เติม rider_credit ไว้เพื่อรักษายอดค่าส่งสุทธิให้เต็ม
       const riderGP = (order.deliveryFee ?? 0) * ((appConfig.gpDelivery ?? 15) / 100);
       if (riderGP > 0 && riderUid) {
-        const mw = await loadMultiWallet(riderUid).catch(() => null);
-        const creditBal = mw?.rider_credit?.balance ?? 0;
-        if (creditBal < riderGP) {
-          notifySystem(
-            'เครดิตไม่พอ',
-            `ต้องมีเครดิตอย่างน้อย ฿${riderGP.toFixed(2)} — ปัจจุบันมี ฿${creditBal.toFixed(2)} (เติม rider_credit ก่อนรับงาน)`,
-            'error',
-          );
-          return false;
-        }
+        loadMultiWallet(riderUid).then(mw => {
+          const creditBal = mw?.rider_credit?.balance ?? 0;
+          if (creditBal < riderGP) {
+            notifySystem(
+              '💡 เครดิตต่ำ',
+              `เครดิต GP ฿${creditBal.toFixed(0)} (ต้องใช้ ฿${riderGP.toFixed(0)}) — GP จะหักจากค่าส่งแทน เติม rider_credit ในแท็บ "กระเป๋า" เพื่อรับค่าส่งเต็มจำนวน`,
+              'warning',
+            );
+          }
+        }).catch(() => {});
       }
 
       // ── Atomic Firestore Transaction ────────────────────────────────────
