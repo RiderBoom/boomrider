@@ -56,6 +56,11 @@ export default function RiderView() {
     setWalletAccNo('');
   }, [_walletUid]);
 
+  // ── Scroll to top เมื่อ switch tab (ป้องกัน scroll position เก่าทำให้เห็น map) ──
+  React.useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [riderTab]);
+
   // ── state สำหรับ Modal ขอยกเลิกงาน (ส่งไป Admin) ──────────────────────────
   const [showRiderCancelModal, setShowRiderCancelModal] = useState(false);
   const [riderCancelOrderId, setRiderCancelOrderId]     = useState(null);
@@ -237,7 +242,9 @@ export default function RiderView() {
         </button>
       </div>
 
-      <div className="px-4 space-y-4">
+      {/* key={riderTab} — force full unmount/remount on tab switch
+          ป้องกัน Leaflet map tiles (z-index 200–1000) ซ้อนทับ wallet content */}
+      <div key={riderTab} className="px-4 space-y-4">
         {riderTab === 'jobs' && availableJobs.map(job => (
           <div key={job.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700">
             {/* Header: ร้าน / ประเภทงาน + รายได้ */}

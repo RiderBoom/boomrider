@@ -43,7 +43,13 @@ const InteractiveMap = ({
   className = '',
 }) => {
   const center = userLocation || shopLocation || { lat: 13.7563, lng: 100.5018 };
-  const height = className?.includes('h-') ? className : 'h-64';
+
+  // Extract height class from className; default h-64
+  const heightClass = (() => {
+    if (!className) return 'h-64';
+    const match = className.match(/h-\d+/);
+    return match ? match[0] : 'h-64';
+  })();
 
   const routeLine = [];
   if (mode === 'view') {
@@ -57,13 +63,28 @@ const InteractiveMap = ({
   }
 
   return (
-    <div className={`relative w-full rounded-xl overflow-hidden border-2 shadow-inner mb-4 ${height} ${mode === 'select' ? 'border-green-500' : 'border-gray-300'}`}>
+    /*
+     * isolation: isolate  — สร้าง stacking context ใหม่
+     * overflow-hidden     — clip Leaflet layers ไม่ให้หลุดออกนอก container
+     * position: relative  — ทำให้ Leaflet children ที่เป็น absolute อ้างอิง container นี้
+     * z-index ต่ำ (z-0)  — กันไม่ให้ Leaflet panes (z 200–1000) ซ้อนทับ UI ข้างนอก
+     */
+    <div
+      className={`relative isolate overflow-hidden rounded-xl border-2 w-full mb-4 ${heightClass} ${
+        mode === 'select' ? 'border-green-500' : 'border-gray-300'
+      }`}
+      style={{ zIndex: 0 }}
+    >
       {mode === 'select' && (
-        <div className="absolute z-[999] top-2 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow-lg pointer-events-none animate-bounce">
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow-lg pointer-events-none animate-bounce"
+          style={{ zIndex: 1000 }}
+        >
           แตะแผนที่เพื่อปักหมุดตำแหน่ง
         </div>
       )}
       <MapContainer
+        key={`${center.lat},${center.lng}`}
         center={[center.lat, center.lng]}
         zoom={14}
         style={{ height: '100%', width: '100%' }}
