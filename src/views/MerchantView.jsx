@@ -4,6 +4,7 @@ import {
   Plus, Edit, Trash2, Save,
   Image as ImageIcon, Check, MapPin, Loader, Bell,
   Clock, CheckCircle, History, X, XCircle,
+  Wallet, ArrowDownCircle, ArrowUpCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS } from '../constants';
@@ -35,10 +36,21 @@ export default function MerchantView() {
     showCancelModal, setShowCancelModal,
     selectedOrderToCancel,
     cancelReasonInput, setCancelReasonInput,
+    // Multi-wallet
+    multiWallet,
+    txLogs,
+    requestWithdrawalByType,
+    requestDepositByType,
   } = useApp();
 
   const [pendingShopLocation, setPendingShopLocation] = useState(null);
   const [savingShopLocation, setSavingShopLocation] = useState(false);
+
+  // Wallet form state
+  const [walletAction, setWalletAction] = useState(null); // null | 'withdraw'
+  const [walletAmount, setWalletAmount] = useState('');
+  const [walletBankInfo, setWalletBankInfo] = useState({ bank: '', accountName: '', accountNumber: '' });
+  const [submittingWallet, setSubmittingWallet] = useState(false);
 
   const myShop = restaurants.find(r => r.ownerId === userProfile.id || r.ownerId === currentUser?.id);
 
@@ -165,6 +177,13 @@ export default function MerchantView() {
           >
             <MapPin size={13} />
             ที่ตั้ง
+          </button>
+          <button
+            onClick={() => setMerchantTab('wallet')}
+            className={`flex-1 py-2 rounded-md font-bold text-xs flex items-center justify-center gap-1 ${merchantTab === 'wallet' ? 'bg-white shadow text-yellow-600' : 'text-gray-500'}`}
+          >
+            <Wallet size={13} />
+            กระเป๋า
           </button>
         </div>
       </header>
@@ -408,6 +427,125 @@ export default function MerchantView() {
           </div>
         </div>
       )}
+
+      {/* ── กระเป๋าเงินร้านค้า (shop_settlement) ──────────────────────── */}
+      {merchantTab === 'wallet' && (() => {
+        const settleBal = multiWallet?.shop_settlement?.balance ?? 0;
+        const myUidForLog = userProfile.id || currentUser?.id;
+        const myLogs = txLogs.filter(l => l.user_id === myUidForLog &&
+          l.target_wallet_type === 'shop_settlement'
+        ).slice(0, 50);
+
+        const handleSubmitWithdraw = async () => {
+          const amt = parseFloat(walletAmount);
+          if (!amt || amt <= 0) return;
+          setSubmittingWallet(true);
+          try {
+            await requestWithdrawalByType('shop_settlement', amt, walletBankInfo, `ถอนรายได้ร้าน ฿${amt}`);
+            setWalletAction(null); setWalletAmount('');
+            setWalletBankInfo({ bank: '', accountName: '', accountNumber: '' });
+          } finally {
+            setSubmittingWallet(false);
+          }
+        };
+
+        return (
+          <div className="px-4 pb-6">
+            {/* Balance Card */}
+            <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200 rounded-2xl p-5 mb-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-2">
+                <Wallet size={20} className="text-yellow-600" />
+                <h3 className="font-bold text-gray-800">กระเป๋ารายได้ร้านค้า</h3>
+              </div>
+              <div className="text-3xl font-black text-yellow-600 mb-1">฿{settleBal.toLocaleString()}</div>
+              <p className="text-xs text-gray-500">รายได้หลังหัก GP · สามารถถอนเข้าบัญชีธนาคาร</p>
+              <div className="mt-3 bg-white/70 rounded-xl p-3 text-xs text-gray-600">
+                <div className="flex justify-between mb-1">
+                  <span>รายได้จากออเดอร์ (คำนวณ)</span>
+                  <span className="font-bold text-green-700">฿{myRevenue.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-gray-400">
+                  <span>Wallet (multi-wallet Firestore)</span>
+                  <span className="font-bold">฿{settleBal.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Withdraw Button */}
+            <button
+              onClick={() => setWalletAction(walletAction ? null : 'withdraw')}
+              className="w-full mb-4 bg-yellow-500 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-yellow-400 active:scale-95 transition-all shadow"
+            >
+              <ArrowDownCircle size={16} /> ขอถอนเงิน
+            </button>
+
+            {/* Withdraw Form */}
+            {walletAction === 'withdraw' && (
+              <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 shadow-sm">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="font-bold text-sm text-gray-800">💸 ถอนรายได้ร้านค้า</h3>
+                  <button onClick={() => setWalletAction(null)} className="text-gray-400 text-xs">✕ ปิด</button>
+                </div>
+                {settleBal <= 0 && (
+                  <p className="text-xs text-red-500 mb-2">ยอดรายได้ = ฿0 ไม่สามารถถอนได้</p>
+                )}
+                <input type="number" placeholder={`จำนวนเงิน (สูงสุด ฿${settleBal.toLocaleString()})`}
+                  value={walletAmount} onChange={e => setWalletAmount(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+                />
+                <input type="text" placeholder="ธนาคาร (เช่น กสิกร, SCB)"
+                  value={walletBankInfo.bank} onChange={e => setWalletBankInfo(p => ({ ...p, bank: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+                />
+                <input type="text" placeholder="ชื่อบัญชี"
+                  value={walletBankInfo.accountName} onChange={e => setWalletBankInfo(p => ({ ...p, accountName: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+                />
+                <input type="text" placeholder="เลขบัญชี"
+                  value={walletBankInfo.accountNumber} onChange={e => setWalletBankInfo(p => ({ ...p, accountNumber: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+                />
+                <button
+                  onClick={handleSubmitWithdraw}
+                  disabled={submittingWallet || !walletAmount || parseFloat(walletAmount) > settleBal}
+                  className="w-full bg-yellow-500 text-white py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 hover:bg-yellow-400 active:scale-95 transition-all"
+                >
+                  {submittingWallet ? '⏳ กำลังส่ง…' : 'ยืนยันขอถอนเงิน'}
+                </button>
+              </div>
+            )}
+
+            {/* Transaction Log */}
+            <h4 className="text-xs text-gray-500 font-bold uppercase mb-2">ประวัติธุรกรรม</h4>
+            {myLogs.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">
+                <Wallet size={32} className="mx-auto mb-2 opacity-20" />
+                <p className="text-sm">ยังไม่มีประวัติ — รายได้จะปรากฎเมื่อออเดอร์ส่งสำเร็จ</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {myLogs.map((log, i) => (
+                  <div key={log.id || i} className="bg-white rounded-xl p-3 border border-gray-100 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 min-w-0 mr-2">
+                        <div className="text-xs text-gray-700 truncate">{log.description}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">
+                          {log.status === 'success' ? '✅' : log.status === 'pending_approval' ? '⏳ รอ Admin' : log.status === 'rejected' ? '❌ ปฏิเสธ' : '🔄'}{' '}
+                          {log.status}
+                          {log.balance_after != null && ` · คงเหลือ ฿${Number(log.balance_after).toLocaleString()}`}
+                        </div>
+                      </div>
+                      <div className={`font-bold text-sm flex-shrink-0 ${(log.amount ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {(log.amount ?? 0) >= 0 ? '+' : ''}฿{Math.abs(log.amount ?? 0).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Cancel Order Modal ─────────────────────────────────────────── */}
       {showCancelModal && (

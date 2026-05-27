@@ -61,6 +61,8 @@ export default function AdminView() {
     chats,
     globalWallets,
     userProfile,
+    userWallet,
+    walletHistory,
     editingShop, setEditingShop,
     shopEditForm, setShopEditForm,
     showCancelModal, setShowCancelModal,
@@ -83,6 +85,14 @@ export default function AdminView() {
     // Admin tools
     adminAdjustWallet, adminBanUser,
     creditWallet,
+    // Multi-wallet
+    multiWallet,
+    txLogs,
+    handleApproveDeposit,
+    handleRejectDeposit,
+    handleApproveWithdrawal,
+    handleRejectWithdrawal,
+    adminCreditWalletByType,
   } = useApp();
 
   // ── Local state ──────────────────────────────────────────────────────────
@@ -123,8 +133,10 @@ export default function AdminView() {
   };
 
   // ── Derived metrics ──────────────────────────────────────────────────────
-  const totalGP   = orders.reduce((s, o) => s + (o.adminGP || 0), 0);
-  const gmv       = orders.reduce((s, o) => s + (o.grandTotal || 0), 0);
+  // นับเฉพาะ orders ที่สำเร็จ (ไม่นับยกเลิก/pending)
+  const completedOrders = orders.filter(o => ['completed', 'delivered'].includes(o.status));
+  const totalGP   = completedOrders.reduce((s, o) => s + (o.adminGP || 0), 0);
+  const gmv       = completedOrders.reduce((s, o) => s + (o.grandTotal || 0), 0);
 
   // ── Chat groupings (admin sees ALL chats) ────────────────────────────────
   const allChatIds       = Object.keys(chats);
@@ -144,8 +156,9 @@ export default function AdminView() {
   // Today's date string (Thai locale day)
   const todayStr = new Date().toLocaleDateString('th-TH');
   const todayOrders = orders.filter(o => o.timestamp && o.timestamp.includes(todayStr));
-  const todayGMV  = todayOrders.reduce((s, o) => s + (o.grandTotal || 0), 0);
-  const todayGP   = todayOrders.reduce((s, o) => s + (o.adminGP || 0), 0);
+  const todayCompletedOrders = todayOrders.filter(o => ['completed', 'delivered'].includes(o.status));
+  const todayGMV  = todayCompletedOrders.reduce((s, o) => s + (o.grandTotal || 0), 0);
+  const todayGP   = todayCompletedOrders.reduce((s, o) => s + (o.adminGP || 0), 0);
 
   // Status breakdown
   const statusCount = useMemo(() => {
@@ -262,17 +275,81 @@ export default function AdminView() {
       {adminTab === 'dashboard' && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <StatCard label="กำไรสุทธิรวม"       value={`฿${totalGP.toLocaleString()}`}       color="green"  icon={DollarSign} />
-            <StatCard label="GMV (ยอดขายรวม)"    value={`฿${gmv.toLocaleString()}`}           color="blue"   icon={TrendingUp} />
-            <StatCard label="ออเดอร์ทั้งหมด"    value={orders.length}                        color="orange" icon={ShoppingBag} />
-            <StatCard label="ไรเดอร์ Active"     value={riders.filter(r => r.status === 'active').length} color="purple" icon={Bike} />
+            <StatCard label="กำไร GP สุทธิ (จบแล้ว)" value={`฿${totalGP.toLocaleString()}`}       color="green"  icon={DollarSign} />
+            <StatCard label="GMV (ออเดอร์จบแล้ว)"  value={`฿${gmv.toLocaleString()}`}           color="blue"   icon={TrendingUp} />
+            <StatCard label="ออเดอร์ทั้งหมด"       value={orders.length}                        color="orange" icon={ShoppingBag} />
+            <StatCard label="ไรเดอร์ Active"        value={riders.filter(r => r.status === 'active').length} color="purple" icon={Bike} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <StatCard label="ออเดอร์วันนี้"   value={todayOrders.length}            color="orange" icon={ShoppingBag} />
-            <StatCard label="GMV วันนี้"       value={`฿${todayGMV.toLocaleString()}`} color="blue"   icon={DollarSign} />
-            <StatCard label="กำไรวันนี้"      value={`฿${todayGP.toLocaleString()}`}  color="green"  icon={TrendingUp} />
-            <StatCard label="ร้านค้าทั้งหมด" value={restaurants.length}             color="purple" icon={ChefHat} />
+            <StatCard label="ออเดอร์วันนี้ (ทั้งหมด)" value={todayOrders.length}               color="orange" icon={ShoppingBag} />
+            <StatCard label="GMV วันนี้ (จบแล้ว)"    value={`฿${todayGMV.toLocaleString()}`}  color="blue"   icon={DollarSign} />
+            <StatCard label="GP วันนี้ (จบแล้ว)"     value={`฿${todayGP.toLocaleString()}`}   color="green"  icon={TrendingUp} />
+            <StatCard label="ร้านค้าทั้งหมด"         value={restaurants.length}               color="purple" icon={ChefHat} />
           </div>
+          {/* ── กระเป๋าเงิน Admin (GP สะสม) ───────────────────────────────── */}
+          {(() => {
+            const adminPlatBal = multiWallet?.admin_platform?.balance ?? userWallet ?? 0;
+            const adminPlatHistory = multiWallet?.admin_platform?.history ?? walletHistory ?? [];
+            const adminTxLogs = txLogs.filter(l => l.target_wallet_type === 'admin_platform').slice(0, 30);
+            const displayHistory = adminTxLogs.length > 0 ? adminTxLogs : adminPlatHistory;
+            return (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+                <div className="p-4 border-b bg-green-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wallet size={18} className="text-green-600" />
+                    <h2 className="font-bold text-gray-700">กระเป๋าเงิน Admin — Platform GP</h2>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-green-600">฿{adminPlatBal.toLocaleString()}</div>
+                    <div className="text-xs text-gray-400">{displayHistory.length} รายการ</div>
+                  </div>
+                </div>
+                {displayHistory.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400">
+                    <Wallet size={36} className="mx-auto mb-2 opacity-20" />
+                    <p className="text-sm">ยังไม่มีประวัติธุรกรรม</p>
+                    <p className="text-xs mt-1">GP จะถูก Credit อัตโนมัติเมื่อออเดอร์ส่งสำเร็จ</p>
+                  </div>
+                ) : (
+                  <div className="overflow-y-auto max-h-60">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-xs text-gray-500 uppercase sticky top-0">
+                        <tr>
+                          <th className="p-3 text-left">วันที่ / รายการ</th>
+                          <th className="p-3 text-right">จำนวน</th>
+                          <th className="p-3 text-right">คงเหลือ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {displayHistory.slice(0, 50).map((h, i) => {
+                          // h อาจเป็น txLog (มี description, timestamp) หรือ history entry (มี date, desc)
+                          const label   = h.description || h.desc || '';
+                          const dateStr = h.date || (h.timestamp?.toDate ? h.timestamp.toDate().toLocaleString('th-TH') : '');
+                          const amt     = h.amount ?? 0;
+                          const balAfter = h.balance_after ?? null;
+                          return (
+                            <tr key={h.id || i} className="hover:bg-gray-50">
+                              <td className="p-3">
+                                <div className="text-xs text-gray-400">{dateStr}</div>
+                                <div className="text-xs text-gray-700">{label}</div>
+                              </td>
+                              <td className={`p-3 text-right font-bold text-sm ${amt > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                {amt > 0 ? '+' : ''}฿{Math.abs(amt).toLocaleString()}
+                              </td>
+                              <td className="p-3 text-right text-xs text-gray-400">
+                                {balAfter != null ? `฿${Number(balAfter).toLocaleString()}` : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-gray-50 flex items-center gap-2"><ShoppingBag size={16} className="text-gray-500" /><h2 className="font-bold text-gray-700">รายการธุรกรรมล่าสุด</h2></div>
             <div className="overflow-x-auto">
@@ -375,18 +452,22 @@ export default function AdminView() {
             <h2 className="font-bold text-lg mb-4 flex items-center gap-2 text-gray-700"><DollarSign size={20} className="text-green-600" /> รายได้แยกประเภท</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {(() => {
-                const food = orders.filter(o => o.type === 'food');
-                const parcel = orders.filter(o => o.type === 'parcel');
-                const foodGMV = food.reduce((s, o) => s + (o.grandTotal || 0), 0);
+                // นับเฉพาะ orders ที่จบแล้ว (ไม่นับยกเลิก/กำลังดำเนินการ)
+                const doneStatus = ['completed', 'delivered'];
+                const food   = orders.filter(o => o.type === 'food'   && doneStatus.includes(o.status));
+                const parcel = orders.filter(o => o.type === 'parcel' && doneStatus.includes(o.status));
+                const allFood   = orders.filter(o => o.type === 'food');
+                const allParcel = orders.filter(o => o.type === 'parcel');
+                const foodGMV   = food.reduce((s, o) => s + (o.grandTotal || 0), 0);
                 const parcelGMV = parcel.reduce((s, o) => s + (o.grandTotal || 0), 0);
-                const foodGP = food.reduce((s, o) => s + (o.adminGP || 0), 0);
-                const parcelGP = parcel.reduce((s, o) => s + (o.adminGP || 0), 0);
+                const foodGP    = food.reduce((s, o) => s + (o.adminGP || 0), 0);
+                const parcelGP  = parcel.reduce((s, o) => s + (o.adminGP || 0), 0);
                 return (
                   <>
-                    <div className="bg-orange-50 p-4 rounded-xl text-center"><p className="text-xs text-orange-600 font-medium">ออเดอร์อาหาร GMV</p><p className="text-xl font-bold text-orange-700">฿{foodGMV.toLocaleString()}</p><p className="text-xs text-gray-400">{food.length} ออเดอร์</p></div>
-                    <div className="bg-orange-50 p-4 rounded-xl text-center"><p className="text-xs text-orange-600 font-medium">กำไรจากอาหาร</p><p className="text-xl font-bold text-orange-700">฿{foodGP.toLocaleString()}</p><p className="text-xs text-gray-400">GP ร้านค้า</p></div>
-                    <div className="bg-blue-50 p-4 rounded-xl text-center"><p className="text-xs text-blue-600 font-medium">ออเดอร์พัสดุ GMV</p><p className="text-xl font-bold text-blue-700">฿{parcelGMV.toLocaleString()}</p><p className="text-xs text-gray-400">{parcel.length} ออเดอร์</p></div>
-                    <div className="bg-blue-50 p-4 rounded-xl text-center"><p className="text-xs text-blue-600 font-medium">กำไรจากพัสดุ</p><p className="text-xl font-bold text-blue-700">฿{parcelGP.toLocaleString()}</p><p className="text-xs text-gray-400">GP ไรเดอร์</p></div>
+                    <div className="bg-orange-50 p-4 rounded-xl text-center"><p className="text-xs text-orange-600 font-medium">อาหาร GMV (จบแล้ว)</p><p className="text-xl font-bold text-orange-700">฿{foodGMV.toLocaleString()}</p><p className="text-xs text-gray-400">{food.length}/{allFood.length} ออเดอร์</p></div>
+                    <div className="bg-orange-50 p-4 rounded-xl text-center"><p className="text-xs text-orange-600 font-medium">GP จากอาหาร</p><p className="text-xl font-bold text-orange-700">฿{foodGP.toLocaleString()}</p><p className="text-xs text-gray-400">หลังหักส่วนลด</p></div>
+                    <div className="bg-blue-50 p-4 rounded-xl text-center"><p className="text-xs text-blue-600 font-medium">พัสดุ GMV (จบแล้ว)</p><p className="text-xl font-bold text-blue-700">฿{parcelGMV.toLocaleString()}</p><p className="text-xs text-gray-400">{parcel.length}/{allParcel.length} ออเดอร์</p></div>
+                    <div className="bg-blue-50 p-4 rounded-xl text-center"><p className="text-xs text-blue-600 font-medium">GP จากพัสดุ</p><p className="text-xl font-bold text-blue-700">฿{parcelGP.toLocaleString()}</p><p className="text-xs text-gray-400">หลังหักส่วนลด</p></div>
                   </>
                 );
               })()}
@@ -531,6 +612,123 @@ export default function AdminView() {
           )}
         </div>
       )}
+
+      {/* ── TRANSACTION LOGS (Multi-Wallet) ─────────────────────────────── */}
+      {adminTab === 'approvals' && (() => {
+        const pendingDeposits = txLogs.filter(l => l.type === 'topup' && l.status === 'pending');
+        const pendingWithdrawals = txLogs.filter(l => l.type === 'withdraw' && l.status === 'pending_approval');
+        const allPending = [...pendingDeposits, ...pendingWithdrawals];
+
+        if (allPending.length === 0) return null;
+
+        return (
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-4">
+            <div className="p-4 border-b bg-purple-50 flex items-center gap-2">
+              <Wallet size={18} className="text-purple-600" />
+              <h2 className="font-bold text-gray-700">คำขอ Multi-Wallet ({allPending.length} รายการ)</h2>
+            </div>
+            <div className="divide-y">
+              {allPending.map(tx => (
+                <div key={tx.id} className="p-4 hover:bg-gray-50">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                          tx.type === 'topup' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                        }`}>
+                          {tx.type === 'topup' ? '💰 เติมเงิน' : '💸 ถอนเงิน'}
+                        </span>
+                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold">
+                          {tx.target_wallet_type}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded font-bold ${
+                          tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'
+                        }`}>{tx.status}</span>
+                      </div>
+                      <div className="font-bold text-gray-800 text-lg">
+                        {tx.type === 'topup' ? '+' : '-'}฿{Number(tx.amount).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">{tx.description}</div>
+                      <div className="text-xs text-gray-400">User: {tx.user_id}</div>
+                      {tx.bank_info && Object.keys(tx.bank_info).length > 0 && (
+                        <div className="mt-2 bg-gray-50 border border-gray-100 rounded-lg p-2 text-xs text-gray-600 space-y-0.5">
+                          {tx.bank_info.bank && <p>ธนาคาร: <strong>{tx.bank_info.bank}</strong></p>}
+                          {tx.bank_info.accountName && <p>ชื่อบัญชี: <strong>{tx.bank_info.accountName}</strong></p>}
+                          {tx.bank_info.accountNumber && <p>เลขบัญชี: <strong>{tx.bank_info.accountNumber}</strong></p>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button
+                        onClick={() => tx.type === 'topup' ? handleApproveDeposit(tx.id) : handleApproveWithdrawal(tx.id)}
+                        className="flex items-center gap-1 bg-green-600 text-white px-3 py-2 rounded-lg font-bold hover:bg-green-700 text-xs"
+                      ><Check size={14} /> อนุมัติ</button>
+                      <button
+                        onClick={() => tx.type === 'topup' ? handleRejectDeposit(tx.id) : handleRejectWithdrawal(tx.id)}
+                        className="flex items-center gap-1 bg-red-100 text-red-600 px-3 py-2 rounded-lg font-bold hover:bg-red-200 text-xs"
+                      ><XCircle size={14} /> ปฏิเสธ</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── ALL TRANSACTION LOGS (ประวัติธุรกรรมทั้งหมด) ────────────────── */}
+      {adminTab === 'approvals' && txLogs.length > 0 && (() => {
+        const completedLogs = txLogs.filter(l => !['pending', 'pending_approval'].includes(l.status)).slice(0, 30);
+        if (completedLogs.length === 0) return null;
+        return (
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-4">
+            <div className="p-4 border-b bg-gray-50 flex items-center gap-2">
+              <TrendingUp size={18} className="text-gray-500" />
+              <h2 className="font-bold text-gray-700">ประวัติธุรกรรม Multi-Wallet (ล่าสุด)</h2>
+            </div>
+            <div className="overflow-y-auto max-h-80">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr className="text-gray-400 uppercase text-[10px]">
+                    <th className="p-2 text-left">ประเภท</th>
+                    <th className="p-2 text-left">Wallet</th>
+                    <th className="p-2 text-left">รายละเอียด</th>
+                    <th className="p-2 text-right">จำนวน</th>
+                    <th className="p-2 text-right">สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {completedLogs.map((log, i) => (
+                    <tr key={log.id || i} className="hover:bg-gray-50">
+                      <td className="p-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          log.type === 'topup' ? 'bg-blue-100 text-blue-700' :
+                          log.type === 'withdraw' ? 'bg-orange-100 text-orange-700' :
+                          log.type === 'delivery_fee' ? 'bg-green-100 text-green-700' :
+                          log.type === 'platform_gp_deduct' ? 'bg-purple-100 text-purple-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>{log.type}</span>
+                      </td>
+                      <td className="p-2 text-gray-500 font-mono text-[10px]">{log.target_wallet_type}</td>
+                      <td className="p-2 text-gray-600 max-w-32 truncate">{log.description}</td>
+                      <td className={`p-2 text-right font-bold ${(log.amount ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {(log.amount ?? 0) >= 0 ? '+' : ''}฿{Math.abs(log.amount ?? 0).toLocaleString()}
+                      </td>
+                      <td className="p-2 text-right">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                          log.status === 'success' ? 'bg-green-100 text-green-700' :
+                          log.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                          'bg-gray-100 text-gray-500'
+                        }`}>{log.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── USERS ─────────────────────────────────────────────────────── */}
       {adminTab === 'users' && (
