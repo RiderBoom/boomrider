@@ -35,10 +35,6 @@ service cloud.firestore {
     }
 
     // ─── Orders ───────────────────────────────────────────────────────────────
-    // ทุก user ที่ login อ่านได้ทั้งหมด — ไรเดอร์ต้องเห็น ready_to_pickup
-    // ทุก collection query (onSnapshot) จึงทำงานได้โดยไม่ถูก block
-    // riderUid  = Firebase UID ของไรเดอร์ที่รับงาน  (set ตอน acceptOrder)
-    // merchantUid = Firebase UID ของเจ้าของร้าน     (set ตอน placeOrder)
     match /orders/{orderId} {
       allow read:   if isAuth();
       allow create: if isAuth();
@@ -48,8 +44,6 @@ service cloud.firestore {
                           || resource.data.riderId    == request.auth.uid
                           || resource.data.riderUid   == request.auth.uid
                           || resource.data.merchantUid == request.auth.uid
-                          // ไรเดอร์รับงาน: riderId == null (explicit null ทั้ง food + parcel)
-                          // ใช้ riderId แทน riderUid เพราะ parcel orders ไม่มี field riderUid
                           || (resource.data.riderId == null
                               && resource.data.status == 'ready_to_pickup')
                        ));
@@ -58,13 +52,13 @@ service cloud.firestore {
 
     // ─── Pending Requests — User สร้างได้, Admin จัดการได้ ──────────────────
     match /pending_requests/{reqId} {
-      // Admin อ่านทั้งหมด, User อ่านเฉพาะของตัวเอง
-      // ใช้ get แทน resource สำหรับ list queries ที่ไม่รู้ document ล่วงหน้า
-      allow read: if isAdmin()
-                  || (isAuth() && (
-                        resource == null
-                        || resource.data.userId == request.auth.uid
-                     ));
+      // list (collection query): เปิดให้ logged-in ทุกคน
+      //   client ใช้ where('userId','==',uid) กรองเองอยู่แล้ว
+      //   ถ้า rule ตรวจ resource.data ต่อ doc → Firestore reject query ทั้งหมด
+      //   เพราะ doc ของ user อื่นจะ fail rule → subscription ตายเงียบ
+      allow list:   if isAuth();
+      // get (single doc): Admin หรือเจ้าของ doc เท่านั้น
+      allow get:    if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
       allow create: if isAuth();
       allow update: if isAdmin();
       allow delete: if isAdmin();
@@ -77,14 +71,14 @@ service cloud.firestore {
     }
 
     // ─── Wallets — อ่าน/เขียนเฉพาะของตัวเอง, Admin จัดการได้ ───────────────
-    // ── ยอมให้ auth user เพิ่มยอดได้ (income / refund จากระบบ) ─────────────
-    // เฉพาะ balance ≥ เดิม — ป้องกันการลดยอดของคนอื่น
-    // TODO: ย้ายไปใช้ Cloud Functions เพื่อ validate server-side
     match /wallets/{userId} {
       allow read:  if isAdmin() || isOwner(userId);
       allow write: if isAdmin()
                    || isOwner(userId)
-                   || (isAuth() && request.resource.data.balance >= resource.data.balance);
+                   || (isAuth() && resource != null
+                       && request.resource.data.balance >= resource.data.balance)
+                   || (isAuth() && resource == null
+                       && request.resource.data.balance > 0);
     }
 
     // ─── System Config — ทุกคนอ่านได้, Admin เขียนได้ ───────────────────────
@@ -93,7 +87,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // ─── Riders — ทุก user ที่ login อ่านได้, Admin สร้าง/ลบ, ไรเดอร์อัปเดตตัวเอง ─
+    // ─── Riders ──────────────────────────────────────────────────────────────
     match /riders/{riderId} {
       allow read:   if isAuth();
       allow create: if isAdmin();
@@ -102,9 +96,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ─── Chats — ทุก user ที่ login อ่าน/เขียนได้ ──────────────────────────
-    // ระบบแชทต้องการให้ทุกฝ่าย (customer, rider, merchant, admin) ส่งข้อความได้
-    // Admin ต้องอ่านทุก chat ได้, User เขียนได้ในทุก chat ที่เกี่ยวข้อง
+    // ─── Chats ───────────────────────────────────────────────────────────────
     match /chats/{chatId} {
       allow read:  if isAuth();
       allow write: if isAuth();

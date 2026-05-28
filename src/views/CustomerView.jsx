@@ -295,7 +295,15 @@ export default function CustomerView() {
                   <InteractiveMap
                     mode="select"
                     isParcel={true}
-                    userLocation={parcelMapTarget === 'pickup' ? (parcelDetails.pickupLocation || userProfile.location) : (parcelDetails.dropoffLocation || userProfile.location)}
+                    shopLocation={parcelDetails.pickupLocation}
+                    userLocation={parcelDetails.dropoffLocation}
+                    centerOverride={
+                      parcelMapTarget === 'pickup'
+                        ? (parcelDetails.pickupLocation || userProfile.location)
+                        : parcelMapTarget === 'dropoff'
+                          ? (parcelDetails.dropoffLocation || userProfile.location)
+                          : (userProfile.location || undefined)
+                    }
                     onLocationSelect={handleParcelMapSelect}
                   />
                   <p className="text-xs text-center text-gray-400 mt-1">

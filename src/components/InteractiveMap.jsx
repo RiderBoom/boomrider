@@ -40,9 +40,10 @@ const InteractiveMap = ({
   onLocationSelect,
   status,
   isParcel = false,
+  centerOverride,
   className = '',
 }) => {
-  const center = userLocation || shopLocation || { lat: 13.7563, lng: 100.5018 };
+  const center = centerOverride || userLocation || shopLocation || { lat: 13.7563, lng: 100.5018 };
 
   // Extract height class from className; default h-64
   const heightClass = (() => {
@@ -60,6 +61,9 @@ const InteractiveMap = ({
     } else if (shopLocation && userLocation) {
       routeLine.push([shopLocation.lat, shopLocation.lng], [userLocation.lat, userLocation.lng]);
     }
+  } else if (mode === 'select' && isParcel && shopLocation && userLocation) {
+    // Show route line between pickup and dropoff in parcel select mode
+    routeLine.push([shopLocation.lat, shopLocation.lng], [userLocation.lat, userLocation.lng]);
   }
 
   return (
@@ -89,11 +93,11 @@ const InteractiveMap = ({
         zoom={14}
         style={{ height: '100%', width: '100%' }}
         scrollWheelZoom={false}
-        dragging={mode === 'select'}
-        tap={mode === 'select'}
-        touchZoom={false}
-        doubleClickZoom={mode === 'select'}
-        zoomControl={mode === 'select'}
+        dragging={true}
+        tap={true}
+        touchZoom={true}
+        doubleClickZoom={true}
+        zoomControl={true}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'

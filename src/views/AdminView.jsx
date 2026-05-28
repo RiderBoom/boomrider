@@ -85,14 +85,6 @@ export default function AdminView() {
     // Admin tools
     adminAdjustWallet, adminBanUser,
     creditWallet,
-    // Multi-wallet
-    multiWallet,
-    txLogs,
-    handleApproveDeposit,
-    handleRejectDeposit,
-    handleApproveWithdrawal,
-    handleRejectWithdrawal,
-    adminCreditWalletByType,
   } = useApp();
 
   // ── Local state ──────────────────────────────────────────────────────────
@@ -288,10 +280,8 @@ export default function AdminView() {
           </div>
           {/* ── กระเป๋าเงิน Admin (GP สะสม) ───────────────────────────────── */}
           {(() => {
-            const adminPlatBal = multiWallet?.admin_platform?.balance ?? userWallet ?? 0;
-            const adminPlatHistory = multiWallet?.admin_platform?.history ?? walletHistory ?? [];
-            const adminTxLogs = txLogs.filter(l => l.target_wallet_type === 'admin_platform').slice(0, 30);
-            const displayHistory = adminTxLogs.length > 0 ? adminTxLogs : adminPlatHistory;
+            const adminBal = userWallet ?? 0;
+            const displayHistory = walletHistory ?? [];
             return (
               <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
                 <div className="p-4 border-b bg-green-50 flex items-center justify-between">
@@ -300,7 +290,7 @@ export default function AdminView() {
                     <h2 className="font-bold text-gray-700">กระเป๋าเงิน Admin — Platform GP</h2>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-green-600">฿{adminPlatBal.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-green-600">฿{adminBal.toLocaleString()}</div>
                     <div className="text-xs text-gray-400">{displayHistory.length} รายการ</div>
                   </div>
                 </div>
@@ -317,16 +307,15 @@ export default function AdminView() {
                         <tr>
                           <th className="p-3 text-left">วันที่ / รายการ</th>
                           <th className="p-3 text-right">จำนวน</th>
-                          <th className="p-3 text-right">คงเหลือ</th>
+                          <th className="p-3 text-right">คงเหลือ (ประมาณ)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {displayHistory.slice(0, 50).map((h, i) => {
-                          // h อาจเป็น txLog (มี description, timestamp) หรือ history entry (มี date, desc)
-                          const label   = h.description || h.desc || '';
-                          const dateStr = h.date || (h.timestamp?.toDate ? h.timestamp.toDate().toLocaleString('th-TH') : '');
+                          const label   = h.desc || h.description || '';
+                          const dateStr = h.date || '';
                           const amt     = h.amount ?? 0;
-                          const balAfter = h.balance_after ?? null;
+                          const balAfter = null;
                           return (
                             <tr key={h.id || i} className="hover:bg-gray-50">
                               <td className="p-3">
@@ -516,12 +505,6 @@ export default function AdminView() {
                           req.type === 'rider_reg'      ? '🛵 สมัครไรเดอร์'      :
                           req.type
                         }</span>
-                        {/* walletType badge — shows which sub-wallet to credit/debit */}
-                        {(req.type === 'topup' || req.type === 'withdraw') && (req.walletType || req.data?.walletType) && (() => {
-                          const wt = req.walletType || req.data?.walletType;
-                          const wtLabel = wt === 'rider_credit' ? '🎯 เครดิต GP' : wt === 'rider_main' ? '🛵 รายได้ไรเดอร์' : wt === 'shop_settlement' ? '🏪 รายได้ร้าน' : wt === 'admin_platform' ? '🏛 Platform' : wt;
-                          return <span className="px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-700">{wtLabel}</span>;
-                        })()}
                         <span className="text-xs text-gray-400">{req.timestamp}</span>
                       </div>
                       <div className="font-bold text-gray-800 mb-1">
@@ -608,11 +591,23 @@ export default function AdminView() {
                         </div>
                       )}
                       <div className="text-xs text-gray-400 mt-2">โดย: {req.user}</div>
-                      {(req.type === 'topup' || req.type === 'withdraw') && (
-                        <div className="text-xs text-blue-600 font-bold mt-1">
-                          ยอด Wallet ปัจจุบัน: ฿{(globalWallets[req.userId]?.balance ?? 0).toLocaleString()}
-                        </div>
-                      )}
+                      {(req.type === 'topup' || req.type === 'withdraw') && (() => {
+                        const walletEntry = globalWallets[req.userId];
+                        return (
+                          <div className="text-xs font-bold mt-1">
+                            {walletEntry == null ? (
+                              <span className="text-gray-400 animate-pulse">กำลังโหลดยอด Wallet…</span>
+                            ) : (
+                              <span className={`${req.type === 'withdraw' && walletEntry.balance < Number(req.data.amount) ? 'text-red-600' : 'text-blue-600'}`}>
+                                ยอด Wallet ปัจจุบัน: ฿{walletEntry.balance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {req.type === 'withdraw' && walletEntry.balance < Number(req.data.amount) && (
+                                  <span className="ml-1 text-red-500 font-bold"> ⚠️ ยอดไม่พอ</span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="flex flex-col gap-2 shrink-0">
                       <button onClick={() => handleApproveRequest(req)} className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 text-sm"><Check size={16} /> อนุมัติ</button>
@@ -626,122 +621,6 @@ export default function AdminView() {
         </div>
       )}
 
-      {/* ── TRANSACTION LOGS (Multi-Wallet) ─────────────────────────────── */}
-      {adminTab === 'approvals' && (() => {
-        const pendingDeposits = txLogs.filter(l => l.type === 'topup' && l.status === 'pending');
-        const pendingWithdrawals = txLogs.filter(l => l.type === 'withdraw' && l.status === 'pending_approval');
-        const allPending = [...pendingDeposits, ...pendingWithdrawals];
-
-        if (allPending.length === 0) return null;
-
-        return (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-4">
-            <div className="p-4 border-b bg-purple-50 flex items-center gap-2">
-              <Wallet size={18} className="text-purple-600" />
-              <h2 className="font-bold text-gray-700">คำขอ Multi-Wallet ({allPending.length} รายการ)</h2>
-            </div>
-            <div className="divide-y">
-              {allPending.map(tx => (
-                <div key={tx.id} className="p-4 hover:bg-gray-50">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                          tx.type === 'topup' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                        }`}>
-                          {tx.type === 'topup' ? '💰 เติมเงิน' : '💸 ถอนเงิน'}
-                        </span>
-                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold">
-                          {tx.target_wallet_type}
-                        </span>
-                        <span className={`text-xs px-2 py-0.5 rounded font-bold ${
-                          tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'
-                        }`}>{tx.status}</span>
-                      </div>
-                      <div className="font-bold text-gray-800 text-lg">
-                        {tx.type === 'topup' ? '+' : '-'}฿{Number(tx.amount).toLocaleString()}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">{tx.description}</div>
-                      <div className="text-xs text-gray-400">User: {tx.user_id}</div>
-                      {tx.bank_info && Object.keys(tx.bank_info).length > 0 && (
-                        <div className="mt-2 bg-gray-50 border border-gray-100 rounded-lg p-2 text-xs text-gray-600 space-y-0.5">
-                          {tx.bank_info.bank && <p>ธนาคาร: <strong>{tx.bank_info.bank}</strong></p>}
-                          {tx.bank_info.accountName && <p>ชื่อบัญชี: <strong>{tx.bank_info.accountName}</strong></p>}
-                          {tx.bank_info.accountNumber && <p>เลขบัญชี: <strong>{tx.bank_info.accountNumber}</strong></p>}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-2 shrink-0">
-                      <button
-                        onClick={() => tx.type === 'topup' ? handleApproveDeposit(tx.id) : handleApproveWithdrawal(tx.id)}
-                        className="flex items-center gap-1 bg-green-600 text-white px-3 py-2 rounded-lg font-bold hover:bg-green-700 text-xs"
-                      ><Check size={14} /> อนุมัติ</button>
-                      <button
-                        onClick={() => tx.type === 'topup' ? handleRejectDeposit(tx.id) : handleRejectWithdrawal(tx.id)}
-                        className="flex items-center gap-1 bg-red-100 text-red-600 px-3 py-2 rounded-lg font-bold hover:bg-red-200 text-xs"
-                      ><XCircle size={14} /> ปฏิเสธ</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── ALL TRANSACTION LOGS (ประวัติธุรกรรมทั้งหมด) ────────────────── */}
-      {adminTab === 'approvals' && txLogs.length > 0 && (() => {
-        const completedLogs = txLogs.filter(l => !['pending', 'pending_approval'].includes(l.status)).slice(0, 30);
-        if (completedLogs.length === 0) return null;
-        return (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden mt-4">
-            <div className="p-4 border-b bg-gray-50 flex items-center gap-2">
-              <TrendingUp size={18} className="text-gray-500" />
-              <h2 className="font-bold text-gray-700">ประวัติธุรกรรม Multi-Wallet (ล่าสุด)</h2>
-            </div>
-            <div className="overflow-y-auto max-h-80">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr className="text-gray-400 uppercase text-[10px]">
-                    <th className="p-2 text-left">ประเภท</th>
-                    <th className="p-2 text-left">Wallet</th>
-                    <th className="p-2 text-left">รายละเอียด</th>
-                    <th className="p-2 text-right">จำนวน</th>
-                    <th className="p-2 text-right">สถานะ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {completedLogs.map((log, i) => (
-                    <tr key={log.id || i} className="hover:bg-gray-50">
-                      <td className="p-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          log.type === 'topup' ? 'bg-blue-100 text-blue-700' :
-                          log.type === 'withdraw' ? 'bg-orange-100 text-orange-700' :
-                          log.type === 'delivery_fee' ? 'bg-green-100 text-green-700' :
-                          log.type === 'platform_gp_deduct' ? 'bg-purple-100 text-purple-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>{log.type}</span>
-                      </td>
-                      <td className="p-2 text-gray-500 font-mono text-[10px]">{log.target_wallet_type}</td>
-                      <td className="p-2 text-gray-600 max-w-32 truncate">{log.description}</td>
-                      <td className={`p-2 text-right font-bold ${(log.amount ?? 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {(log.amount ?? 0) >= 0 ? '+' : ''}฿{Math.abs(log.amount ?? 0).toLocaleString()}
-                      </td>
-                      <td className="p-2 text-right">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                          log.status === 'success' ? 'bg-green-100 text-green-700' :
-                          log.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                          'bg-gray-100 text-gray-500'
-                        }`}>{log.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ── USERS ─────────────────────────────────────────────────────── */}
       {adminTab === 'users' && (

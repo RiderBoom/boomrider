@@ -15,16 +15,11 @@ import {
   saveMenuItems, loadMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
   saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation,
-  saveChat, loadAllChats, subscribeToChats,
+  saveChat, loadAllChats, subscribeToChats, deleteChatFromDB,
   saveUserProfile, loadUserProfile,
   safeLocalSet,
   acceptOrderTransaction, subscribeToOrders,
-  // Multi-wallet
-  atomicOrderCompletion, createTransactionLog, loadTransactionLogs,
-  subscribeToTransactions, subscribeToMultiWallet, loadMultiWallet,
-  creditWalletByType,
-  createDepositRequest, approveDeposit, rejectDeposit,
-  holdWithdrawal, approveWithdrawal, rejectWithdrawal,
+  atomicOrderCompletion,
 } from '../firebase/firestore';
 // (Firebase Storage ไม่ถูกใช้ — ใช้ compressImage + Firestore แทน)
 
@@ -73,18 +68,6 @@ export function AppProvider({ children }) {
   ]);
   const [userWallet, setUserWallet] = useState(0);
   const [walletHistory, setWalletHistory] = useState([]);
-
-  // --- Multi-Wallet State (rider_credit, rider_main, shop_settlement, admin_platform) ---
-  const EMPTY_MULTI = {
-    rider_credit:    { balance: 0, history: [] },
-    rider_main:      { balance: 0, history: [] },
-    shop_settlement: { balance: 0, history: [] },
-    admin_platform:  { balance: 0, history: [] },
-  };
-  const [multiWallet, setMultiWallet] = useState(EMPTY_MULTI);
-  const [txLogs, setTxLogs] = useState([]);
-  const multiWalletUnsubRef = React.useRef(null);
-  const txLogsUnsubRef = React.useRef(null);
 
   // --- Cart & Order State ---
   const [cart, setCart] = useState([]);
@@ -167,6 +150,9 @@ export function AppProvider({ children }) {
   // ── wallet subscription: flag บอกว่า setUserWallet มาจาก Firestore ────────────
   // ใช้ป้องกัน useEffect ไม่ให้เขียนยอดเก่ากลับ Firestore (write-back loop)
   const walletFromFirestoreRef = React.useRef(false);
+  // ── กันไม่ให้ saveWallet เขียนยอดเก่าจาก localStorage ทับ Firestore ก่อน
+  // subscription จะ fire ครั้งแรก (race condition ระหว่าง onAuthChange กับ subscribeToWallet)
+  const walletSubscribedRef = React.useRef(false);
   const walletUnsubRef = React.useRef(null);
 
   // --- Global Wallet Store ---
@@ -293,6 +279,30 @@ export function AppProvider({ children }) {
   useEffect(() => { safeLocalSet('boomrider_menu_items', menuItems); }, [menuItems]);
   useEffect(() => { safeLocalSet('boomrider_appconfig', appConfig); }, [appConfig]);
   useEffect(() => { safeLocalSet('boomrider_pending_requests', pendingRequests); }, [pendingRequests]);
+
+  // ── Fetch live wallet balances for users with pending withdraw/topup requests ──
+  // Admin's globalWallets is a local cache; it won't have the correct balance of
+  // other users unless we explicitly pull from Firestore when their requests arrive.
+  useEffect(() => {
+    if (!FIREBASE_ENABLED) return;
+    const uids = [...new Set(
+      pendingRequests
+        .filter(r => r.type === 'withdraw' || r.type === 'topup')
+        .map(r => r.userId)
+        .filter(Boolean)
+    )];
+    if (!uids.length) return;
+    uids.forEach(uid => {
+      loadWallet(uid).then(w => {
+        if (w != null) {
+          setGlobalWallets(prev => ({
+            ...prev,
+            [uid]: { balance: w.balance ?? 0, history: w.history || [] },
+          }));
+        }
+      }).catch(() => {});
+    });
+  }, [pendingRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-grant merchant/rider role if user has a shop/rider entry (recovery mechanism)
   useEffect(() => {
@@ -618,15 +628,22 @@ export function AppProvider({ children }) {
         window.__boomriderUnsubOrders = unsubOrders;
 
         // ── Subscribe real-time pending_requests (onSnapshot) ────────────
-        // ทำให้ user เห็นทันทีเมื่อ Admin อนุมัติ/ปฏิเสธคำขอยกเลิก
+        // Admin → ดูทุก request (ไม่กรอง)
+        // Non-admin → กรองเฉพาะของตัวเอง ป้องกัน PERMISSION_DENIED
+        // (Firestore security rules evaluate per-document → query คืน doc ของ user อื่น = denied ทั้ง query)
         if (window.__boomriderUnsubPending) {
           window.__boomriderUnsubPending();
           window.__boomriderUnsubPending = null;
         }
-        const unsubPending = subscribeToPendingRequests((cloudPending) => {
-          setPendingRequests(cloudPending);
-          safeLocalSet('boomrider_pending_requests', cloudPending);
-        });
+        const isFirebaseAdmin = ADMIN_UID && firebaseUser.uid === ADMIN_UID;
+        const unsubPending = subscribeToPendingRequests(
+          (cloudPending) => {
+            setPendingRequests(cloudPending);
+            safeLocalSet('boomrider_pending_requests', cloudPending);
+          },
+          undefined,
+          isFirebaseAdmin ? null : firebaseUser.uid,
+        );
         window.__boomriderUnsubPending = unsubPending;
 
         // ── Subscribe real-time chats (onSnapshot) ───────────────────────
@@ -688,13 +705,12 @@ export function AppProvider({ children }) {
             });
           }
 
-          // ── Merge cloud chats → local state ─────────────────────────────
+          // ── Cloud is source of truth — deleted chats must not resurface ──
           setChats(prev => {
-            const merged = { ...prev };
+            const merged = {};
             Object.entries(cloudChats).forEach(([id, msgs]) => {
-              if (!prev[id] || msgs.length >= (prev[id] || []).length) {
-                merged[id] = msgs;
-              }
+              const local = prev[id] || [];
+              merged[id] = local.length > msgs.length ? local : msgs;
             });
             try { localStorage.setItem('boomrider_chats', JSON.stringify(merged)); } catch {}
             return merged;
@@ -716,9 +732,11 @@ export function AppProvider({ children }) {
         // ── Subscribe wallet (real-time) ─────────────────────────────────
         // เมื่อ Admin อนุมัติ topup/withdraw → Firestore เปลี่ยน → callback นี้ fire ทันที
         if (walletUnsubRef.current) walletUnsubRef.current(); // cleanup ตัวเก่า
+        walletSubscribedRef.current = false; // reset — ยัง subscribe ใหม่ไม่ fire
         if (FIREBASE_ENABLED) {
           walletUnsubRef.current = subscribeToWallet(firebaseUser.uid, (data) => {
             walletFromFirestoreRef.current = true;   // บอก useEffect ว่า "มาจาก Firestore"
+            walletSubscribedRef.current = true;      // subscription fire แล้ว — saveWallet ทำได้
             setUserWallet(data.balance ?? 0);
             setWalletHistory(data.history ?? []);
           });
@@ -731,26 +749,6 @@ export function AppProvider({ children }) {
               setWalletHistory(cloudWallet.history ?? []);
             }
           } catch (_) {}
-        }
-
-        // ── Subscribe multi-wallet (real-time) ────────────────────────────
-        if (multiWalletUnsubRef.current) { multiWalletUnsubRef.current(); multiWalletUnsubRef.current = null; }
-        if (FIREBASE_ENABLED) {
-          multiWalletUnsubRef.current = subscribeToMultiWallet(firebaseUser.uid, (data) => {
-            if (data) setMultiWallet(data);
-          });
-          // โหลดครั้งแรกทันที (onSnapshot อาจช้า)
-          loadMultiWallet(firebaseUser.uid).then(data => { if (data) setMultiWallet(data); }).catch(() => {});
-        }
-
-        // ── Subscribe transaction logs (real-time) ────────────────────────
-        if (txLogsUnsubRef.current) { txLogsUnsubRef.current(); txLogsUnsubRef.current = null; }
-        if (FIREBASE_ENABLED) {
-          // Admin เห็นทั้งหมด, user เห็นเฉพาะของตัวเอง
-          const logUserId = firebaseUser.uid === ADMIN_UID ? null : firebaseUser.uid;
-          txLogsUnsubRef.current = subscribeToTransactions(logUserId, (logs) => {
-            setTxLogs(logs);
-          }, 200);
         }
 
         try {
@@ -778,12 +776,12 @@ export function AppProvider({ children }) {
       };
       localStorage.setItem('boomrider_user', JSON.stringify(updatedUser));
       // ── Sync wallet ไป Firestore เฉพาะเมื่อ user เปลี่ยนยอดเอง ─────────────
-      // ถ้า walletFromFirestoreRef.current = true แสดงว่ายอดมาจาก Firestore subscription
-      // → ห้าม saveWallet กลับ (จะทับยอดที่ Admin เพิ่งแก้ไข)
+      // walletFromFirestoreRef = true → ยอดมาจาก Firestore → ห้ามเขียนกลับ
+      // walletSubscribedRef = false → subscription ยังไม่ fire → ห้ามเขียน (ป้องกัน stale localStorage ทับ Firestore)
       if (FIREBASE_ENABLED) {
         if (walletFromFirestoreRef.current) {
           walletFromFirestoreRef.current = false; // reset flag
-        } else {
+        } else if (walletSubscribedRef.current) {
           saveWallet(currentUser.id, userWallet, walletHistory).catch(() => {});
         }
       }
@@ -884,9 +882,13 @@ export function AppProvider({ children }) {
     setChats(prev => {
       const next = { ...prev };
       delete next[chatId];
+      try {
+        localStorage.setItem('boomrider_chats', JSON.stringify(next));
+      } catch {}
       return next;
     });
     if (activeChat?.id === chatId) setActiveChat(null);
+    if (FIREBASE_ENABLED) deleteChatFromDB(chatId).catch(() => {});
   };
 
   // --- Location helpers ---
@@ -1052,6 +1054,7 @@ export function AppProvider({ children }) {
       processTransaction('payment', -grandTotal, `ชำระค่าอาหาร (${restaurantName})`);
     }
     if (FIREBASE_ENABLED) saveOrder(newOrder).catch(() => {});
+    setPaymentMethod('wallet');
     notifySystem("สั่งซื้อสำเร็จ", "ออเดอร์ถูกส่งไปยังร้านค้าแล้ว", "success");
     notifyAdmin("🛍️ ออเดอร์ใหม่", `${userProfile.name} สั่งจาก ${restaurantName} ฿${grandTotal}`, "info");
     setTimeout(() => notifySystem("ร้านค้า", "มีออเดอร์ใหม่เข้ามา!", "warning"), 1000);
@@ -1081,10 +1084,12 @@ export function AppProvider({ children }) {
 
     // ── ตรวจสอบ radius เฉพาะเมื่อรู้ระยะทางจริง ─────────────────────────
     if (hasLocations && distance > appConfig.appRadius) {
+      placingOrderRef.current = false;
       return notifySystem("นอกพื้นที่", `ระยะทาง (${distance} กม.) เกินขอบเขตให้บริการ`, "error");
     }
 
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
+      placingOrderRef.current = false;
       return notifySystem("ยอดเงินไม่พอ", "กรุณาเติมเงินหรือเลือกชำระเงินสด", "error");
     }
 
@@ -1100,6 +1105,8 @@ export function AppProvider({ children }) {
       pickupLocation: parcelDetails.pickupLocation  || userProfile.location,
       distance,
       weight:         parcelDetails.weight,
+      foodTotal:      0,
+      deliveryFee,
       grandTotal,
       paymentMethod,
       adminGP,
@@ -1135,6 +1142,7 @@ export function AppProvider({ children }) {
     setParcelMapTarget(null);
     setParcelEstimate(0);
     setParcelDistance(0);
+    setPaymentMethod('wallet');
     setActiveTab('activity');
   };
 
@@ -1165,23 +1173,6 @@ export function AppProvider({ children }) {
     const riderName  = riderInfo?.name  || '';
 
     if (FIREBASE_ENABLED) {
-      // ── แจ้งเตือน (ไม่บล็อก) ถ้า rider_credit ต่ำ ────────────────────────
-      // GP จะถูกหักจาก rider_main (ค่าส่ง) แทนโดยอัตโนมัติเมื่อส่งสำเร็จ
-      // เติม rider_credit ไว้เพื่อรักษายอดค่าส่งสุทธิให้เต็ม
-      const riderGP = (order.deliveryFee ?? 0) * ((appConfig.gpDelivery ?? 15) / 100);
-      if (riderGP > 0 && riderUid) {
-        loadMultiWallet(riderUid).then(mw => {
-          const creditBal = mw?.rider_credit?.balance ?? 0;
-          if (creditBal < riderGP) {
-            notifySystem(
-              '💡 เครดิตต่ำ',
-              `เครดิต GP ฿${creditBal.toFixed(0)} (ต้องใช้ ฿${riderGP.toFixed(0)}) — GP จะหักจากค่าส่งแทน เติม rider_credit ในแท็บ "กระเป๋า" เพื่อรับค่าส่งเต็มจำนวน`,
-              'warning',
-            );
-          }
-        }).catch(() => {});
-      }
-
       // ── Atomic Firestore Transaction ────────────────────────────────────
       try {
         await acceptOrderTransaction(orderId, riderId, riderLocation, riderUid);
@@ -1287,6 +1278,35 @@ export function AppProvider({ children }) {
         const riderUid     = targetOrder.riderUid || riderProfile?.userId || null;
         const shopOwnerUid = restaurant?.ownerId || null;
 
+        const shortId = targetOrder.id.slice(-6);
+        const riderIncome  = typeof targetOrder.riderIncome    === 'number' ? targetOrder.riderIncome    : 0;
+        const merchantIncome = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
+        const gpAmount     = typeof targetOrder.adminGP         === 'number' ? targetOrder.adminGP         : 0;
+
+        // ── อัปเดต local state ทันทีสำหรับ user ที่ login อยู่บน device นี้ ──
+        // ป้องกัน race condition ระหว่าง saveWallet กับ subscribeToWallet
+        const myUidNow = userProfile.id || currentUser?.id;
+        const isCashOrder = targetOrder.paymentMethod === 'cash';
+        if (riderUid && riderUid === myUidNow) {
+          if (!isCashOrder && riderIncome > 0) {
+            // wallet: local optimistic update ก่อน subscribeToWallet ตามมา
+            processTransaction('income', riderIncome, `ค่าส่ง ${targetOrder.restaurantName || 'พัสดุ'} #${shortId}`);
+          }
+          // cash: ไม่อัปเดต local state ที่นี่ — ปล่อยให้ atomicOrderCompletion → creditWalletInDB
+          // → subscribeToWallet จัดการแทน เพราะถ้า processTransaction + saveWallet ทำงานพร้อม
+          // creditWalletInDB จะเกิด double-deduction (หักสองรอบ)
+        }
+        // cash: ห้าม processTransaction สำหรับ merchant/admin เช่นเดียวกับ rider
+        // เพราะ processTransaction → saveWallet (setDoc) อาจ race กับ creditWalletInDB (increment)
+        // ทำให้ double-credit ถ้าอยู่บน device เดียวกัน — ปล่อยให้ subscribeToWallet จัดการแทน
+        if (!isCashOrder && shopOwnerUid && shopOwnerUid === myUidNow && merchantIncome > 0) {
+          processTransaction('income', merchantIncome, `รายได้ร้าน #${shortId}`);
+        }
+        if (!isCashOrder && ADMIN_UID && ADMIN_UID === myUidNow && gpAmount > 0) {
+          processTransaction('income', gpAmount, `GP #${shortId}`);
+        }
+
+        // ── Firestore atomic write (ทุกกรณี — ใช้ increment/arrayUnion ไม่ต้อง read) ──
         atomicOrderCompletion({
           order:        targetOrder,
           riderUid,
@@ -1296,36 +1316,32 @@ export function AppProvider({ children }) {
           gpDelivery:   appConfig.gpDelivery,
         }).catch((err) => {
           if (import.meta.env.DEV) console.error('[atomicOrderCompletion]', err?.message);
-          // fallback: ถ้า atomic fail (เช่น rider_credit ไม่พอ) → ใช้เส้นทางเก่า
-          const gp = typeof targetOrder.adminGP === 'number' ? targetOrder.adminGP : 0;
-          if (gp > 0) {
-            const gpDesc = `GP #${targetOrder.id.slice(-6)} (${targetOrder.paymentMethod})`;
-            creditWallet(ADMIN_UID, gp, gpDesc);
-            creditWalletInDB(ADMIN_UID, gp, gpDesc).catch(() => {});
-          }
         });
       } else {
-        // ── Firebase ปิด → fallback เส้นทางเก่า ──────────────────────────
-        // รายได้ไรเดอร์ (เฉพาะ device ที่ไรเดอร์ login อยู่)
+        // ── Firebase ปิด → fallback (ใช้ creditWallet เพื่ออัปเดต globalWallets ด้วย) ──
+        const shortId = targetOrder.id.slice(-6);
+        // รายได้ไรเดอร์ — creditWallet อัปเดต globalWallets (ทุก user) ไม่ใช่แค่ user ที่ login
         if (targetOrder.riderId) {
           const riderProfile = riders.find(r => r.id === targetOrder.riderId);
-          if (riderProfile && (riderProfile.userId === userProfile.id || riderProfile.userId === currentUser?.id)) {
-            const income = typeof targetOrder.riderIncome === 'number' ? targetOrder.riderIncome : 0;
-            if (income > 0) processTransaction('income', income, `รายได้งาน ${targetOrder.restaurantName || 'พัสดุ'} #${targetOrder.id}`);
+          const riderUserId  = targetOrder.riderUid || riderProfile?.userId;
+          const income = typeof targetOrder.riderIncome === 'number' ? targetOrder.riderIncome : 0;
+          if (riderUserId && income > 0) {
+            creditWallet(riderUserId, income, `ค่าส่ง ${targetOrder.restaurantName || 'พัสดุ'} #${shortId}`);
           }
         }
-        // รายได้ร้านค้า (เฉพาะ device ที่ merchant login อยู่)
+        // รายได้ร้านค้า — creditWallet ไม่ต้องเช็คว่า merchant login อยู่หรือเปล่า
         if (targetOrder.type === 'food') {
           const restaurant = restaurants.find(r => r.id === targetOrder.restaurantId);
-          if (restaurant && (restaurant.ownerId === userProfile.id || restaurant.ownerId === currentUser?.id)) {
-            const income = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
-            if (income > 0) processTransaction('income', income, `รายได้ออเดอร์ #${targetOrder.id}`);
+          const shopUserId  = restaurant?.ownerId;
+          const income = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
+          if (shopUserId && income > 0) {
+            creditWallet(shopUserId, income, `รายได้ร้าน #${shortId}`);
           }
         }
-        // Admin GP (local only)
+        // Admin GP
         if (ADMIN_UID) {
           const gp = typeof targetOrder.adminGP === 'number' ? targetOrder.adminGP : 0;
-          if (gp > 0) creditWallet(ADMIN_UID, gp, `GP #${targetOrder.id.slice(-6)} (local)`);
+          if (gp > 0) creditWallet(ADMIN_UID, gp, `GP #${shortId} (local)`);
         }
       }
     }
@@ -1482,20 +1498,14 @@ export function AppProvider({ children }) {
 
   // --- Request Logic ---
   /**
-   * requestTopUp — ใช้ได้ทั้ง generic wallet และ multi-wallet
-   * @param {number}      amount
-   * @param {string|null} slipImage  - base64 สลิป (optional)
-   * @param {string|null} walletType - 'rider_credit' | 'shop_settlement' | null = generic
-   * @param {Object}      bankInfo   - { bank, accountName, accountNumber } (optional)
+   * requestTopUp — แจ้งเติมเงินกระเป๋าหลัก รอ Admin อนุมัติ
    */
-  const requestTopUp = (amount, slipImage, walletType = null, bankInfo = {}) => {
+  const requestTopUp = (amount, slipImage, _walletType = null, bankInfo = {}) => {
     const uid = userProfile.id || currentUser?.id || '';
     const newReq = {
       id: generateId(), type: 'topup',
-      walletType,                                         // ← ชนิด sub-wallet (null = generic)
       data: {
         amount,
-        walletType,
         bank:          bankInfo.bank          || null,
         accountName:   bankInfo.accountName   || null,
         accountNumber: bankInfo.accountNumber || null,
@@ -1512,44 +1522,39 @@ export function AppProvider({ children }) {
     setShowTopUpModal(false);
     setTopUpSlip(null);
     setWithdrawAmount('');
-    const walletLabel = walletType === 'rider_credit' ? 'เครดิต GP'
-      : walletType === 'shop_settlement' ? 'รายได้ร้านค้า' : 'กระเป๋าเงิน';
-    notifySystem("ส่งคำขอแล้ว ✅", `แจ้งเติม ${walletLabel} ฿${Number(amount).toLocaleString()} — รอ Admin อนุมัติ`, "success");
-    notifyAdmin("💰 เติมเงินใหม่", `${userProfile.name || 'ผู้ใช้'} แจ้งเติม ฿${amount}${walletType ? ` (${walletType})` : ''}`, "warning");
+    notifySystem("ส่งคำขอแล้ว ✅", `แจ้งเติมกระเป๋าเงิน ฿${Number(amount).toLocaleString()} — รอ Admin อนุมัติ`, "success");
+    notifyAdmin("💰 เติมเงินใหม่", `${userProfile.name || 'ผู้ใช้'} แจ้งเติม ฿${amount}`, "warning");
   };
 
   /**
-   * requestWithdraw — ใช้ได้ทั้ง generic wallet และ multi-wallet
-   * สำหรับ multi-wallet: ไม่หักเงินทันที รอ Admin อนุมัติก่อน (Admin จะหักให้)
-   * @param {number}      amount
-   * @param {Object}      bankInfo   - { bank, account, name } หรือ { bank, accountName, accountNumber }
-   * @param {string|null} walletType - 'rider_main' | 'shop_settlement' | null = generic
+   * requestWithdraw — แจ้งถอนเงินจากกระเป๋าหลัก รอ Admin อนุมัติ
    */
-  const requestWithdraw = (amount, bankInfo, walletType = null) => {
+  const requestWithdraw = (amount, bankInfo, _walletType = null) => {
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) return notifySystem("ผิดพลาด", "กรุณาระบุจำนวนเงิน", "error");
-
-    // ── ตรวจสอบยอดตามประเภท wallet ─────────────────────────────────────────
-    if (walletType) {
-      const subBal = multiWallet?.[walletType]?.balance ?? 0;
-      if (subBal < parsedAmount) {
-        return notifySystem("ยอดไม่พอ", `กระเป๋า ${walletType} มี ฿${subBal.toLocaleString()} (ต้องการ ฿${parsedAmount.toLocaleString()})`, "error");
-      }
-    } else {
-      if (userWallet < parsedAmount) return notifySystem("ผิดพลาด", "ยอดเงินในกระเป๋าไม่เพียงพอ", "error");
+    const uid = userProfile.id || currentUser?.id || '';
+    // หักยอดที่รอถอนอยู่ก่อน เพื่อป้องกันการยื่นขอซ้อนกัน
+    const pendingWithdrawTotal = pendingRequests
+      .filter(r => r.userId === uid && r.type === 'withdraw')
+      .reduce((sum, r) => sum + (Number(r.data?.amount) || 0), 0);
+    const effectiveBalance = userWallet - pendingWithdrawTotal;
+    if (effectiveBalance < parsedAmount) {
+      return notifySystem(
+        "ผิดพลาด",
+        pendingWithdrawTotal > 0
+          ? `ยอดคงเหลือที่ถอนได้ ฿${effectiveBalance.toLocaleString()} (หักยอดรอถอน ฿${pendingWithdrawTotal.toLocaleString()} แล้ว)`
+          : "ยอดเงินในกระเป๋าไม่เพียงพอ",
+        "error",
+      );
     }
 
-    const uid = userProfile.id || currentUser?.id || '';
-    // normalize bankInfo keys (รองรับทั้ง { bank, account, name } และ { bank, accountName, accountNumber })
     const bank          = bankInfo.bank          || bankInfo.bankName   || '';
     const accountName   = bankInfo.accountName   || bankInfo.name       || '';
     const accountNumber = bankInfo.accountNumber || bankInfo.account    || '';
 
     const newReq = {
       id: generateId(), type: 'withdraw',
-      walletType,
-      data: { amount: parsedAmount, walletType, bank, accountName, accountNumber,
-              // backward compat keys
+      data: { amount: parsedAmount, bank, accountName, accountNumber,
               account: accountNumber, name: accountName },
       userId: uid, user: userProfile.name || 'ผู้ใช้',
       timestamp: new Date().toLocaleString('th-TH'),
@@ -1558,10 +1563,8 @@ export function AppProvider({ children }) {
     setPendingRequests(prev => [newReq, ...prev]);
     setWithdrawAmount(''); setWithdrawBank(''); setWithdrawAccount(''); setWithdrawName('');
     setWithdrawMode(false);
-    const walletLabel = walletType === 'rider_main' ? 'รายได้ค่าส่ง'
-      : walletType === 'shop_settlement' ? 'รายได้ร้านค้า' : 'กระเป๋าเงิน';
-    notifySystem("ส่งคำขอแล้ว ✅", `แจ้งถอน ${walletLabel} ฿${parsedAmount.toLocaleString()} — รอ Admin อนุมัติ`, "success");
-    notifyAdmin("💸 ถอนเงินใหม่", `${userProfile.name || 'ผู้ใช้'} แจ้งถอน ฿${parsedAmount}${walletType ? ` (${walletType})` : ''}`, "warning");
+    notifySystem("ส่งคำขอแล้ว ✅", `แจ้งถอนกระเป๋าเงิน ฿${parsedAmount.toLocaleString()} — รอ Admin อนุมัติ`, "success");
+    notifyAdmin("💸 ถอนเงินใหม่", `${userProfile.name || 'ผู้ใช้'} แจ้งถอน ฿${parsedAmount}`, "warning");
   };
 
   const requestRegisterMerchant = async (data) => {
@@ -1725,130 +1728,6 @@ export function AppProvider({ children }) {
     setPromoCodes(prev => prev.filter(p => p.id !== id));
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // MULTI-WALLET HANDLERS
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * User ยื่นขอเติมเงิน (สร้าง pending request ใน transactions collection)
-   */
-  const requestDepositByType = useCallback(async (walletType, amount, bankInfo = {}, description = '') => {
-    if (!FIREBASE_ENABLED) {
-      notifySystem('ไม่รองรับ', 'ฟีเจอร์นี้ต้องการ Firebase', 'error');
-      return null;
-    }
-    const uid = currentUser?.id || userProfile?.id;
-    if (!uid) return null;
-    try {
-      const txId = await createDepositRequest(uid, walletType, amount, bankInfo, description);
-      notifySystem('ส่งคำขอแล้ว', `คำขอเติมเงิน ฿${amount.toLocaleString()} รอ Admin อนุมัติ`, 'success');
-      return txId;
-    } catch (err) {
-      notifySystem('เกิดข้อผิดพลาด', err?.message || 'กรุณาลองใหม่', 'error');
-      return null;
-    }
-  }, [currentUser, userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /**
-   * Admin อนุมัติ deposit request
-   */
-  const handleApproveDeposit = useCallback(async (txId) => {
-    try {
-      await approveDeposit(txId);
-      notifySystem('สำเร็จ', 'อนุมัติการเติมเงินเรียบร้อย', 'success');
-    } catch (err) {
-      notifySystem('ผิดพลาด', err?.message || 'ไม่สามารถอนุมัติได้', 'error');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /**
-   * Admin ปฏิเสธ deposit request
-   */
-  const handleRejectDeposit = useCallback(async (txId) => {
-    try {
-      await rejectDeposit(txId);
-      notifySystem('สำเร็จ', 'ปฏิเสธการเติมเงินเรียบร้อย', 'success');
-    } catch (err) {
-      notifySystem('ผิดพลาด', err?.message || 'ไม่สามารถปฏิเสธได้', 'error');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /**
-   * User ขอถอนเงิน (หักเงินทันที → pending_approval)
-   */
-  const requestWithdrawalByType = useCallback(async (walletType, amount, bankInfo = {}, description = '') => {
-    if (!FIREBASE_ENABLED) {
-      notifySystem('ไม่รองรับ', 'ฟีเจอร์นี้ต้องการ Firebase', 'error');
-      return null;
-    }
-    const uid = currentUser?.id || userProfile?.id;
-    if (!uid) return null;
-    try {
-      const txId = await holdWithdrawal(uid, walletType, amount, bankInfo, description);
-      // อัปเดต local multiWallet ทันที (ไม่รอ Firestore subscription)
-      setMultiWallet(prev => {
-        const sub = prev[walletType] || { balance: 0, history: [] };
-        return {
-          ...prev,
-          [walletType]: {
-            ...sub,
-            balance: Math.max(0, sub.balance - amount),
-            history: [
-              { id: txId, date: new Date().toLocaleString('th-TH'), desc: description || `ถอน ฿${amount}`, amount: -amount },
-              ...sub.history,
-            ],
-          },
-        };
-      });
-      notifySystem('ส่งคำขอแล้ว', `ขอถอนเงิน ฿${amount.toLocaleString()} รอ Admin อนุมัติ`, 'success');
-      return txId;
-    } catch (err) {
-      if (err?.message?.includes('INSUFFICIENT_BALANCE')) {
-        notifySystem('ยอดไม่พอ', 'ยอดเงินใน Wallet ไม่เพียงพอ', 'error');
-      } else {
-        notifySystem('เกิดข้อผิดพลาด', err?.message || 'กรุณาลองใหม่', 'error');
-      }
-      return null;
-    }
-  }, [currentUser, userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /**
-   * Admin อนุมัติการถอนเงิน
-   */
-  const handleApproveWithdrawal = useCallback(async (txId) => {
-    try {
-      await approveWithdrawal(txId);
-      notifySystem('สำเร็จ', 'อนุมัติการถอนเงินเรียบร้อย', 'success');
-    } catch (err) {
-      notifySystem('ผิดพลาด', err?.message || 'ไม่สามารถอนุมัติได้', 'error');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /**
-   * Admin ปฏิเสธการถอนเงิน (คืนเงินอัตโนมัติ)
-   */
-  const handleRejectWithdrawal = useCallback(async (txId) => {
-    try {
-      await rejectWithdrawal(txId);
-      notifySystem('สำเร็จ', 'ปฏิเสธและคืนเงินเรียบร้อย', 'success');
-    } catch (err) {
-      notifySystem('ผิดพลาด', err?.message || 'ไม่สามารถปฏิเสธได้', 'error');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /**
-   * Admin เติมเงินตรงให้ sub-wallet ของ user (manual credit)
-   */
-  const adminCreditWalletByType = useCallback(async (userId, walletType, amount, desc = '') => {
-    if (!FIREBASE_ENABLED) return notifySystem('ไม่รองรับ', 'ต้องการ Firebase', 'error');
-    try {
-      await creditWalletByType(userId, walletType, amount, `[Admin] ${desc}`);
-      notifySystem('สำเร็จ', `เติม ฿${amount.toLocaleString()} เข้า ${walletType} เรียบร้อย`, 'success');
-    } catch (err) {
-      notifySystem('ผิดพลาด', err?.message, 'error');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   // --- Admin manual wallet adjustment ---
   const adminAdjustWallet = useCallback((userId, amount, desc) => {
     creditWallet(userId, amount, `[Admin] ${desc}`);
@@ -1865,63 +1744,33 @@ export function AppProvider({ children }) {
 
   // --- Admin Logic ---
   const handleApproveRequest = async (req) => {
-    const walletType = req.walletType || req.data?.walletType || null;
-
     if (req.type === 'topup') {
       const amt       = Number(req.data.amount);
       const topupDesc = `เติมเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`;
-
-      if (walletType && FIREBASE_ENABLED) {
-        // ── Multi-wallet top-up: credit sub-wallet ใน Firestore ───────────
-        try {
-          await creditWalletByType(req.userId, walletType, amt, topupDesc);
-          notifySystem("Admin ✅", `อนุมัติเติม ${walletType} ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
-        } catch (err) {
-          return notifySystem("ผิดพลาด", err?.message || 'creditWalletByType ล้มเหลว', "error");
-        }
-      } else {
-        // ── Generic wallet (เดิม) ─────────────────────────────────────────
-        creditWallet(req.userId, amt, topupDesc);
-        if (FIREBASE_ENABLED) creditWalletInDB(req.userId, amt, topupDesc).catch(() => {});
-        notifySystem("Admin ✅", `อนุมัติเติมเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
-      }
+      creditWallet(req.userId, amt, topupDesc);
+      if (FIREBASE_ENABLED) creditWalletInDB(req.userId, amt, topupDesc).catch(() => {});
+      notifySystem("Admin ✅", `อนุมัติเติมเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
 
     } else if (req.type === 'withdraw') {
-      const amt         = Number(req.data.amount);
+      const amt          = Number(req.data.amount);
       const withdrawDesc = `ถอนเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`;
-
-      if (walletType && FIREBASE_ENABLED) {
-        // ── Multi-wallet withdrawal: ดึงยอด sub-wallet จาก Firestore แล้วหัก ─
+      // ดึงยอดปัจจุบันจาก Firestore ก่อนหัก
+      let liveBalance = globalWallets[req.userId]?.balance ?? 0;
+      if (FIREBASE_ENABLED) {
         try {
-          const mw = await loadMultiWallet(req.userId);
-          const subBal = mw?.[walletType]?.balance ?? 0;
-          if (subBal < amt) {
-            return notifySystem("ผิดพลาด", `${req.user} มี ${walletType} ฿${subBal.toLocaleString()} (ต้องการ ฿${amt.toLocaleString()})`, "error");
+          const cloudWallet = await loadWallet(req.userId);
+          if (cloudWallet != null) {
+            liveBalance = cloudWallet.balance ?? 0;
+            setGlobalWallets(prev => ({ ...prev, [req.userId]: { balance: liveBalance, history: cloudWallet.history || [] } }));
           }
-          await creditWalletByType(req.userId, walletType, -amt, withdrawDesc);
-          notifySystem("Admin ✅", `อนุมัติถอน ${walletType} ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
-        } catch (err) {
-          return notifySystem("ผิดพลาด", err?.message || 'ถอนเงินไม่สำเร็จ', "error");
-        }
-      } else {
-        // ── Generic wallet (เดิม) — ดึงยอดจาก Firestore โดยตรง ──────────────
-        let liveBalance = globalWallets[req.userId]?.balance ?? 0;
-        if (FIREBASE_ENABLED) {
-          try {
-            const cloudWallet = await loadWallet(req.userId);
-            if (cloudWallet != null) {
-              liveBalance = cloudWallet.balance ?? 0;
-              setGlobalWallets(prev => ({ ...prev, [req.userId]: { balance: liveBalance, history: cloudWallet.history || [] } }));
-            }
-          } catch (_) {}
-        }
-        if (liveBalance < amt) {
-          return notifySystem("ผิดพลาด", `${req.user} มียอดเงินไม่พอ (มี ฿${liveBalance.toLocaleString()}, ต้องการ ฿${amt.toLocaleString()})`, "error");
-        }
-        creditWallet(req.userId, -amt, withdrawDesc);
-        if (FIREBASE_ENABLED) creditWalletInDB(req.userId, -amt, withdrawDesc).catch(() => {});
-        notifySystem("Admin ✅", `อนุมัติถอนเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
+        } catch (_) {}
       }
+      if (liveBalance < amt) {
+        return notifySystem("ผิดพลาด", `${req.user} มียอดเงินไม่พอ (มี ฿${liveBalance.toLocaleString()}, ต้องการ ฿${amt.toLocaleString()})`, "error");
+      }
+      creditWallet(req.userId, -amt, withdrawDesc);
+      if (FIREBASE_ENABLED) creditWalletInDB(req.userId, -amt, withdrawDesc).catch(() => {});
+      notifySystem("Admin ✅", `อนุมัติถอนเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
     } else if (req.type === 'merchant_reg') {
       const newId = `rest_${Date.now()}`;
       // ใช้ตำแหน่งที่ Merchant ส่งมาในคำขอ (req.data.location)
@@ -2399,6 +2248,7 @@ export function AppProvider({ children }) {
       walletUnsubRef.current = null;
     }
     walletFromFirestoreRef.current = false;
+    walletSubscribedRef.current = false;
     setIsLoggedIn(false);
     setCurrentUser(null);
     setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
@@ -2563,17 +2413,6 @@ export function AppProvider({ children }) {
     processTransaction,
     creditWallet,
     grantRole,
-
-    // Multi-wallet
-    multiWallet,
-    txLogs,
-    requestDepositByType,
-    handleApproveDeposit,
-    handleRejectDeposit,
-    requestWithdrawalByType,
-    handleApproveWithdrawal,
-    handleRejectWithdrawal,
-    adminCreditWalletByType,
 
     // Rider location
     updateRiderWorkingLocation,
