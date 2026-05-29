@@ -1,7 +1,7 @@
 import {
   doc, setDoc, getDoc, updateDoc, deleteDoc,
   collection, getDocs, addDoc,
-  serverTimestamp, query, orderBy, limit, where,
+  serverTimestamp, query, orderBy, limit, where, Timestamp,
   runTransaction, onSnapshot,
   increment, arrayUnion,
 } from 'firebase/firestore';
@@ -78,9 +78,17 @@ export const updateOrderStatusInDB = async (orderId, fields) => {
   }
 };
 
+// ดึงเฉพาะ orders ใน 30 วันล่าสุด — ลด Firestore reads เมื่อ collection ขยายใหญ่
+const thirtyDaysAgo = () => Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+
 export const loadAllOrders = async () => {
   try {
-    const q = query(collection(db, 'orders'), orderBy('updatedAt', 'desc'), limit(500));
+    const q = query(
+      collection(db, 'orders'),
+      where('updatedAt', '>=', thirtyDaysAgo()),
+      orderBy('updatedAt', 'desc'),
+      limit(500),
+    );
     const snap = await getDocs(q);
     return snap.docs.map(d => {
       const data = d.data();
@@ -134,7 +142,12 @@ export const acceptOrderTransaction = async (orderId, riderId, riderLocation, ri
  * @returns {function} unsubscribe — เรียกเพื่อยกเลิก subscription
  */
 export const subscribeToOrders = (callback, onError) => {
-  const q = query(collection(db, 'orders'), orderBy('updatedAt', 'desc'), limit(500));
+  const q = query(
+    collection(db, 'orders'),
+    where('updatedAt', '>=', thirtyDaysAgo()),
+    orderBy('updatedAt', 'desc'),
+    limit(500),
+  );
   return onSnapshot(q, (snap) => {
     const orders = snap.docs.map(d => {
       const data = d.data();

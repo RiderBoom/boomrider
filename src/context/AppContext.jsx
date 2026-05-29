@@ -761,7 +761,15 @@ export function AppProvider({ children }) {
       onForegroundMessage((msg) => {
         notifySystem(msg.title, msg.body, 'info');
       });
-      return () => unsubscribe();
+      return () => {
+        unsubscribe();
+        // cleanup Firestore subscriptions เมื่อ component unmount
+        if (window.__boomriderUnsubOrders)  { window.__boomriderUnsubOrders();  window.__boomriderUnsubOrders  = null; }
+        if (window.__boomriderUnsubPending) { window.__boomriderUnsubPending(); window.__boomriderUnsubPending = null; }
+        if (window.__boomriderUnsubChats)   { window.__boomriderUnsubChats();   window.__boomriderUnsubChats   = null; }
+        if (window.__boomriderUnsubShared)  { window.__boomriderUnsubShared.forEach(fn => fn()); window.__boomriderUnsubShared = null; }
+        if (walletUnsubRef.current)         { walletUnsubRef.current();         walletUnsubRef.current         = null; }
+      };
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

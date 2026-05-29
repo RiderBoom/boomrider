@@ -1,7 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
-import { initializeFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 import { getMessaging, isSupported } from 'firebase/messaging';
 
 // Firebase project config — ใส่ค่าจาก Firebase Console > Project Settings
@@ -24,9 +28,15 @@ export const auth = getAuth(app);
 // Storage
 export const storage = getStorage(app);
 
-// Firestore — ignoreUndefinedProperties ป้องกัน "Unsupported field value: undefined"
-// ที่เกิดจาก riderLocation.x/y = undefined ในช่วง real-time simulation
-export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+// Firestore — persistent cache (IndexedDB) + multi-tab support
+// แอปโหลดข้อมูลจาก cache ก่อนในแวบแรก แล้วซิงค์เฉพาะส่วนที่เปลี่ยนแปลง
+// ช่วยประหยัด Firestore reads และทำให้แอปทำงานได้แม้อินเทอร์เน็ตช้า
+export const db = initializeFirestore(app, {
+  ignoreUndefinedProperties: true,
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+});
 
 // Messaging (async — not supported in all browsers / service workers)
 export const getMessagingInstance = async () => {
