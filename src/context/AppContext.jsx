@@ -10,7 +10,7 @@ import {
 import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders,
-  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet,
+  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew,
   saveRestaurant, loadRestaurants, deleteRestaurantFromDB,
   saveMenuItems, loadMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
@@ -411,6 +411,8 @@ export function AppProvider({ children }) {
           setTempProfile(profile);
           setUserRoles(baseRoles);
           localStorage.setItem('boomrider_user', JSON.stringify(newUser));
+          // สร้าง Firestore wallet document ทันทีสำหรับ user ใหม่
+          if (FIREBASE_ENABLED) initWalletIfNew(firebaseUser.uid).catch(() => {});
         } else {
           // ── Session เดิม (โหลดหน้าใหม่ / token refresh) ──────────────
           // โหลดตำแหน่งที่ปักหมุดไว้จาก Firestore + localStorage

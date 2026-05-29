@@ -361,6 +361,24 @@ export const saveWallet = async (userId, balance, history) => {
   } catch {}
 };
 
+/**
+ * สร้าง Firestore wallet document สำหรับ user ใหม่ (ถ้ายังไม่มี)
+ * ใช้ merge:false เพื่อไม่ overwrite document ที่มีอยู่แล้ว
+ */
+export const initWalletIfNew = async (userId) => {
+  if (!userId) return;
+  try {
+    const snap = await getDoc(doc(db, 'wallets', userId));
+    if (!snap.exists()) {
+      await setDoc(doc(db, 'wallets', userId), {
+        balance: 0,
+        history: [],
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch {}
+};
+
 export const loadWallet = async (userId) => {
   try {
     const snap = await getDoc(doc(db, 'wallets', userId));
