@@ -11,15 +11,15 @@ import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders,
   saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew,
-  saveRestaurant, loadRestaurants, deleteRestaurantFromDB,
-  saveMenuItems, loadMenuItems,
+  saveRestaurant, loadRestaurants, deleteRestaurantFromDB, subscribeToRestaurants,
+  saveMenuItems, loadMenuItems, subscribeToMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
-  saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation,
+  saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation, subscribeToRiders,
   saveChat, loadAllChats, subscribeToChats, deleteChatFromDB,
   saveUserProfile, loadUserProfile,
   safeLocalSet,
   acceptOrderTransaction, subscribeToOrders,
-  atomicOrderCompletion,
+  atomicOrderCompletion, subscribeToConfig,
 } from '../firebase/firestore';
 // (Firebase Storage ไม่ถูกใช้ — ใช้ compressImage + Firestore แทน)
 
@@ -215,35 +215,8 @@ export function AppProvider({ children }) {
     if (savedConfig) { try { const c = JSON.parse(savedConfig); setAppConfig(c); setEditConfig(c); } catch {} }
     const savedPending = localStorage.getItem('boomrider_pending_requests');
     if (savedPending) { try { setPendingRequests(JSON.parse(savedPending)); } catch {} }
-    if (FIREBASE_ENABLED) {
-      // โหลด shared data จาก Firestore — ทุก device จะเห็นข้อมูลเดียวกัน
-      Promise.all([
-        loadAppConfig(),
-        loadRestaurants(),
-        loadMenuItems(),
-        loadPendingRequests(),
-        loadRiders(),
-      ]).then(([cfg, cloudRestaurants, cloudMenus, cloudPending, cloudRiders]) => {
-        if (cfg) { setAppConfig(cfg); setEditConfig(cfg); }
-        if (cloudRestaurants && cloudRestaurants.length > 0) {
-          setRestaurants(cloudRestaurants);
-          safeLocalSet('boomrider_restaurants', cloudRestaurants);
-        }
-        if (cloudMenus && Object.keys(cloudMenus).length > 0) {
-          setMenuItems(cloudMenus);
-          safeLocalSet('boomrider_menu_items', cloudMenus);
-        }
-        // อัปเดตเสมอ (รวมถึงกรณี Admin อนุมัติหมดแล้ว = array ว่าง)
-        if (cloudPending !== null) {
-          setPendingRequests(cloudPending);
-          safeLocalSet('boomrider_pending_requests', cloudPending);
-        }
-        if (cloudRiders && cloudRiders.length > 0) {
-          setRiders(cloudRiders);
-          safeLocalSet('boomrider_riders', cloudRiders);
-        }
-      }).catch(() => {});
-    }
+    // shared data (restaurants/riders/menu/config/pending) โหลดผ่าน real-time subscription
+    // ใน onAuthChange — localStorage ด้านบนใช้แสดงผลทันทีก่อน subscription จะ fire
   }, []);
 
   // --- Admin notification ---
@@ -719,6 +692,33 @@ export function AppProvider({ children }) {
           });
         });
         window.__boomriderUnsubChats = unsubChats;
+
+        // ── Subscribe real-time shared data (restaurants / riders / menu / config) ──
+        // ทำให้ทุก device เห็นข้อมูลร้านค้า ไรเดอร์ เมนู และการตั้งค่าเหมือนกันทันที
+        if (window.__boomriderUnsubShared) {
+          window.__boomriderUnsubShared.forEach(fn => fn());
+          window.__boomriderUnsubShared = null;
+        }
+        const unsubRestaurants = subscribeToRestaurants((list) => {
+          setRestaurants(list);
+          safeLocalSet('boomrider_restaurants', list);
+        });
+        const unsubRiders = subscribeToRiders((list) => {
+          setRiders(list);
+          safeLocalSet('boomrider_riders', list);
+        });
+        const unsubMenuItems = subscribeToMenuItems((menus) => {
+          if (Object.keys(menus).length > 0) {
+            setMenuItems(menus);
+            safeLocalSet('boomrider_menu_items', menus);
+          }
+        });
+        const unsubConfig = subscribeToConfig((cfg) => {
+          setAppConfig(cfg);
+          safeLocalSet('boomrider_appconfig', cfg);
+          // ไม่อัปเดต editConfig อัตโนมัติ — ป้องกันทับฟอร์มที่ Admin กำลังแก้อยู่
+        });
+        window.__boomriderUnsubShared = [unsubRestaurants, unsubRiders, unsubMenuItems, unsubConfig];
 
         // โหลด chats ครั้งแรก (เผื่อ onSnapshot ช้า)
         loadAllChats().then(cloudChats => {

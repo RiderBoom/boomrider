@@ -163,6 +163,15 @@ export const loadAppConfig = async () => {
   } catch { return null; }
 };
 
+export const subscribeToConfig = (callback) => {
+  return onSnapshot(doc(db, 'system', 'config'), (snap) => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    if (data.updatedAt?.toDate) delete data.updatedAt;
+    callback(data);
+  }, () => {});
+};
+
 // ===== Restaurants ============================================================
 
 export const saveRestaurant = async (restaurant) => {
@@ -190,6 +199,17 @@ export const loadRestaurants = async () => {
   } catch { return null; }
 };
 
+export const subscribeToRestaurants = (callback) => {
+  return onSnapshot(collection(db, 'restaurants'), (snap) => {
+    const list = snap.docs.map(d => {
+      const data = d.data();
+      if (data.updatedAt?.toDate) delete data.updatedAt;
+      return data;
+    });
+    callback(list);
+  }, () => {});
+};
+
 // ===== Menu Items =============================================================
 
 export const saveMenuItems = async (restaurantId, items) => {
@@ -211,6 +231,16 @@ export const loadMenuItems = async () => {
     });
     return result;
   } catch { return null; }
+};
+
+export const subscribeToMenuItems = (callback) => {
+  return onSnapshot(collection(db, 'menu_items'), (snap) => {
+    const result = {};
+    snap.docs.forEach(d => {
+      result[d.id] = d.data().items || [];
+    });
+    callback(result);
+  }, () => {});
 };
 
 // ===== Pending Requests =======================================================
@@ -432,6 +462,17 @@ export const loadRiders = async () => {
       return data;
     });
   } catch { return null; }
+};
+
+export const subscribeToRiders = (callback) => {
+  return onSnapshot(collection(db, 'riders'), (snap) => {
+    const list = snap.docs.map(d => {
+      const data = d.data();
+      if (data.updatedAt?.toDate) delete data.updatedAt;
+      return data;
+    });
+    callback(list);
+  }, () => {});
 };
 
 export const deleteRiderFromDB = async (id) => {
