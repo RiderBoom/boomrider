@@ -80,7 +80,7 @@ export const updateOrderStatusInDB = async (orderId, fields) => {
 
 export const loadAllOrders = async () => {
   try {
-    const q = query(collection(db, 'orders'), orderBy('updatedAt', 'desc'), limit(200));
+    const q = query(collection(db, 'orders'), orderBy('updatedAt', 'desc'), limit(500));
     const snap = await getDocs(q);
     return snap.docs.map(d => {
       const data = d.data();
@@ -134,7 +134,7 @@ export const acceptOrderTransaction = async (orderId, riderId, riderLocation, ri
  * @returns {function} unsubscribe — เรียกเพื่อยกเลิก subscription
  */
 export const subscribeToOrders = (callback, onError) => {
-  const q = query(collection(db, 'orders'), orderBy('updatedAt', 'desc'), limit(200));
+  const q = query(collection(db, 'orders'), orderBy('updatedAt', 'desc'), limit(500));
   return onSnapshot(q, (snap) => {
     const orders = snap.docs.map(d => {
       const data = d.data();

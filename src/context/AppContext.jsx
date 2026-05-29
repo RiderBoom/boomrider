@@ -775,15 +775,11 @@ export function AppProvider({ children }) {
         addresses: userAddresses,
       };
       localStorage.setItem('boomrider_user', JSON.stringify(updatedUser));
-      // ── Sync wallet ไป Firestore เฉพาะเมื่อ user เปลี่ยนยอดเอง ─────────────
-      // walletFromFirestoreRef = true → ยอดมาจาก Firestore → ห้ามเขียนกลับ
-      // walletSubscribedRef = false → subscription ยังไม่ fire → ห้ามเขียน (ป้องกัน stale localStorage ทับ Firestore)
-      if (FIREBASE_ENABLED) {
-        if (walletFromFirestoreRef.current) {
-          walletFromFirestoreRef.current = false; // reset flag
-        } else if (walletSubscribedRef.current) {
-          saveWallet(currentUser.id, userWallet, walletHistory).catch(() => {});
-        }
+      // ── wallet เขียน Firestore ผ่าน creditWalletInDB (atomic increment/arrayUnion) เท่านั้น ──
+      // saveWallet (full-overwrite setDoc) ถูกถอดออกเพื่อป้องกัน race condition กับ creditWalletInDB
+      // subscribeToWallet คือ source of truth สำหรับ local state
+      if (FIREBASE_ENABLED && walletFromFirestoreRef.current) {
+        walletFromFirestoreRef.current = false;
       }
     }
   }, [userProfile, userRoles, userWallet, walletHistory, userAddresses]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1052,6 +1048,10 @@ export function AppProvider({ children }) {
     setCart([]);
     if (paymentMethod === 'wallet') {
       processTransaction('payment', -grandTotal, `ชำระค่าอาหาร (${restaurantName})`);
+      if (FIREBASE_ENABLED) {
+        const uid = currentUser?.id || userProfile?.id;
+        if (uid) creditWalletInDB(uid, -grandTotal, `ชำระค่าอาหาร (${restaurantName})`).catch(() => {});
+      }
     }
     if (FIREBASE_ENABLED) saveOrder(newOrder).catch(() => {});
     setPaymentMethod('wallet');
@@ -1132,6 +1132,10 @@ export function AppProvider({ children }) {
 
     if (paymentMethod === 'wallet') {
       processTransaction('payment', -grandTotal, 'ชำระค่าส่งพัสดุ');
+      if (FIREBASE_ENABLED) {
+        const uid = currentUser?.id || userProfile?.id;
+        if (uid) creditWalletInDB(uid, -grandTotal, 'ชำระค่าส่งพัสดุ').catch(() => {});
+      }
     }
     if (FIREBASE_ENABLED) saveOrder(newOrder).catch(() => {});
 
@@ -1730,7 +1734,9 @@ export function AppProvider({ children }) {
 
   // --- Admin manual wallet adjustment ---
   const adminAdjustWallet = useCallback((userId, amount, desc) => {
-    creditWallet(userId, amount, `[Admin] ${desc}`);
+    const fullDesc = `[Admin] ${desc}`;
+    creditWallet(userId, amount, fullDesc);
+    if (FIREBASE_ENABLED) creditWalletInDB(userId, amount, fullDesc).catch(() => {});
     notifySystem('Admin', `ปรับยอด ${amount > 0 ? '+' : ''}฿${amount} ให้ผู้ใช้เรียบร้อย`, 'success');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
