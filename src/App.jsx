@@ -3,6 +3,7 @@ import { ShieldAlert } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
 import ChatModal from './components/ChatModal';
+import InstallBanner from './components/InstallBanner';
 import AuthView from './views/AuthView';
 import CustomerView from './views/CustomerView';
 import MerchantView from './views/MerchantView';
@@ -41,6 +42,7 @@ function AppRouter() {
       style={{ fontFamily: "'Noto Sans Thai', 'Inter', sans-serif" }}
     >
       <RoleSwitcher />
+      <InstallBanner />
       {!isLoggedIn ? (
         <AuthView />
       ) : (
