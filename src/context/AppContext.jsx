@@ -2010,9 +2010,9 @@ export function AppProvider({ children }) {
   };
 
   /**
-   * ── Force Refresh: โหลดข้อมูลใหม่จาก Firestore + STATUS_RANK merge ─────────
-   * ใช้เป็น fallback เมื่อ onSnapshot disconnect (เช่น network ไม่ดีบนมือถือ)
-   * หรือเมื่อ user กด "รีเฟรช" ด้วยตัวเอง
+   * ── Force Refresh: โหลด orders + pending จาก Firestore (manual only)
+   * ไม่ควรเรียกอัตโนมัติ — แต่ละครั้งใช้ getDocs อ่านได้ถึง 500+ documents
+   * onSnapshot ดูแล real-time sync อยู่แล้ว; ใช้ฟังก์ชันนี้เฉพาะเมื่อ user กดปุ่มเอง
    */
   const forceRefresh = useCallback(async () => {
     if (!FIREBASE_ENABLED) {
@@ -2063,15 +2063,8 @@ export function AppProvider({ children }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Auto-refresh fallback (ทุก 60 วินาที) — ต้องอยู่หลัง forceRefresh เพื่อหลีก TDZ ---
-  // ป้องกัน onSnapshot หลุดเงียบๆ บนมือถือที่ network ไม่เสถียร
-  useEffect(() => {
-    if (!FIREBASE_ENABLED) return;
-    const timer = setInterval(() => {
-      if (!document.hidden) forceRefresh();
-    }, 60_000);
-    return () => clearInterval(timer);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-refresh timer ถูกลบออกแล้ว — onSnapshot จัดการ real-time sync เองโดยอัตโนมัติ
+  // การเรียก loadAllOrders() ทุก 60 วิ ทำให้ quota 50k reads/day หมดใน < 1 ชั่วโมง
 
   const saveShopEdit = () => {
     let savedRest = null;
