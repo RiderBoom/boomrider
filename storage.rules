@@ -1,0 +1,48 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── Delivery proof photos ──────────────────────────────────────────────
+    // ไรเดอร์ที่ login แล้วอัปโหลดได้, ทุกคนที่ login อ่านได้ (Admin ดูได้)
+    match /orders/{orderId}/{fileName} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024; // max 5 MB
+    }
+
+    // ── User / KYC / Registration photos ──────────────────────────────────
+    match /users/{userId}/{allPaths=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // ── Shop cover photos ──────────────────────────────────────────────────
+    match /shops/{shopId}/{allPaths=**} {
+      allow read:  if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // ── KYC (id cards for registration) ───────────────────────────────────
+    match /kyc/{userId}/{allPaths=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // ── Top-up slips ───────────────────────────────────────────────────────
+    match /slips/{userId}/{allPaths=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // ── Menu photos ────────────────────────────────────────────────────────
+    match /menus/{shopId}/{allPaths=**} {
+      allow read:  if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024;
+    }
+  }
+}

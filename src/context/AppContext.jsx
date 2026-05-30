@@ -21,7 +21,7 @@ import {
   acceptOrderTransaction, subscribeToOrders,
   atomicOrderCompletion, subscribeToConfig,
 } from '../firebase/firestore';
-import { uploadDeliveryProof } from '../firebase/storage';
+import { uploadDataUrl } from '../firebase/storage';
 
 const AppContext = createContext(null);
 
@@ -1403,21 +1403,36 @@ export function AppProvider({ children }) {
     setPhotoUploading(prev => ({ ...prev, [uploadKey]: true }));
 
     try {
+      // บีบอัดก่อนเสมอ: กล้องมือถือผลิต 5-12 MB → ลดเหลือ ~300-500 KB (เร็วขึ้น 15-30x)
+      const compressed = await compressImage(file, 1280, 960, 0.82);
+
+      let photoUrl = compressed; // fallback: base64 local
       if (FIREBASE_ENABLED) {
-        // อัปโหลดไป Firebase Storage → ได้ HTTPS URL ที่ Admin ดูได้จริง
-        const url = await uploadDeliveryProof(orderId, type, file);
-        setRiderJobPhotos(prev => ({ ...prev, [orderId]: { ...prev[orderId], [type]: url } }));
-      } else {
-        // fallback: base64 สำหรับ local dev (ไม่มี Firebase)
-        const reader = new FileReader();
-        reader.onloadend = () =>
-          setRiderJobPhotos(prev => ({ ...prev, [orderId]: { ...prev[orderId], [type]: reader.result } }));
-        reader.readAsDataURL(file);
+        try {
+          const path = `orders/${orderId}/${type}_proof_${Date.now()}.jpg`;
+          // timeout 30 วิ — ป้องกัน promise ค้างตลอดเมื่อ network หลุด
+          photoUrl = await Promise.race([
+            uploadDataUrl(compressed, path),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(Object.assign(new Error('upload_timeout'), { code: 'timeout' })), 30_000)
+            ),
+          ]);
+        } catch (storageErr) {
+          // Storage ยังไม่พร้อม / quota / network → ใช้ base64 แทน ไรเดอร์ยังทำงานต่อได้
+          console.warn('[handleRiderPhotoUpload] storage fallback:', storageErr?.code, storageErr?.message);
+        }
       }
-      notifySystem("สำเร็จ", "อัปโหลดรูปภาพเรียบร้อย", "success");
+      setRiderJobPhotos(prev => ({ ...prev, [orderId]: { ...prev[orderId], [type]: photoUrl } }));
+      notifySystem("สำเร็จ", "บันทึกรูปภาพเรียบร้อย", "success");
     } catch (err) {
-      notifySystem("ผิดพลาด", "ไม่สามารถอัปโหลดรูปภาพได้ กรุณาลองใหม่", "error");
+      console.error('[handleRiderPhotoUpload]', err?.code, err?.message);
+      notifySystem(
+        "อัปโหลดไม่สำเร็จ",
+        err?.code === 'timeout' ? 'เน็ตช้าเกินไป กรุณาเชื่อมต่อ WiFi แล้วลองใหม่' : 'กรุณาลองใหม่อีกครั้ง',
+        "error"
+      );
     } finally {
+      // finally รันเสมอ — ปลด lock ปุ่มไม่ว่าผลจะเป็นอย่างไร
       setPhotoUploading(prev => ({ ...prev, [uploadKey]: false }));
     }
   };
