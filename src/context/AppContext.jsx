@@ -1212,6 +1212,29 @@ export function AppProvider({ children }) {
           }));
           notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย (offline mode)', 'success');
           return true;
+        } else if (err.code === 'resource-exhausted') {
+          // runTransaction ต้องการ tx.get() (1 read) → ล้มเหลวเมื่อ read quota หมด
+          // Fallback: updateDoc เป็น write-only — ไม่กิน read quota
+          // Security rule evaluation (resource.data) ไม่นับเป็น quota read
+          try {
+            await updateOrderStatusInDB(orderId, {
+              status: 'rider_accepted',
+              riderId,
+              riderUid,
+              riderPhone,
+              riderName,
+              riderLocation: riderLocation || order.pickupLocation || null,
+            });
+            setOrders(prev => prev.map(o => {
+              if (o.id !== orderId) return o;
+              return { ...o, status: 'rider_accepted', riderId, riderUid, riderPhone, riderName, riderLocation: riderLocation || o.pickupLocation };
+            }));
+            notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย', 'success');
+            return true;
+          } catch {
+            notifySystem('ระบบขัดข้องชั่วคราว', 'กรุณาลองใหม่ในอีกสักครู่', 'error');
+            return false;
+          }
         } else if (err.code === 'permission-denied') {
           notifySystem('ไม่มีสิทธิ์', 'กรุณา login ใหม่แล้วลองอีกครั้ง', 'error');
         } else if (err.code === 'unavailable' || err.code === 'deadline-exceeded') {
