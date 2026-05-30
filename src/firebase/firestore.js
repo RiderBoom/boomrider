@@ -542,8 +542,7 @@ export const loadAllChats = async () => {
 };
 
 /**
- * Real-time subscription สำหรับ chats ทั้งหมด
- * Admin เห็นทุก chat, User เห็นเฉพาะของตัวเอง (Firestore rules ควบคุม)
+ * Real-time subscription สำหรับ chats ทั้งหมด (Admin only)
  */
 export const subscribeToChats = (callback, onError) => {
   const q = collection(db, 'chats');
@@ -556,6 +555,21 @@ export const subscribeToChats = (callback, onError) => {
     callback(allChats);
   }, (err) => {
     if (import.meta.env.DEV) console.error('[subscribeToChats]', err.code, err.message);
+    if (onError) onError(err);
+  });
+};
+
+/**
+ * Real-time subscription เฉพาะ support chat ของ user (non-admin)
+ * ประหยัด Firestore reads: อ่านแค่ 1 document แทนที่จะอ่านทั้ง collection
+ */
+export const subscribeToSupportChat = (userId, callback, onError) => {
+  if (!userId) return () => {};
+  return onSnapshot(doc(db, 'chats', `support-${userId}`), (snap) => {
+    const msgs = snap.exists() ? (snap.data().messages || []) : [];
+    callback({ [`support-${userId}`]: msgs });
+  }, (err) => {
+    if (import.meta.env.DEV) console.error('[subscribeToSupportChat]', err.code, err.message);
     if (onError) onError(err);
   });
 };

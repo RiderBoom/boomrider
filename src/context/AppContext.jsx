@@ -15,7 +15,7 @@ import {
   saveMenuItems, loadMenuItems, subscribeToMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
   saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation, subscribeToRiders,
-  saveChat, loadAllChats, subscribeToChats, deleteChatFromDB,
+  saveChat, subscribeToChats, subscribeToSupportChat, deleteChatFromDB,
   saveUserProfile, loadUserProfile,
   safeLocalSet,
   acceptOrderTransaction, subscribeToOrders,
@@ -623,38 +623,32 @@ export function AppProvider({ children }) {
         window.__boomriderUnsubPending = unsubPending;
 
         // ── Subscribe real-time chats (onSnapshot) ───────────────────────
-        // ทำให้ Admin และลูกค้าส่ง/รับข้อความข้าม device ได้แบบ real-time
         if (window.__boomriderUnsubChats) {
           window.__boomriderUnsubChats();
           window.__boomriderUnsubChats = null;
         }
-        // reset chat notification state ทุกครั้งที่ login ใหม่
         lastChatCountsRef.current = {};
         chatSubInitializedRef.current = false;
 
-        // ── ใช้ firebaseUser.uid แทน uid (ซึ่งไม่ได้ประกาศใน scope นี้) ──────
         const fbUid = firebaseUser.uid;
         const isAdminSession = fbUid === ADMIN_UID;
 
-        const unsubChats = subscribeToChats((cloudChats) => {
-          // ── ตรวจหาข้อความใหม่ (ข้าม initial snapshot) ─────────────────
+        // Helper: shared callback for processing incoming chat updates
+        const handleChatUpdate = (chatUpdate, replaceAll) => {
           if (!chatSubInitializedRef.current) {
-            // initial load — บันทึกจำนวนข้อความปัจจุบันโดยไม่ notify
-            Object.entries(cloudChats).forEach(([id, msgs]) => {
+            Object.entries(chatUpdate).forEach(([id, msgs]) => {
               lastChatCountsRef.current[id] = (msgs || []).length;
             });
             chatSubInitializedRef.current = true;
           } else {
-            // subsequent updates — ตรวจหาข้อความใหม่
-            Object.entries(cloudChats).forEach(([chatId, msgs]) => {
+            Object.entries(chatUpdate).forEach(([chatId, msgs]) => {
               if (!msgs || msgs.length === 0) return;
               const prevCount = lastChatCountsRef.current[chatId] || 0;
-              if (msgs.length <= prevCount) return; // ไม่มีข้อความใหม่
-
+              if (msgs.length <= prevCount) return;
               const newMsgs = msgs.slice(prevCount);
               lastChatCountsRef.current[chatId] = msgs.length;
 
-              // ── Admin: แจ้งเตือนเมื่อลูกค้าส่งข้อความ support ──────────
+              // Admin: แจ้งเตือนเมื่อลูกค้าส่งข้อความ support
               if (isAdminSession && chatId.startsWith('support-')) {
                 const hasNewFromUser = newMsgs.some(m => m.sender !== 'admin');
                 if (hasNewFromUser) {
@@ -667,7 +661,7 @@ export function AppProvider({ children }) {
                 }
               }
 
-              // ── ลูกค้า: แจ้งเตือนเมื่อ Admin ตอบกลับ support chat ของตัวเอง ─
+              // ลูกค้า/ไรเดอร์: แจ้งเตือนเมื่อ Admin ตอบกลับ support chat
               if (!isAdminSession && chatId === `support-${fbUid}`) {
                 const adminReply = newMsgs.find(m => m.sender === 'admin');
                 if (adminReply) {
@@ -681,21 +675,34 @@ export function AppProvider({ children }) {
             });
           }
 
-          // ── Cloud is source of truth — deleted chats must not resurface ──
           setChats(prev => {
-            const merged = {};
-            Object.entries(cloudChats).forEach(([id, msgs]) => {
+            // Admin (replaceAll=true): cloud is source of truth — removes deleted chats
+            // Non-admin (replaceAll=false): merge into existing state — preserves other chats
+            const base = replaceAll ? {} : { ...prev };
+            Object.entries(chatUpdate).forEach(([id, msgs]) => {
               const local = prev[id] || [];
-              merged[id] = local.length > msgs.length ? local : msgs;
+              base[id] = local.length > msgs.length ? local : msgs;
             });
-            try { localStorage.setItem('boomrider_chats', JSON.stringify(merged)); } catch {}
-            return merged;
+            try { localStorage.setItem('boomrider_chats', JSON.stringify(base)); } catch {}
+            return base;
           });
-        });
-        window.__boomriderUnsubChats = unsubChats;
+        };
+
+        if (isAdminSession) {
+          // Admin: subscribe to ALL chats (needs to see every conversation)
+          window.__boomriderUnsubChats = subscribeToChats(
+            (cloudChats) => handleChatUpdate(cloudChats, true),
+          );
+        } else {
+          // Non-admin: subscribe ONLY to own support chat — saves N_chats reads per session
+          // Riders/customers never need order chats from other parties in real-time
+          window.__boomriderUnsubChats = subscribeToSupportChat(
+            fbUid,
+            (chatUpdate) => handleChatUpdate(chatUpdate, false),
+          );
+        }
 
         // ── Subscribe real-time shared data (restaurants / riders / menu / config) ──
-        // ทำให้ทุก device เห็นข้อมูลร้านค้า ไรเดอร์ เมนู และการตั้งค่าเหมือนกันทันที
         if (window.__boomriderUnsubShared) {
           window.__boomriderUnsubShared.forEach(fn => fn());
           window.__boomriderUnsubShared = null;
@@ -717,20 +724,8 @@ export function AppProvider({ children }) {
         const unsubConfig = subscribeToConfig((cfg) => {
           setAppConfig(cfg);
           safeLocalSet('boomrider_appconfig', cfg);
-          // ไม่อัปเดต editConfig อัตโนมัติ — ป้องกันทับฟอร์มที่ Admin กำลังแก้อยู่
         });
         window.__boomriderUnsubShared = [unsubRestaurants, unsubRiders, unsubMenuItems, unsubConfig];
-
-        // โหลด chats ครั้งแรก (เผื่อ onSnapshot ช้า)
-        loadAllChats().then(cloudChats => {
-          if (cloudChats && Object.keys(cloudChats).length > 0) {
-            setChats(prev => {
-              const merged = { ...prev, ...cloudChats };
-              try { localStorage.setItem('boomrider_chats', JSON.stringify(merged)); } catch {}
-              return merged;
-            });
-          }
-        }).catch(() => {});
 
         // ── Subscribe wallet (real-time) ─────────────────────────────────
         // เมื่อ Admin อนุมัติ topup/withdraw → Firestore เปลี่ยน → callback นี้ fire ทันที
