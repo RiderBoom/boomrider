@@ -1212,12 +1212,26 @@ export function AppProvider({ children }) {
         notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย — ไปรับงานได้เลย', 'success');
         return true;
       } catch (err) {
+        console.error('[acceptOrder] err:', err?.code, err?.message);
+
         if (err.message === 'ORDER_ALREADY_TAKEN') {
           // อัปเดต local state ให้สะท้อนความจริง (งานถูกรับไปแล้ว)
           setOrders(prev => prev.filter(o => o.id !== orderId || o.status !== 'ready_to_pickup'));
           notifySystem('เสียใจด้วย', 'งานนี้ถูกไรเดอร์คนอื่นรับไปก่อน 😔', 'error');
+        } else if (err.message === 'ORDER_NOT_FOUND') {
+          // ออเดอร์ยังไม่ sync ขึ้น Firestore → fallback local update
+          setOrders(prev => prev.map(o => {
+            if (o.id !== orderId) return o;
+            return { ...o, status: 'rider_accepted', riderId, riderUid, riderPhone, riderName, riderLocation: riderLocation || o.pickupLocation };
+          }));
+          notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย (offline mode)', 'success');
+          return true;
+        } else if (err.code === 'permission-denied') {
+          notifySystem('ไม่มีสิทธิ์', 'กรุณา login ใหม่แล้วลองอีกครั้ง', 'error');
+        } else if (err.code === 'unavailable' || err.code === 'deadline-exceeded') {
+          notifySystem('ไม่มีสัญญาณ', 'กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่', 'error');
         } else {
-          notifySystem('เกิดข้อผิดพลาด', 'กรุณาลองใหม่อีกครั้ง', 'error');
+          notifySystem('เกิดข้อผิดพลาด', `กรุณาลองใหม่ (${err.code || 'unknown'})`, 'error');
         }
         return false;
       }
