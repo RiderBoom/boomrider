@@ -10,7 +10,7 @@ import {
 import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders,
-  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, subscribeToAllWallets, initWalletIfNew,
+  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew,
   saveRestaurant, loadRestaurants, deleteRestaurantFromDB, subscribeToRestaurants,
   saveMenuItems, loadMenuItems, subscribeToMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
@@ -277,15 +277,6 @@ export function AppProvider({ children }) {
       }).catch(() => {});
     });
   }, [pendingRequests]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Admin: subscribe to ALL wallets in real-time ──────────────────────────
-  useEffect(() => {
-    if (!FIREBASE_ENABLED || !isAdmin) return;
-    const unsub = subscribeToAllWallets((wallets) => {
-      setGlobalWallets(prev => ({ ...prev, ...wallets }));
-    });
-    return () => unsub();
-  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-grant merchant/rider role if user has a shop/rider entry (recovery mechanism)
   useEffect(() => {
