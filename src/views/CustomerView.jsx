@@ -63,6 +63,7 @@ export default function CustomerView() {
     requestCancelOrder,
     hasPendingCancelRequest,
     forceRefresh,
+    openImagePreview,
     // Promo
     validatePromoCode, usePromoCode,
   } = useApp();
@@ -148,12 +149,10 @@ export default function CustomerView() {
     });
   };
 
-  // แสดง badge บน Order tab เฉพาะ orders ที่ยังอยู่ระหว่างดำเนินการ
-  // รวม parcel ที่ 'delivered' แล้วแต่ยังรอลูกค้ายืนยันรับสินค้า
+  // orders ที่ยังอยู่ระหว่างดำเนินการ — รวมทั้ง food/parcel ที่ 'delivered' รอลูกค้ายืนยัน
   const activityBadge = orders.filter(o =>
     (
-      ['pending', 'preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up', 'delivering'].includes(o.status) ||
-      (o.type === 'parcel' && o.status === 'delivered')
+      ['pending', 'preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up', 'delivering', 'delivered'].includes(o.status)
     ) &&
     (o.customerId === userProfile.id || o.customerId === currentUser?.id),
   ).length;
@@ -1017,27 +1016,23 @@ export default function CustomerView() {
         const myOrders = orders.filter(o =>
           o.customerId === userProfile.id || o.customerId === currentUser?.id,
         );
-        // กำลังดำเนินการ: สถานะปกติ + parcel 'delivered' ที่รอลูกค้ายืนยันรับสินค้า
+        // กำลังดำเนินการ: สถานะปกติ + 'delivered' (ทุกประเภท) ที่รอลูกค้ายืนยัน
         const inProgress = myOrders.filter(o =>
-          ['pending', 'preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up', 'delivering'].includes(o.status) ||
-          (o.type === 'parcel' && o.status === 'delivered'),
+          ['pending', 'preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up', 'delivering', 'delivered'].includes(o.status),
         );
         // แสดง "จบงานแล้ว" เฉพาะออเดอร์ที่เพิ่งจบภายใน 2 ชั่วโมง
-        // parcel 'delivered' ที่ยังอยู่ใน inProgress → ไม่แสดงซ้ำที่นี่
+        // 'delivered' ยังรออยู่ใน inProgress → ไม่แสดงซ้ำที่นี่
         const now = Date.now();
         const justDone = myOrders.filter(o => {
-          if (!['delivered', 'completed'].includes(o.status)) return false;
-          if (o.type === 'parcel' && o.status === 'delivered') return false; // อยู่ใน inProgress แล้ว
-          if (!o.completedAt) return true; // เก่าที่ไม่มี timestamp → แสดงเสมอ
-          return (now - new Date(o.completedAt).getTime()) < 2 * 60 * 60 * 1000; // ภายใน 2 ชม.
+          if (o.status !== 'completed') return false;
+          if (!o.completedAt) return true;
+          return (now - new Date(o.completedAt).getTime()) < 2 * 60 * 60 * 1000;
         });
-        // ประวัติ: ไม่รวม (1) parcel 'delivered' ที่รอยืนยัน และ (2) orders ที่อยู่ใน justDone แล้ว
+        // ประวัติ: completed ที่เก่ากว่า 2 ชม. และ cancelled
         const history = myOrders.filter(o => {
-          if (!['delivered', 'completed', 'cancelled'].includes(o.status)) return false;
-          if (o.type === 'parcel' && o.status === 'delivered') return false; // ยังอยู่ inProgress
-          // ถ้าเพิ่งจบ (อยู่ใน justDone) → ซ่อนออกจาก history เพื่อไม่ซ้ำกัน
-          if (['delivered', 'completed'].includes(o.status)) {
-            if (!o.completedAt) return false; // ไม่มี timestamp → อยู่ใน justDone
+          if (!['completed', 'cancelled'].includes(o.status)) return false;
+          if (o.status === 'completed') {
+            if (!o.completedAt) return false;
             if ((now - new Date(o.completedAt).getTime()) < 2 * 60 * 60 * 1000) return false;
           }
           return true;
@@ -1058,8 +1053,8 @@ export default function CustomerView() {
                     delivered:       { label: '📦 ไรเดอร์ถึงที่หมายแล้ว!', color: 'bg-teal-100 text-teal-700' },
                   };
                   const s = STATUS_LABELS[order.status] || { label: order.status, color: 'bg-gray-100 text-gray-600' };
-                  // parcel ที่ไรเดอร์ถึงที่หมาย → ไฮไลท์กรอบสีเขียว
-                  const cardBorder = order.type === 'parcel' && order.status === 'delivered'
+                  // ไรเดอร์ถึงที่หมายแล้ว → ไฮไลท์กรอบสีเขียว รอลูกค้ายืนยัน
+                  const cardBorder = order.status === 'delivered'
                     ? 'border-2 border-teal-400'
                     : 'border border-orange-100';
                   return (
@@ -1089,7 +1084,7 @@ export default function CustomerView() {
                             )}
                           </div>
                         )}
-                        {/* ── ปุ่มขอยกเลิก / สถานะรอ Admin — อยู่ใน header เพื่อไม่ให้แผนที่บัง ── */}
+                        {/* ── ปุ่มขอยกเลิก / สถานะรอ Admin — ซ่อนเมื่อไรเดอร์ถึงที่หมายแล้ว ── */}
                         {order.status !== 'delivered' && (
                           <div className="mt-2">
                             {hasPendingCancelRequest(order.id) ? (
@@ -1117,8 +1112,47 @@ export default function CustomerView() {
                           <InteractiveMap mode="view" userLocation={order.location} shopLocation={order.pickupLocation} riderLocation={order.riderLocation} status={order.status} />
                         </div>
                       )}
+                      {/* ── รูปหลักฐานจากไรเดอร์ ── */}
+                      {(() => {
+                        const validPhoto = (v) =>
+                          typeof v === 'string' && v.length > 200 && !v.includes('[image]');
+                        const showPickup   = validPhoto(order.pickupPhoto)   && ['delivering', 'delivered', 'completed'].includes(order.status);
+                        const showDelivery = validPhoto(order.deliveryPhoto) && ['delivered', 'completed'].includes(order.status);
+                        if (!showPickup && !showDelivery) return null;
+                        return (
+                          <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 space-y-3">
+                            {showPickup && (
+                              <div>
+                                <p className="text-xs font-bold text-indigo-600 mb-1.5 flex items-center gap-1">
+                                  <span>📦</span> หลักฐานรับสินค้า — ไรเดอร์รับของแล้ว
+                                </p>
+                                <img
+                                  src={order.pickupPhoto}
+                                  alt="pickup proof"
+                                  className="w-full max-h-48 object-cover rounded-xl border border-indigo-200 cursor-pointer active:opacity-80"
+                                  onClick={() => openImagePreview(order.pickupPhoto)}
+                                />
+                              </div>
+                            )}
+                            {showDelivery && (
+                              <div>
+                                <p className="text-xs font-bold text-teal-600 mb-1.5 flex items-center gap-1">
+                                  <span>✅</span> หลักฐานส่งสินค้า — ไรเดอร์ถึงที่หมายแล้ว
+                                </p>
+                                <img
+                                  src={order.deliveryPhoto}
+                                  alt="delivery proof"
+                                  className="w-full max-h-48 object-cover rounded-xl border border-teal-300 cursor-pointer active:opacity-80"
+                                  onClick={() => openImagePreview(order.deliveryPhoto)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* ── ยอดชำระ / สถานะการจ่ายเงิน ── */}
-                      {order.type === 'parcel' && order.status === 'delivered' ? (
+                      {order.status === 'delivered' ? (
                         /* ไรเดอร์ถึงที่หมายแล้ว: แสดงข้อมูลการชำระเงินให้ชัดเจน */
                         order.paymentMethod === 'cash' ? (
                           <div className="px-4 py-3 bg-orange-100 border-t border-orange-200 flex items-center gap-3">
@@ -1145,20 +1179,20 @@ export default function CustomerView() {
                           </div>
                         </div>
                       )}
-                      {/* ── ปุ่มยืนยันรับสินค้า — แสดงเฉพาะ parcel ที่ไรเดอร์ถึงที่หมายแล้ว ── */}
-                      {order.type === 'parcel' && order.status === 'delivered' && (
+                      {/* ── ปุ่มยืนยันรับสินค้า/อาหาร — แสดงเมื่อไรเดอร์ถึงที่หมายแล้ว ── */}
+                      {order.status === 'delivered' && (
                         <div className="px-3 pt-2 pb-3">
                           <button
                             onClick={() => updateOrderStatus(order.id, 'completed')}
-                            className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-teal-400 active:scale-95 transition-all shadow-lg shadow-teal-900/20"
+                            className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-teal-400 active:scale-95 transition-all shadow-lg shadow-teal-900/20 animate-pulse"
                           >
                             <CheckCircle size={18} />
-                            ยืนยันรับสินค้าเรียบร้อยแล้ว
+                            {order.type === 'parcel' ? 'ยืนยันรับสินค้าเรียบร้อยแล้ว' : 'ยืนยันรับอาหารเรียบร้อยแล้ว'}
                           </button>
                           <p className="text-center text-xs text-gray-400 mt-1.5">
                             {order.paymentMethod === 'cash'
-                              ? 'กดหลังรับสินค้าและจ่ายเงินให้ไรเดอร์เรียบร้อยแล้ว'
-                              : 'กดหลังรับสินค้าจากไรเดอร์เรียบร้อยแล้ว'}
+                              ? '✅ ตรวจสอบรูปหลักฐานด้านบน แล้วกดหลังรับของและจ่ายเงินให้ไรเดอร์'
+                              : '✅ ตรวจสอบรูปหลักฐานด้านบน แล้วกดเพื่อยืนยันว่าได้รับของแล้ว'}
                           </p>
                         </div>
                       )}
@@ -1228,6 +1262,24 @@ export default function CustomerView() {
                           <div className="font-bold text-gray-800 mt-1">฿{(order.grandTotal || 0).toLocaleString()}</div>
                         </div>
                       </div>
+                      {/* Delivery proof photo */}
+                      {(() => {
+                        const validPhoto = (v) => typeof v === 'string' && v.length > 200 && !v.includes('[image]');
+                        if (!validPhoto(order.deliveryPhoto)) return null;
+                        return (
+                          <div className="mt-3">
+                            <p className="text-xs font-bold text-teal-600 mb-1.5 flex items-center gap-1">
+                              <span>📸</span> หลักฐานส่งสินค้า
+                            </p>
+                            <img
+                              src={order.deliveryPhoto}
+                              alt="delivery proof"
+                              className="w-full max-h-40 object-cover rounded-xl border border-teal-200 cursor-pointer active:opacity-80"
+                              onClick={() => openImagePreview(order.deliveryPhoto)}
+                            />
+                          </div>
+                        );
+                      })()}
                       {/* Payment reminder */}
                       {order.paymentMethod === 'cash' ? (
                         <div className="mt-3 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 flex items-center gap-2">

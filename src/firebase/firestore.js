@@ -529,6 +529,23 @@ export const deleteChatFromDB = async (chatId) => {
   try { await deleteDoc(doc(db, 'chats', String(chatId))); } catch {}
 };
 
+/**
+ * Append a single message to a chat document atomically (arrayUnion).
+ * Safe for concurrent writes from different devices.
+ * Only supports URL images — do NOT pass base64 strings (document size limit).
+ */
+export const appendChatMessage = async (chatId, message) => {
+  if (!chatId || !message) return;
+  try {
+    await setDoc(doc(db, 'chats', String(chatId)), {
+      messages: arrayUnion(message),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[appendChatMessage]', err?.code, err?.message);
+  }
+};
+
 export const loadAllChats = async () => {
   try {
     const snap = await getDocs(collection(db, 'chats'));

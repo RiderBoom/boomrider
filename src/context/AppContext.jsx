@@ -15,7 +15,7 @@ import {
   saveMenuItems, loadMenuItems, subscribeToMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
   saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation, subscribeToRiders,
-  saveChat, subscribeToChats, subscribeToSupportChat, deleteChatFromDB,
+  saveChat, subscribeToChats, subscribeToSupportChat, deleteChatFromDB, appendChatMessage,
   saveUserProfile, loadUserProfile,
   safeLocalSet,
   acceptOrderTransaction, subscribeToOrders,
@@ -1267,12 +1267,8 @@ export function AppProvider({ children }) {
       finalOrder.riderId      = actorId;
       finalOrder.riderLocation = targetOrder.pickupLocation || null;
     }
-    // 'delivered':
-    //   food  → auto-complete ทันที (ไม่มี delivered state ใน UI)
-    //   parcel → คงสถานะ 'delivered' ไว้ รอลูกค้ากด "ยืนยันรับสินค้า" ก่อน
-    if (newStatus === 'delivered' && targetOrder?.type !== 'parcel') {
-      finalOrder = { ...finalOrder, status: 'completed', completedAt: new Date().toISOString() };
-    }
+    // 'delivered': ทั้ง food และ parcel → คงสถานะ 'delivered' รอลูกค้ายืนยัน
+    // ลูกค้าจะเห็นรูปหลักฐานจากไรเดอร์แล้วกด "ยืนยันรับสินค้า" เพื่อ complete
     // 'completed' (customer confirms parcel receipt) → เซ็ต completedAt
     if (newStatus === 'completed' && !finalOrder.completedAt) {
       finalOrder = { ...finalOrder, completedAt: new Date().toISOString() };
@@ -1301,6 +1297,43 @@ export function AppProvider({ children }) {
       updateOrderStatusInDB(orderId, dbFields).catch(() => {});
     }
 
+    // ── ส่งรูปหลักฐานไปยังแชทลูกค้าอัตโนมัติ ─────────────────────────────────
+    // เฉพาะ URL จาก Firebase Storage เท่านั้น (base64 มีขนาดใหญ่เกิน Firestore limit)
+    if (FIREBASE_ENABLED && targetOrder.customerId) {
+      const isStorageUrl = (v) => typeof v === 'string' && v.startsWith('http');
+      const chatId = `support-${targetOrder.customerId}`;
+      const riderDisplayName = targetOrder.riderName
+        || riders.find(r => r.id === targetOrder.riderId)?.name
+        || 'ไรเดอร์';
+      const time = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+      const pushProofMsg = (text, image, type) => {
+        const msg = {
+          id: generateId(),
+          sender: 'system',
+          senderName: riderDisplayName,
+          text,
+          image,
+          type,
+          orderId,
+          time,
+        };
+        setChats(prev => {
+          const updated = { ...prev, [chatId]: [...(prev[chatId] || []), msg] };
+          try { localStorage.setItem('boomrider_chats', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+        appendChatMessage(chatId, msg).catch(() => {});
+      };
+
+      if (newStatus === 'delivering' && isStorageUrl(extraData.pickupPhoto)) {
+        pushProofMsg('📦 ไรเดอร์รับสินค้าแล้ว กำลังนำส่งถึงคุณ', extraData.pickupPhoto, 'pickup_proof');
+      }
+      if (newStatus === 'delivered' && isStorageUrl(extraData.deliveryPhoto)) {
+        pushProofMsg('✅ ไรเดอร์ส่งสินค้าถึงที่หมายแล้ว กรุณายืนยันรับสินค้า', extraData.deliveryPhoto, 'delivery_proof');
+      }
+    }
+
     // ── Notifications หลัง setOrders — ปลอดภัย ไม่ crash React ──
     if (prevStatus !== newStatus) {
       if (newStatus === 'preparing')       notifySystem('อัปเดตสถานะ', `ร้านค้ารับออเดอร์ #${orderId} แล้ว`, 'info');
@@ -1314,8 +1347,8 @@ export function AppProvider({ children }) {
     }
 
     // ── ประมวลผล income หลัง setOrders (ใช้ข้อมูล order เก่าที่ดึงไว้ก่อนหน้า) ──
-    // กัน double-credit: ทำงานเฉพาะเมื่อ status เปลี่ยนมาเป็น 'delivered' จริงๆ
-    if (newStatus === 'delivered' && targetOrder && !['delivered', 'completed'].includes(prevStatus)) {
+    // กัน double-credit: ทำงานเฉพาะเมื่อลูกค้ากด "ยืนยันรับ" (completed) เท่านั้น
+    if (newStatus === 'completed' && targetOrder && prevStatus !== 'completed') {
       // ── Multi-wallet atomic completion (Firestore) ────────────────────────
       if (FIREBASE_ENABLED && ADMIN_UID) {
         const restaurant   = targetOrder.type === 'food'
