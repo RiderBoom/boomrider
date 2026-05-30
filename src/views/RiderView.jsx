@@ -16,6 +16,7 @@ export default function RiderView() {
     orders, riders, restaurants, appConfig,
     userProfile, currentUser,
     riderJobPhotos,
+    photoUploading,
     acceptOrder,
     updateOrderStatus,
     requestCancelByRole,
@@ -253,22 +254,38 @@ export default function RiderView() {
                 <div className="text-xs text-gray-500 mt-0.5">#{job.id.slice(-6)}</div>
               </div>
               <div className="text-right">
-                <div className="text-green-400 font-bold text-base">฿{(job.riderIncome || 0).toFixed(0)}</div>
-                <div className="text-xs text-gray-500">รายได้ไรเดอร์</div>
+                {job.paymentMethod === 'cash' ? (
+                  <>
+                    <div className="text-yellow-400 font-bold text-base">฿{(job.grandTotal || 0).toFixed(0)}</div>
+                    <div className="text-xs text-gray-500">เก็บเงินสด</div>
+                    <div className="text-xs text-green-400">สุทธิ ฿{(job.riderIncome || 0).toFixed(0)}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-green-400 font-bold text-base">฿{(job.riderIncome || 0).toFixed(0)}</div>
+                    <div className="text-xs text-gray-500">เข้ากระเป๋า</div>
+                  </>
+                )}
               </div>
             </div>
 
             {/* ยอดรวมออเดอร์ + วิธีชำระ */}
-            <div className={`mb-2 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2 ${
-              job.paymentMethod === 'cash'
-                ? 'bg-blue-900/60 text-blue-200'
-                : 'bg-gray-700 text-gray-300'
-            }`}>
-              {job.paymentMethod === 'cash'
-                ? <>💰 <span>เก็บเงินสดจากลูกค้า: <strong>฿{(job.grandTotal || 0).toLocaleString()}</strong></span></>
-                : <>👛 <span>ชำระผ่าน Wallet · ยอดรวม: ฿{(job.grandTotal || 0).toLocaleString()}</span></>
-              }
-            </div>
+            {job.paymentMethod === 'cash' ? (
+              <div className="mb-2 bg-yellow-900/40 border border-yellow-700/40 rounded-lg px-3 py-2 space-y-0.5">
+                <div className="text-xs text-yellow-300 font-bold flex items-center gap-1.5">
+                  💰 เก็บเงินสดจาก{job.type === 'parcel' ? 'ผู้รับ' : 'ลูกค้า'}: <strong>฿{(job.grandTotal || 0).toLocaleString()}</strong>
+                </div>
+                {(job.adminGP || 0) > 0 && (
+                  <div className="text-[11px] text-orange-300">
+                    ⚠️ หลังส่งสำเร็จ −฿{(job.adminGP || 0).toFixed(0)} จะหักจากกระเป๋า (ค่า GP platform)
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mb-2 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2 bg-gray-700 text-gray-300">
+                👛 <span>ชำระผ่าน Wallet · ยอดรวม: ฿{(job.grandTotal || 0).toLocaleString()}</span>
+              </div>
+            )}
 
             {/* แผนที่ */}
             <div className="mb-3 rounded-lg overflow-hidden border border-gray-600">
@@ -285,6 +302,14 @@ export default function RiderView() {
                 <div>🏠 ส่งที่: {job.address}</div>
               )}
             </div>
+
+            {/* น้ำหนักพัสดุ */}
+            {job.type === 'parcel' && job.weight && (
+              <div className="bg-gray-700/40 rounded-lg px-3 py-1.5 mb-2 flex items-center gap-2">
+                <span className="text-xs text-gray-400">📦 น้ำหนัก:</span>
+                <span className="text-xs text-white font-bold">{job.weight} กก.</span>
+              </div>
+            )}
 
             {/* รายการอาหาร (food orders) */}
             {job.type === 'food' && job.items && job.items.length > 0 && (
@@ -352,8 +377,10 @@ export default function RiderView() {
             >
               {acceptingId === job.id ? (
                 <><Loader size={16} className="animate-spin" /> กำลังรับงาน...</>
+              ) : job.paymentMethod === 'cash' ? (
+                <>✅ รับงาน — เก็บเงินสด ฿{(job.grandTotal || 0).toFixed(0)}</>
               ) : (
-                <>✅ รับงาน — ได้รับ ฿{(job.riderIncome || 0).toFixed(0)}</>
+                <>✅ รับงาน — รับ ฿{(job.riderIncome || 0).toFixed(0)} เข้ากระเป๋า</>
               )}
             </button>
           </div>
@@ -475,6 +502,8 @@ export default function RiderView() {
               myJobs.map(job => {
                 const pickupPhoto = riderJobPhotos[job.id]?.pickup;
                 const deliveryPhoto = riderJobPhotos[job.id]?.delivery;
+                const uploadingPickup = !!photoUploading[`${job.id}_pickup`];
+                const uploadingDelivery = !!photoUploading[`${job.id}_delivery`];
 
                 return (
                   <div key={job.id} className="bg-gray-800 p-4 rounded-xl border border-green-500">
@@ -499,8 +528,15 @@ export default function RiderView() {
                     </div>
 
                     {job.paymentMethod === 'cash' && (
-                      <div className="mb-3 text-sm font-bold text-blue-300 bg-blue-900/40 p-2.5 rounded-lg">
-                        💰 เก็บเงินสดจากลูกค้า: ฿{(job.grandTotal || 0).toLocaleString()}
+                      <div className="mb-3 bg-yellow-900/30 border border-yellow-700/40 rounded-xl p-3 space-y-1">
+                        <div className="text-sm font-bold text-yellow-300">
+                          💰 เก็บเงินสดจาก{job.type === 'parcel' ? 'ผู้รับ' : 'ลูกค้า'}: ฿{(job.grandTotal || 0).toLocaleString()}
+                        </div>
+                        {(job.adminGP || 0) > 0 && (
+                          <div className="text-[11px] text-orange-300">
+                            ⚠️ หลังส่งสำเร็จ −฿{(job.adminGP || 0).toFixed(0)} จะหักจากกระเป๋า (ค่า GP platform)
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -607,18 +643,18 @@ export default function RiderView() {
                           <img src={pickupPhoto} className="mb-2 h-36 w-full object-cover rounded-xl border border-green-500/50" alt="pickup" />
                         )}
                         <button
-                          disabled={!pickupPhoto}
+                          disabled={!pickupPhoto || uploadingPickup}
                           onClick={() => {
-                            if (!pickupPhoto) return;
+                            if (!pickupPhoto || uploadingPickup) return;
                             updateOrderStatus(job.id, 'delivering', null, { pickupPhoto });
                           }}
                           className={`w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${
-                            pickupPhoto
+                            pickupPhoto && !uploadingPickup
                               ? 'bg-blue-500 text-white hover:bg-blue-400'
                               : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                           }`}
                         >
-                          {pickupPhoto ? '✅ ยืนยันรับของแล้ว → ออกส่ง' : '⏳ รอถ่ายรูปสินค้าก่อน'}
+                          {uploadingPickup ? '⏳ กำลังอัปโหลดรูป...' : pickupPhoto ? '✅ ยืนยันรับของแล้ว → ออกส่ง' : '⏳ รอถ่ายรูปสินค้าก่อน'}
                         </button>
                       </>
                     )}
@@ -626,6 +662,18 @@ export default function RiderView() {
                     {/* ── Step: delivering → delivered (พร้อมรูปถ่าย) ── */}
                     {job.status === 'delivering' && (
                       <>
+                        {job.paymentMethod === 'cash' && (
+                          <div className="bg-yellow-900/40 border border-yellow-600/50 rounded-xl p-3 mb-3">
+                            <p className="text-yellow-300 text-sm font-bold mb-0.5">
+                              💰 อย่าลืมเก็บเงินสด ฿{(job.grandTotal || 0).toLocaleString()} จาก{job.type === 'parcel' ? 'ผู้รับ' : 'ลูกค้า'}!
+                            </p>
+                            {(job.adminGP || 0) > 0 && (
+                              <p className="text-orange-300 text-[11px]">
+                                หลังกดยืนยัน −฿{(job.adminGP || 0).toFixed(0)} หักจากกระเป๋า (ค่า GP)
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <p className="text-xs text-gray-400 mb-2 font-bold">📷 ถ่ายรูปหลักฐานการส่ง:</p>
                         <div className="flex gap-2 mb-2">
                           <label className="flex-1 py-3 rounded-xl border-2 border-dashed border-gray-600 text-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-700 hover:border-gray-500 text-sm">
@@ -641,18 +689,18 @@ export default function RiderView() {
                           <img src={deliveryPhoto} className="mb-2 h-36 w-full object-cover rounded-xl border border-green-500/50" alt="delivery" />
                         )}
                         <button
-                          disabled={!deliveryPhoto}
+                          disabled={!deliveryPhoto || uploadingDelivery}
                           onClick={() => {
-                            if (!deliveryPhoto) return;
+                            if (!deliveryPhoto || uploadingDelivery) return;
                             updateOrderStatus(job.id, 'delivered', null, { deliveryPhoto });
                           }}
                           className={`w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${
-                            deliveryPhoto
+                            deliveryPhoto && !uploadingDelivery
                               ? 'bg-green-500 text-white hover:bg-green-400 shadow-lg shadow-green-900/50'
                               : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                           }`}
                         >
-                          {deliveryPhoto ? '🎉 ยืนยันส่งสำเร็จ!' : '⏳ รอถ่ายรูปหลักฐานก่อน'}
+                          {uploadingDelivery ? '⏳ กำลังอัปโหลดรูป...' : deliveryPhoto ? '🎉 ยืนยันส่งสำเร็จ!' : '⏳ รอถ่ายรูปหลักฐานก่อน'}
                         </button>
                       </>
                     )}
@@ -814,7 +862,10 @@ export default function RiderView() {
               </div>
             ) : (
               <div className="space-y-2">
-                {[...(walletHistory || [])].sort((a, b) => (b.id || '').localeCompare(a.id || '')).slice(0, 40).map((entry, i) => {
+                {[...(walletHistory || [])].sort((a, b) => {
+                    const t = (id = '') => parseInt((id.match(/\d{10,}/) || ['0'])[0], 10);
+                    return t(b.id) - t(a.id);
+                  }).slice(0, 40).map((entry, i) => {
                   const amt = entry.amount ?? 0;
                   return (
                     <div key={entry.id || i} className="bg-gray-800 rounded-xl p-3 border border-gray-700/80">
@@ -824,7 +875,7 @@ export default function RiderView() {
                           <div className="text-[10px] text-gray-500 mt-0.5">{entry.date || ''}</div>
                         </div>
                         <div className={`font-bold text-sm flex-shrink-0 ${amt >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {amt >= 0 ? '+' : ''}฿{Math.abs(amt).toLocaleString()}
+                          {amt >= 0 ? '+' : '-'}฿{Math.abs(amt).toLocaleString()}
                         </div>
                       </div>
                     </div>

@@ -10,7 +10,7 @@ import {
 import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders,
-  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew,
+  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, subscribeToAllWallets, initWalletIfNew,
   saveRestaurant, loadRestaurants, deleteRestaurantFromDB, subscribeToRestaurants,
   saveMenuItems, loadMenuItems, subscribeToMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
@@ -21,7 +21,7 @@ import {
   acceptOrderTransaction, subscribeToOrders,
   atomicOrderCompletion, subscribeToConfig,
 } from '../firebase/firestore';
-// (Firebase Storage ไม่ถูกใช้ — ใช้ compressImage + Firestore แทน)
+import { uploadDeliveryProof } from '../firebase/storage';
 
 const AppContext = createContext(null);
 
@@ -96,6 +96,7 @@ export function AppProvider({ children }) {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedRequestToReject, setSelectedRequestToReject] = useState(null);
   const [riderJobPhotos, setRiderJobPhotos] = useState({});
+  const [photoUploading, setPhotoUploading] = useState({});
   const [showProofModal, setShowProofModal] = useState(false);
   const [selectedProofOrder, setSelectedProofOrder] = useState(null);
   const [showImageModal, setShowImageModal] = useState(false);
@@ -276,6 +277,15 @@ export function AppProvider({ children }) {
       }).catch(() => {});
     });
   }, [pendingRequests]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Admin: subscribe to ALL wallets in real-time ──────────────────────────
+  useEffect(() => {
+    if (!FIREBASE_ENABLED || !isAdmin) return;
+    const unsub = subscribeToAllWallets((wallets) => {
+      setGlobalWallets(prev => ({ ...prev, ...wallets }));
+    });
+    return () => unsub();
+  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-grant merchant/rider role if user has a shop/rider entry (recovery mechanism)
   useEffect(() => {
@@ -1362,15 +1372,30 @@ export function AppProvider({ children }) {
   };
 
   // --- Photo Handlers ---
-  const handleRiderPhotoUpload = (orderId, type, event) => {
+  const handleRiderPhotoUpload = async (orderId, type, event) => {
     const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setRiderJobPhotos(prev => ({ ...prev, [orderId]: { ...prev[orderId], [type]: reader.result } }));
-        notifySystem("สำเร็จ", "อัปโหลดรูปภาพเรียบร้อย", "success");
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    const uploadKey = `${orderId}_${type}`;
+    setPhotoUploading(prev => ({ ...prev, [uploadKey]: true }));
+
+    try {
+      if (FIREBASE_ENABLED) {
+        // อัปโหลดไป Firebase Storage → ได้ HTTPS URL ที่ Admin ดูได้จริง
+        const url = await uploadDeliveryProof(orderId, type, file);
+        setRiderJobPhotos(prev => ({ ...prev, [orderId]: { ...prev[orderId], [type]: url } }));
+      } else {
+        // fallback: base64 สำหรับ local dev (ไม่มี Firebase)
+        const reader = new FileReader();
+        reader.onloadend = () =>
+          setRiderJobPhotos(prev => ({ ...prev, [orderId]: { ...prev[orderId], [type]: reader.result } }));
+        reader.readAsDataURL(file);
+      }
+      notifySystem("สำเร็จ", "อัปโหลดรูปภาพเรียบร้อย", "success");
+    } catch (err) {
+      notifySystem("ผิดพลาด", "ไม่สามารถอัปโหลดรูปภาพได้ กรุณาลองใหม่", "error");
+    } finally {
+      setPhotoUploading(prev => ({ ...prev, [uploadKey]: false }));
     }
   };
 
@@ -2356,6 +2381,7 @@ export function AppProvider({ children }) {
     showRejectModal, setShowRejectModal,
     selectedRequestToReject, setSelectedRequestToReject,
     riderJobPhotos, setRiderJobPhotos,
+    photoUploading,
     showProofModal, setShowProofModal,
     selectedProofOrder, setSelectedProofOrder,
     showImageModal, setShowImageModal,

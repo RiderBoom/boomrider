@@ -3,7 +3,7 @@ import {
   ChefHat, LogOut, Camera, ToggleRight, ToggleLeft,
   Plus, Edit, Trash2, Save,
   Image as ImageIcon, Check, MapPin, Loader, Bell,
-  Clock, CheckCircle, History, X, XCircle,
+  Clock, CheckCircle, History, X, XCircle, Wallet,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS } from '../constants';
@@ -35,6 +35,7 @@ export default function MerchantView() {
     showCancelModal, setShowCancelModal,
     selectedOrderToCancel,
     cancelReasonInput, setCancelReasonInput,
+    userWallet, walletHistory,
   } = useApp();
 
   const [pendingShopLocation, setPendingShopLocation] = useState(null);
@@ -165,6 +166,13 @@ export default function MerchantView() {
           >
             <MapPin size={13} />
             ที่ตั้ง
+          </button>
+          <button
+            onClick={() => setMerchantTab('wallet')}
+            className={`flex-1 py-2 rounded-md font-bold text-xs flex items-center justify-center gap-1 ${merchantTab === 'wallet' ? 'bg-white shadow text-green-600' : 'text-gray-500'}`}
+          >
+            <Wallet size={13} />
+            กระเป๋า
           </button>
         </div>
       </header>
@@ -409,6 +417,52 @@ export default function MerchantView() {
         </div>
       )}
 
+
+      {/* ── กระเป๋าเงิน ───────────────────────────────────────────────── */}
+      {merchantTab === 'wallet' && (
+        <div className="px-4">
+          {/* ยอดคงเหลือ */}
+          <div className="bg-gradient-to-r from-green-600 to-green-500 rounded-2xl p-5 mb-4 text-white shadow-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <Wallet size={18} />
+              <span className="text-green-100 text-sm">ยอดเงินคงเหลือ</span>
+            </div>
+            <div className="text-3xl font-bold">฿{(userWallet ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="text-green-200 text-xs mt-1">รายได้จากออเดอร์จะเข้ากระเป๋าอัตโนมัติ</div>
+          </div>
+
+          {/* ประวัติธุรกรรม */}
+          <h3 className="font-bold text-base mb-3 text-gray-700">ประวัติธุรกรรม</h3>
+          {!walletHistory || walletHistory.length === 0 ? (
+            <div className="text-center text-gray-400 py-10">
+              <Wallet size={36} className="mx-auto mb-2 opacity-20" />
+              <p className="text-sm">ยังไม่มีประวัติ</p>
+              <p className="text-xs mt-1 text-gray-400">รายได้จะแสดงเมื่อออเดอร์ส่งสำเร็จ</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {[...(walletHistory)].sort((a, b) => {
+                  const t = (id = '') => parseInt((id.match(/\d{10,}/) || ['0'])[0], 10);
+                  return t(b.id) - t(a.id);
+                }).slice(0, 50).map((tx, i) => {
+                const amt = tx.amount ?? 0;
+                const isIncome = amt >= 0;
+                return (
+                  <div key={tx.id || i} className="flex justify-between items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-100 shadow-sm">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-800 text-sm truncate">{tx.desc || '—'}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{tx.date || ''}</div>
+                    </div>
+                    <span className={`font-bold text-sm flex-shrink-0 ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
+                      {isIncome ? '+' : '-'}฿{Math.abs(amt).toLocaleString()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Cancel Order Modal ─────────────────────────────────────────── */}
       {showCancelModal && (

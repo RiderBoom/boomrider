@@ -637,15 +637,31 @@ export default function CustomerView() {
                 )}
                 {!withdrawMode && <button onClick={() => setWithdrawMode(true)} className="mt-4 text-sm text-green-100 underline flex items-center justify-center w-full"><ArrowDownCircle size={16} className="mr-1" /> ต้องการถอนเงิน?</button>}
               </div>
-              <h3 className="font-bold text-lg mb-4">ประวัติธุรกรรม</h3>
-              <div className="space-y-3">
-                {walletHistory.map(tx => (
-                  <div key={tx.id} className="flex justify-between items-center p-3 border rounded-lg">
-                    <div><div className="font-bold text-gray-800">{tx.desc}</div><div className="text-xs text-gray-500">{tx.date}</div></div>
-                    <span className={`font-bold ${['income', 'deposit', 'refund'].includes(tx.type) ? 'text-green-600' : 'text-red-500'}`}>{['income', 'deposit', 'refund'].includes(tx.type) ? '+' : ''}{tx.amount}</span>
-                  </div>
-                ))}
-              </div>
+              <h3 className="font-bold text-base mb-3 text-gray-700">ประวัติธุรกรรม</h3>
+              {walletHistory.length === 0 ? (
+                <div className="text-center text-gray-400 py-8 text-sm">ยังไม่มีประวัติธุรกรรม</div>
+              ) : (
+                <div className="space-y-2">
+                  {[...walletHistory].sort((a, b) => {
+                      const t = (id = '') => parseInt((id.match(/\d{10,}/) || ['0'])[0], 10);
+                      return t(b.id) - t(a.id);
+                    }).map(tx => {
+                    const amt = tx.amount ?? 0;
+                    const isIncome = amt >= 0;
+                    return (
+                      <div key={tx.id} className="flex justify-between items-center gap-3 p-3.5 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-gray-800 text-sm truncate">{tx.desc || '—'}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">{tx.date || ''}</div>
+                        </div>
+                        <span className={`font-bold text-sm flex-shrink-0 ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
+                          {isIncome ? '+' : '-'}฿{Math.abs(amt).toLocaleString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : profileSubView === 'pin_location' ? (
             <div className="p-4 pt-0">

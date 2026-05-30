@@ -6,7 +6,7 @@ import {
   Edit, Power, Lock, Phone, FileBadge,
   Image as ImageIcon, Ban, X, Users, BarChart2, Tag,
   TrendingUp, ShoppingBag, Star, PlusCircle, Trash2,
-  ToggleLeft, ToggleRight, Wallet, AlertCircle,
+  ToggleLeft, ToggleRight, Wallet, AlertCircle, List,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, FIREBASE_ENABLED } from '../constants';
@@ -99,9 +99,11 @@ export default function AdminView() {
     maxDiscount: 500, expiry: '', description: '',
   });
 
+  const [searchLedger, setSearchLedger] = useState('');
+
   // Load all users from localStorage
   useEffect(() => {
-    if (adminTab === 'users') {
+    if (adminTab === 'users' || adminTab === 'ledger') {
       const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
       const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
       const roles = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
@@ -194,6 +196,7 @@ export default function AdminView() {
     { id: 'users',       label: 'ผู้ใช้',     icon: Users },
     { id: 'management',  label: 'จัดการระบบ', icon: Sliders },
     { id: 'promotions',  label: 'โปรโมชั่น',  icon: Tag,     badge: promoCodes.filter(p => p.active).length },
+    { id: 'ledger',      label: 'ธุรกรรม',    icon: List },
     { id: 'messages',    label: 'ข้อความ',    icon: MessageSquare, badge: (unreadSupportCount || totalChatCount) || null },
     { id: 'settings',    label: 'ตั้งค่า',    icon: CreditCard },
   ];
@@ -281,7 +284,8 @@ export default function AdminView() {
           {/* ── กระเป๋าเงิน Admin (GP สะสม) ───────────────────────────────── */}
           {(() => {
             const adminBal = userWallet ?? 0;
-            const displayHistory = walletHistory ?? [];
+            const txTs = (id = '') => parseInt((id.match(/\d{10,}/) || ['0'])[0], 10);
+            const displayHistory = [...(walletHistory ?? [])].sort((a, b) => txTs(b.id) - txTs(a.id));
             return (
               <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
                 <div className="p-4 border-b bg-green-50 flex items-center justify-between">
@@ -322,8 +326,8 @@ export default function AdminView() {
                                 <div className="text-xs text-gray-400">{dateStr}</div>
                                 <div className="text-xs text-gray-700">{label}</div>
                               </td>
-                              <td className={`p-3 text-right font-bold text-sm ${amt > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                {amt > 0 ? '+' : ''}฿{Math.abs(amt).toLocaleString()}
+                              <td className={`p-3 text-right font-bold text-sm ${amt > 0 ? 'text-green-600' : amt < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                                {amt > 0 ? '+' : amt < 0 ? '-' : ''}฿{Math.abs(amt).toLocaleString()}
                               </td>
                               <td className="p-3 text-right text-xs text-gray-400">
                                 {balAfter != null ? `฿${Number(balAfter).toLocaleString()}` : '—'}
@@ -1125,6 +1129,137 @@ export default function AdminView() {
           </div>
         </div>
       )}
+
+      {/* ── ธุรกรรมทั้งระบบ ─────────────────────────────────────────────── */}
+      {adminTab === 'ledger' && (() => {
+        // Build user lookup map
+        const userMap = {};
+        allUsers.forEach(u => { userMap[u.id] = u; });
+
+        // Flatten all wallet histories with userId attached
+        const allEntries = [];
+        Object.entries(globalWallets).forEach(([uid, w]) => {
+          (w.history || []).forEach(h => allEntries.push({ ...h, userId: uid }));
+        });
+
+        // Sort newest-first using timestamp embedded in entry ID
+        allEntries.sort((a, b) => {
+          const tsA = parseInt((a.id?.match(/\d{10,}/) || ['0'])[0], 10);
+          const tsB = parseInt((b.id?.match(/\d{10,}/) || ['0'])[0], 10);
+          return tsB - tsA;
+        });
+
+        // Filter
+        const q = searchLedger.toLowerCase().trim();
+        const filtered = q
+          ? allEntries.filter(e => {
+              const u = userMap[e.userId];
+              return (
+                (e.desc || '').toLowerCase().includes(q) ||
+                (u?.name || '').toLowerCase().includes(q) ||
+                (u?.phone || '').includes(q) ||
+                (e.userId || '').toLowerCase().includes(q)
+              );
+            })
+          : allEntries;
+
+        const roleBadge = (roles = []) => {
+          if (roles.includes('admin'))    return { label: 'Admin',   cls: 'bg-red-100 text-red-700' };
+          if (roles.includes('rider'))    return { label: 'ไรเดอร์', cls: 'bg-yellow-100 text-yellow-700' };
+          if (roles.includes('merchant')) return { label: 'ร้านค้า', cls: 'bg-green-100 text-green-700' };
+          return                                 { label: 'ลูกค้า',  cls: 'bg-blue-100 text-blue-700' };
+        };
+
+        const totalIn  = filtered.reduce((s, e) => s + Math.max(0, e.amount ?? 0), 0);
+        const totalOut = filtered.reduce((s, e) => s + Math.min(0, e.amount ?? 0), 0);
+
+        return (
+          <div>
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+              <div className="flex-1">
+                <h2 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+                  <List size={18} className="text-green-600" /> ธุรกรรมทั้งระบบ
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {filtered.length} รายการ · {Object.keys(globalWallets).length} กระเป๋า
+                </p>
+              </div>
+              <input
+                type="search"
+                placeholder="ค้นหาชื่อ / รายการ..."
+                value={searchLedger}
+                onChange={e => setSearchLedger(e.target.value)}
+                className="border rounded-xl px-3 py-2 text-sm w-full sm:w-52 focus:outline-none focus:ring-2 focus:ring-green-400"
+              />
+            </div>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-white rounded-xl p-3 shadow-sm border-l-4 border-gray-300 text-center">
+                <p className="text-xs text-gray-400">ทั้งหมด</p>
+                <p className="font-bold text-gray-700">{filtered.length}</p>
+              </div>
+              <div className="bg-white rounded-xl p-3 shadow-sm border-l-4 border-green-500 text-center">
+                <p className="text-xs text-gray-400">เงินเข้า</p>
+                <p className="font-bold text-green-600">+฿{totalIn.toLocaleString()}</p>
+              </div>
+              <div className="bg-white rounded-xl p-3 shadow-sm border-l-4 border-red-500 text-center">
+                <p className="text-xs text-gray-400">เงินออก</p>
+                <p className="font-bold text-red-500">-฿{Math.abs(totalOut).toLocaleString()}</p>
+              </div>
+            </div>
+
+            {filtered.length === 0 ? (
+              <div className="bg-white rounded-xl p-12 text-center text-gray-400 shadow-sm">
+                <Wallet size={40} className="mx-auto mb-3 opacity-20" />
+                <p className="font-semibold">ยังไม่มีข้อมูลธุรกรรม</p>
+                <p className="text-xs mt-1">ข้อมูลจะแสดงเมื่อผู้ใช้มีการทำธุรกรรม</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="overflow-y-auto max-h-[65vh]">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase sticky top-0 shadow-sm">
+                      <tr>
+                        <th className="p-3 text-left">วันที่</th>
+                        <th className="p-3 text-left">ผู้ใช้</th>
+                        <th className="p-3 text-left">รายการ</th>
+                        <th className="p-3 text-right">จำนวน</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filtered.slice(0, 300).map((entry, i) => {
+                        const u = userMap[entry.userId];
+                        const badge = roleBadge(u?.roles || []);
+                        const amt = entry.amount ?? 0;
+                        return (
+                          <tr key={entry.id || `${entry.userId}-${i}`} className="hover:bg-gray-50 transition-colors">
+                            <td className="p-3 text-xs text-gray-400 whitespace-nowrap align-top pt-3.5">{entry.date || '—'}</td>
+                            <td className="p-3 align-top pt-3.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-semibold text-gray-700">{u?.name || entry.userId.slice(-8)}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${badge.cls}`}>{badge.label}</span>
+                              </div>
+                            </td>
+                            <td className="p-3 text-xs text-gray-600 max-w-[200px] truncate align-top pt-3.5">{entry.desc || '—'}</td>
+                            <td className={`p-3 text-right font-bold text-sm whitespace-nowrap align-top pt-3.5 ${amt > 0 ? 'text-green-600' : amt < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                              {amt > 0 ? '+' : amt < 0 ? '-' : ''}฿{Math.abs(amt).toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {filtered.length > 300 && (
+                    <p className="text-center text-xs text-gray-400 py-3">แสดง 300 รายการแรก — ใช้ช่องค้นหาเพื่อกรอง</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {showImageModal && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" onClick={() => setShowImageModal(false)}>
