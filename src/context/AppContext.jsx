@@ -10,7 +10,7 @@ import {
 import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders,
-  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew,
+  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew, subscribeToAllWallets,
   saveRestaurant, loadRestaurants, deleteRestaurantFromDB, subscribeToRestaurants,
   saveMenuItems, loadMenuItems, subscribeToMenuItems,
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
@@ -164,6 +164,7 @@ export function AppProvider({ children }) {
   const walletSubscribedRef = React.useRef(false);
   const walletUnsubRef = React.useRef(null);
   const walletEntriesUnsubRef = React.useRef(null);
+  const allWalletsUnsubRef = React.useRef(null);
 
   // --- Global Wallet Store ---
   const [globalWallets, setGlobalWallets] = useState(() => {
@@ -238,6 +239,21 @@ export function AppProvider({ children }) {
     queue.unshift(notif);
     localStorage.setItem('boomrider_admin_notifs', JSON.stringify(queue.slice(0, 50)));
     if (isAdmin) notifySystem(title, message, type);
+  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Admin: subscribe to all wallets (real-time) เพื่อให้ globalWallets แม่นยำ ──
+  useEffect(() => {
+    if (!FIREBASE_ENABLED || !isAdmin) {
+      if (allWalletsUnsubRef.current) { allWalletsUnsubRef.current(); allWalletsUnsubRef.current = null; }
+      return;
+    }
+    if (allWalletsUnsubRef.current) allWalletsUnsubRef.current();
+    allWalletsUnsubRef.current = subscribeToAllWallets((wallets) => {
+      setGlobalWallets(wallets);
+    });
+    return () => {
+      if (allWalletsUnsubRef.current) { allWalletsUnsubRef.current(); allWalletsUnsubRef.current = null; }
+    };
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Admin polling
@@ -2475,6 +2491,10 @@ export function AppProvider({ children }) {
     if (walletEntriesUnsubRef.current) {
       walletEntriesUnsubRef.current();
       walletEntriesUnsubRef.current = null;
+    }
+    if (allWalletsUnsubRef.current) {
+      allWalletsUnsubRef.current();
+      allWalletsUnsubRef.current = null;
     }
     walletFromFirestoreRef.current = false;
     walletSubscribedRef.current = false;

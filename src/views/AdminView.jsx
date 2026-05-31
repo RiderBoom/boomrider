@@ -9,7 +9,7 @@ import {
   ToggleLeft, ToggleRight, Wallet, AlertCircle, List,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { STATUS_LABELS, FIREBASE_ENABLED } from '../constants';
+import { STATUS_LABELS, FIREBASE_ENABLED, ADMIN_UID } from '../constants';
 import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries, fixAllWalletBalances } from '../firebase/firestore';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
@@ -547,15 +547,57 @@ export default function AdminView() {
 
           {/* Wallet balances */}
           <div className="bg-white p-6 rounded-xl shadow-sm">
-            <h2 className="font-bold text-lg mb-2 flex items-center gap-2 text-gray-700"><Wallet size={20} className="text-purple-600" /> ยอด Wallet ทั้งระบบ</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-lg flex items-center gap-2 text-gray-700">
+                <Wallet size={20} className="text-purple-600" /> ยอด Wallet ทั้งระบบ
+              </h2>
+              {FIREBASE_ENABLED && (
+                <span className="text-xs bg-green-50 text-green-600 border border-green-200 rounded-full px-2 py-0.5 font-medium">
+                  ข้อมูลสด (Firestore)
+                </span>
+              )}
+            </div>
             {(() => {
-              const wallets = Object.values(globalWallets);
-              const total = wallets.reduce((s, w) => s + (w.balance || 0), 0);
+              const entries = Object.entries(globalWallets);
+              const total = entries.reduce((s, [, w]) => s + (w.balance || 0), 0);
+              const sorted = [...entries].sort(([, a], [, b]) => (b.balance || 0) - (a.balance || 0));
+
+              // map uid → role label สำหรับ admin
+              const roleLabel = (uid) => {
+                if (uid === ADMIN_UID) return { label: 'Admin', color: 'bg-red-100 text-red-700' };
+                return null;
+              };
+
               return (
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-purple-600">฿{total.toLocaleString()}</span>
-                  <span className="text-gray-400 text-sm">ใน {wallets.length} กระเป๋า</span>
-                </div>
+                <>
+                  <div className="flex items-baseline gap-2 mb-4">
+                    <span className="text-3xl font-bold text-purple-600">฿{total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-gray-400 text-sm">{entries.length} กระเป๋า</span>
+                  </div>
+                  {sorted.length === 0 ? (
+                    <p className="text-gray-400 text-sm">ไม่มีข้อมูล Wallet</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {sorted.map(([uid, w]) => {
+                        const rl = roleLabel(uid);
+                        const bal = typeof w.balance === 'number' ? w.balance : 0;
+                        return (
+                          <div key={uid} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {rl && (
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${rl.color} shrink-0`}>{rl.label}</span>
+                              )}
+                              <span className="text-xs text-gray-500 font-mono truncate">{uid.slice(0, 8)}…</span>
+                            </div>
+                            <span className={`text-sm font-bold shrink-0 ml-2 ${bal < 0 ? 'text-red-600' : bal > 0 ? 'text-green-700' : 'text-gray-400'}`}>
+                              ฿{bal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               );
             })()}
           </div>
