@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, FIREBASE_ENABLED, ADMIN_UID } from '../constants';
-import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries, fixAllWalletBalances } from '../firebase/firestore';
+import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries, fixAllWalletBalances, loadAllUsers } from '../firebase/firestore';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function StatCard({ label, value, color = 'green', icon: Icon }) {
@@ -110,20 +110,39 @@ export default function AdminView() {
   const [txRefreshKey, setTxRefreshKey] = useState(0);
   const txUnsubRef = useRef(null);
 
-  // Load all users from localStorage (users tab only)
+  // Load all users — Firestore (all devices) หรือ localStorage (fallback)
   useEffect(() => {
-    if (adminTab === 'users') {
+    if (adminTab !== 'users') return;
+    if (FIREBASE_ENABLED) {
+      loadAllUsers().then(fsUsers => {
+        // Merge wallet balance จาก globalWallets ที่ subscribe live อยู่แล้ว
+        setAllUsers(fsUsers.map(u => ({
+          ...u,
+          walletBalance: globalWallets[u.id]?.balance ?? 0,
+          roles: u.roles || ['customer'],
+        })));
+      }).catch(() => {
+        // Fallback to localStorage ถ้า Firestore load ล้มเหลว
+        const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
+        const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+        const roles   = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
+        setAllUsers(users.map(u => ({
+          ...u,
+          walletBalance: wallets[u.id]?.balance ?? globalWallets[u.id]?.balance ?? u.wallet ?? 0,
+          roles: roles[u.id] || u.roles || ['customer'],
+        })));
+      });
+    } else {
       const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
       const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-      const roles = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-      const merged = users.map(u => ({
+      const roles   = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
+      setAllUsers(users.map(u => ({
         ...u,
         walletBalance: wallets[u.id]?.balance ?? u.wallet ?? 0,
         roles: roles[u.id] || u.roles || ['customer'],
-      }));
-      setAllUsers(merged);
+      })));
     }
-  }, [adminTab]);
+  }, [adminTab, globalWallets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Firestore transaction log subscription
   useEffect(() => {

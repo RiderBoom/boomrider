@@ -844,3 +844,83 @@ export const fixAllWalletBalances = async () => {
   return results;
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// USER PROFILE — real-time subscription + role & ban management
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Subscribe real-time ต่อ users/{userId} — ใช้ sync roles + banned ข้ามอุปกรณ์ */
+export const subscribeToUserProfile = (userId, callback) => {
+  if (!userId) return () => {};
+  return onSnapshot(doc(db, 'users', userId), (snap) => {
+    if (snap.exists()) callback(snap.data());
+  }, () => {});
+};
+
+/** บันทึก roles ไปยัง users/{userId} (admin grant/revoke role) */
+export const saveUserRoles = async (userId, roles) => {
+  if (!userId) return;
+  try {
+    await setDoc(doc(db, 'users', userId), { roles, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[saveUserRoles]', err?.code);
+  }
+};
+
+/** Admin: โหลด users ทั้งหมดจาก Firestore สำหรับแสดงรายชื่อใน Admin panel */
+export const loadAllUsers = async () => {
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[loadAllUsers]', err?.code);
+    return [];
+  }
+};
+
+/** Admin: ตั้งค่า banned status ใน users/{userId} */
+export const setBanUser = async (userId, banned) => {
+  if (!userId) return;
+  try {
+    await setDoc(doc(db, 'users', userId), { banned, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[setBanUser]', err?.code);
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PROMO CODES — system/promo_codes (ทุกคนอ่านได้, admin เขียนได้)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const savePromoCodes = async (codes) => {
+  try {
+    await setDoc(doc(db, 'system', 'promo_codes'), { codes: codes || [], updatedAt: serverTimestamp() });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[savePromoCodes]', err?.code);
+  }
+};
+
+export const subscribeToPromoCodes = (callback) => {
+  return onSnapshot(doc(db, 'system', 'promo_codes'), (snap) => {
+    callback(snap.exists() ? (snap.data().codes || []) : []);
+  }, () => { callback([]); });
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN NOTIFICATIONS — admin_notifs collection (cross-device)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** เขียน notification ไป Firestore admin_notifs (fire-and-forget) */
+export const saveAdminNotif = async (notif) => {
+  try {
+    await addDoc(collection(db, 'admin_notifs'), { ...notif, createdAt: serverTimestamp() });
+  } catch {} // best-effort — ต้องไม่ block caller
+};
+
+/** Admin: subscribe real-time ต่อ admin_notifs — รับทุก notification ข้ามอุปกรณ์ */
+export const subscribeToAdminNotifs = (callback) => {
+  const q = query(collection(db, 'admin_notifs'), orderBy('id', 'desc'), limit(50));
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => d.data()));
+  }, () => {});
+};
+

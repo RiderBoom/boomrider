@@ -16,12 +16,14 @@ import {
   savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
   saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation, subscribeToRiders,
   saveChat, subscribeToChats, subscribeToSupportChat, deleteChatFromDB, appendChatMessage,
-  saveUserProfile, loadUserProfile,
+  saveUserProfile, loadUserProfile, subscribeToUserProfile, saveUserRoles, setBanUser,
   safeLocalSet,
   acceptOrderTransaction, subscribeToOrders,
   atomicOrderCompletion, subscribeToConfig,
   saveTransaction,
   addWalletEntry, subscribeToWalletEntries, clearWalletHistory,
+  savePromoCodes, subscribeToPromoCodes,
+  saveAdminNotif, subscribeToAdminNotifs,
 } from '../firebase/firestore';
 import { uploadDataUrl } from '../firebase/storage';
 
@@ -165,6 +167,9 @@ export function AppProvider({ children }) {
   const walletUnsubRef = React.useRef(null);
   const walletEntriesUnsubRef = React.useRef(null);
   const allWalletsUnsubRef = React.useRef(null);
+  const userProfileUnsubRef = React.useRef(null);
+  const promoUnsubRef = React.useRef(null);
+  const adminNotifsUnsubRef = React.useRef(null);
 
   // --- Global Wallet Store ---
   const [globalWallets, setGlobalWallets] = useState(() => {
@@ -184,7 +189,9 @@ export function AppProvider({ children }) {
     setGlobalUserRoles(prev => {
       const cur = prev[userId] || ['customer'];
       if (cur.includes(role)) return prev;
-      return { ...prev, [userId]: [...cur, role] };
+      const next = [...cur, role];
+      if (FIREBASE_ENABLED) saveUserRoles(userId, next).catch(() => {});
+      return { ...prev, [userId]: next };
     });
     if (currentUser?.id === userId || userProfile?.id === userId) {
       setUserRoles(prev => prev.includes(role) ? prev : [...prev, role]);
@@ -235,9 +242,14 @@ export function AppProvider({ children }) {
   // --- Admin notification ---
   const notifyAdmin = useCallback((title, message, type = 'warning') => {
     const notif = { id: Date.now(), title, message, type, at: new Date().toLocaleString('th-TH') };
-    const queue = JSON.parse(localStorage.getItem('boomrider_admin_notifs') || '[]');
-    queue.unshift(notif);
-    localStorage.setItem('boomrider_admin_notifs', JSON.stringify(queue.slice(0, 50)));
+    // เขียน Firestore เพื่อส่ง notification ข้ามอุปกรณ์
+    if (FIREBASE_ENABLED) saveAdminNotif(notif).catch(() => {});
+    // fallback localStorage (ใช้เมื่อ Firebase ปิด)
+    if (!FIREBASE_ENABLED) {
+      const queue = JSON.parse(localStorage.getItem('boomrider_admin_notifs') || '[]');
+      queue.unshift(notif);
+      localStorage.setItem('boomrider_admin_notifs', JSON.stringify(queue.slice(0, 50)));
+    }
     if (isAdmin) notifySystem(title, message, type);
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -256,9 +268,26 @@ export function AppProvider({ children }) {
     };
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Admin polling
+  // ── Admin notifications: Firestore (cross-device) หรือ localStorage polling ──
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      if (adminNotifsUnsubRef.current) { adminNotifsUnsubRef.current(); adminNotifsUnsubRef.current = null; }
+      return;
+    }
+    if (FIREBASE_ENABLED) {
+      // Firestore subscription — รับ notification จากทุกอุปกรณ์
+      const loginTs = Date.now();
+      let seenMax = loginTs;
+      adminNotifsUnsubRef.current = subscribeToAdminNotifs((notifs) => {
+        const fresh = notifs.filter(n => n.id > seenMax);
+        if (fresh.length > 0) {
+          fresh.forEach(n => notifySystem(n.title || 'แจ้งเตือน', n.message || '', n.type || 'warning'));
+          seenMax = Math.max(seenMax, ...fresh.map(n => n.id));
+        }
+      });
+      return () => { if (adminNotifsUnsubRef.current) { adminNotifsUnsubRef.current(); adminNotifsUnsubRef.current = null; } };
+    }
+    // Fallback: localStorage polling (เมื่อ Firebase ปิด)
     const check = () => {
       const queue = JSON.parse(localStorage.getItem('boomrider_admin_notifs') || '[]');
       const last = parseInt(localStorage.getItem('boomrider_admin_last_check') || '0');
@@ -271,7 +300,25 @@ export function AppProvider({ children }) {
     check();
     const interval = setInterval(check, 5000);
     return () => clearInterval(interval);
-  }, [isAdmin]);
+  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Promo Codes: subscribe จาก Firestore system/promo_codes ─────────────────
+  useEffect(() => {
+    if (!FIREBASE_ENABLED) return;
+    const unsub = subscribeToPromoCodes((codes) => {
+      if (codes.length > 0) {
+        setPromoCodes(codes);
+      } else {
+        // One-time migration: upload localStorage codes ถ้า Firestore ยังว่าง
+        try {
+          const local = JSON.parse(localStorage.getItem('boomrider_promo_codes') || '[]');
+          if (local.length > 0) savePromoCodes(local).catch(() => {});
+        } catch {}
+      }
+    });
+    promoUnsubRef.current = unsub;
+    return () => { unsub(); promoUnsubRef.current = null; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Auto-save to localStorage (ใช้ safeLocalSet ป้องกัน QuotaExceededError) ---
   useEffect(() => { safeLocalSet('boomrider_restaurants', restaurants); }, [restaurants]);
@@ -771,6 +818,26 @@ export function AppProvider({ children }) {
           walletEntriesUnsubRef.current = subscribeToWalletEntries(firebaseUser.uid, (entries) => {
             setWalletAllEntries(entries);
           });
+          // Subscribe user profile — sync roles + banned status ข้ามอุปกรณ์
+          if (userProfileUnsubRef.current) userProfileUnsubRef.current();
+          userProfileUnsubRef.current = subscribeToUserProfile(firebaseUser.uid, (data) => {
+            if (data.roles?.length) {
+              const merged = ADMIN_UID && firebaseUser.uid === ADMIN_UID
+                ? [...new Set([...data.roles, 'admin'])]
+                : data.roles;
+              setUserRoles(merged);
+              setGlobalUserRoles(p => ({ ...p, [firebaseUser.uid]: merged }));
+            }
+            if (data.banned && !(ADMIN_UID && firebaseUser.uid === ADMIN_UID)) {
+              firebaseLogout().then(() => notifySystem('บัญชีถูกระงับ', 'บัญชีของคุณถูกระงับการใช้งาน', 'error')).catch(() => {});
+            }
+          });
+          // บันทึก profile พื้นฐาน (ชื่อ/email/phone) ทุกครั้งที่ login เพื่อให้ Admin panel เห็นครบ
+          saveUserProfile(firebaseUser.uid, {
+            name:  firebaseUser.displayName || saved?.profile?.name || '',
+            email: firebaseUser.email || '',
+            phone: firebaseUser.phoneNumber || saved?.profile?.phone || '',
+          }).catch(() => {});
         } else {
           // Firebase ปิด → fallback โหลดครั้งเดียว
           try {
@@ -1927,11 +1994,11 @@ export function AppProvider({ children }) {
   }, [promoCodes]);
 
   const usePromoCode = useCallback((code) => {
-    setPromoCodes(prev => prev.map(p =>
-      p.code.toUpperCase() === code.toUpperCase()
-        ? { ...p, usedCount: (p.usedCount || 0) + 1 }
-        : p,
-    ));
+    setPromoCodes(prev => {
+      const next = prev.map(p => p.code.toUpperCase() === code.toUpperCase() ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
+      if (FIREBASE_ENABLED) savePromoCodes(next).catch(() => {});
+      return next;
+    });
   }, []);
 
   const createPromoCode = useCallback((data) => {
@@ -1941,16 +2008,28 @@ export function AppProvider({ children }) {
       usedCount: 0, active: true,
       createdAt: new Date().toISOString(),
     };
-    setPromoCodes(prev => [newCode, ...prev]);
+    setPromoCodes(prev => {
+      const next = [newCode, ...prev];
+      if (FIREBASE_ENABLED) savePromoCodes(next).catch(() => {});
+      return next;
+    });
     notifySystem('สำเร็จ', `สร้างโค้ด "${data.code.toUpperCase()}" เรียบร้อย`, 'success');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const togglePromoCode = useCallback((id) => {
-    setPromoCodes(prev => prev.map(p => p.id === id ? { ...p, active: !p.active } : p));
+    setPromoCodes(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, active: !p.active } : p);
+      if (FIREBASE_ENABLED) savePromoCodes(next).catch(() => {});
+      return next;
+    });
   }, []);
 
   const deletePromoCode = useCallback((id) => {
-    setPromoCodes(prev => prev.filter(p => p.id !== id));
+    setPromoCodes(prev => {
+      const next = prev.filter(p => p.id !== id);
+      if (FIREBASE_ENABLED) savePromoCodes(next).catch(() => {});
+      return next;
+    });
   }, []);
 
   // --- Admin manual wallet adjustment ---
@@ -1968,9 +2047,12 @@ export function AppProvider({ children }) {
   // --- Admin ban user ---
   const adminBanUser = useCallback((userId) => {
     const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-    const updated = users.map(u => u.id === userId ? { ...u, banned: !u.banned } : u);
+    const target = users.find(u => u.id === userId);
+    const newBanned = !(target?.banned);
+    const updated = users.map(u => u.id === userId ? { ...u, banned: newBanned } : u);
     localStorage.setItem('boomrider_users', JSON.stringify(updated));
-    notifySystem('Admin', 'อัปเดตสถานะผู้ใช้เรียบร้อย', 'success');
+    if (FIREBASE_ENABLED) setBanUser(userId, newBanned).catch(() => {});
+    notifySystem('Admin', `${newBanned ? 'ระงับ' : 'ปลดระงับ'}บัญชีเรียบร้อย`, 'success');
   }, []);
 
   // --- Admin Logic ---
@@ -2495,6 +2577,14 @@ export function AppProvider({ children }) {
     if (allWalletsUnsubRef.current) {
       allWalletsUnsubRef.current();
       allWalletsUnsubRef.current = null;
+    }
+    if (userProfileUnsubRef.current) {
+      userProfileUnsubRef.current();
+      userProfileUnsubRef.current = null;
+    }
+    if (adminNotifsUnsubRef.current) {
+      adminNotifsUnsubRef.current();
+      adminNotifsUnsubRef.current = null;
     }
     walletFromFirestoreRef.current = false;
     walletSubscribedRef.current = false;
