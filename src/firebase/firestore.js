@@ -44,8 +44,6 @@ export const safeLocalSet = (key, value) => {
 
 export const saveOrder = async (order) => {
   if (!order?.id) return;
-  // strip base64 images (pickupPhoto, deliveryPhoto อาจมีขนาด > 1MB ทำให้ Firestore reject)
-  // รูปต้นฉบับยังอยู่ใน local state เพื่อแสดงผลใน UI ของไรเดอร์ได้ปกติ
   const stripped = stripImages(order);
   try {
     await setDoc(doc(db, 'orders', String(order.id)), {

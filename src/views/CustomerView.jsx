@@ -1112,45 +1112,6 @@ export default function CustomerView() {
                           <InteractiveMap mode="view" userLocation={order.location} shopLocation={order.pickupLocation} riderLocation={order.riderLocation} status={order.status} />
                         </div>
                       )}
-                      {/* ── รูปหลักฐานจากไรเดอร์ ── */}
-                      {(() => {
-                        const validPhoto = (v) =>
-                          typeof v === 'string' && v.length > 200 && !v.includes('[image]');
-                        const showPickup   = validPhoto(order.pickupPhoto)   && ['delivering', 'delivered', 'completed'].includes(order.status);
-                        const showDelivery = validPhoto(order.deliveryPhoto) && ['delivered', 'completed'].includes(order.status);
-                        if (!showPickup && !showDelivery) return null;
-                        return (
-                          <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 space-y-3">
-                            {showPickup && (
-                              <div>
-                                <p className="text-xs font-bold text-indigo-600 mb-1.5 flex items-center gap-1">
-                                  <span>📦</span> หลักฐานรับสินค้า — ไรเดอร์รับของแล้ว
-                                </p>
-                                <img
-                                  src={order.pickupPhoto}
-                                  alt="pickup proof"
-                                  className="w-full max-h-48 object-cover rounded-xl border border-indigo-200 cursor-pointer active:opacity-80"
-                                  onClick={() => openImagePreview(order.pickupPhoto)}
-                                />
-                              </div>
-                            )}
-                            {showDelivery && (
-                              <div>
-                                <p className="text-xs font-bold text-teal-600 mb-1.5 flex items-center gap-1">
-                                  <span>✅</span> หลักฐานส่งสินค้า — ไรเดอร์ถึงที่หมายแล้ว
-                                </p>
-                                <img
-                                  src={order.deliveryPhoto}
-                                  alt="delivery proof"
-                                  className="w-full max-h-48 object-cover rounded-xl border border-teal-300 cursor-pointer active:opacity-80"
-                                  onClick={() => openImagePreview(order.deliveryPhoto)}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-
                       {/* ── ยอดชำระ / สถานะการจ่ายเงิน ── */}
                       {order.status === 'delivered' ? (
                         /* ไรเดอร์ถึงที่หมายแล้ว: แสดงข้อมูลการชำระเงินให้ชัดเจน */
@@ -1262,24 +1223,6 @@ export default function CustomerView() {
                           <div className="font-bold text-gray-800 mt-1">฿{(order.grandTotal || 0).toLocaleString()}</div>
                         </div>
                       </div>
-                      {/* Delivery proof photo */}
-                      {(() => {
-                        const validPhoto = (v) => typeof v === 'string' && v.length > 200 && !v.includes('[image]');
-                        if (!validPhoto(order.deliveryPhoto)) return null;
-                        return (
-                          <div className="mt-3">
-                            <p className="text-xs font-bold text-teal-600 mb-1.5 flex items-center gap-1">
-                              <span>📸</span> หลักฐานส่งสินค้า
-                            </p>
-                            <img
-                              src={order.deliveryPhoto}
-                              alt="delivery proof"
-                              className="w-full max-h-40 object-cover rounded-xl border border-teal-200 cursor-pointer active:opacity-80"
-                              onClick={() => openImagePreview(order.deliveryPhoto)}
-                            />
-                          </div>
-                        );
-                      })()}
                       {/* Payment reminder */}
                       {order.paymentMethod === 'cash' ? (
                         <div className="mt-3 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 flex items-center gap-2">

@@ -105,10 +105,6 @@ export function AppProvider({ children }) {
   const [cancelReasonInput, setCancelReasonInput] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedRequestToReject, setSelectedRequestToReject] = useState(null);
-  const [riderJobPhotos, setRiderJobPhotos] = useState({});
-  const [photoUploading, setPhotoUploading] = useState({});
-  const [showProofModal, setShowProofModal] = useState(false);
-  const [selectedProofOrder, setSelectedProofOrder] = useState(null);
   const [showImageModal, setShowImageModal] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
 
@@ -1106,15 +1102,20 @@ export function AppProvider({ children }) {
     const distance = cart[0].distance;
     const foodTotal = calculateFoodTotal();
     const deliveryFee = calculateDeliveryFee(distance);
-    const grandTotal = Math.max(0, foodTotal + deliveryFee - (promoDiscount || 0));
+    // ── GP & promo — cap discount at available GP so balances always net to zero ──
+    const rawFoodGP      = foodTotal * (appConfig.gpFood / 100);
+    const rawDeliveryGP  = deliveryFee * (appConfig.gpDelivery / 100);
+    const totalRawGP     = rawFoodGP + rawDeliveryGP;
+    // effectivePromo ≤ totalRawGP → admin absorbs discount; merchant/rider never go negative
+    const effectivePromo = Math.min(promoDiscount || 0, totalRawGP);
+    const grandTotal     = Math.max(0, foodTotal + deliveryFee - effectivePromo);
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
       placingOrderRef.current = false;
       return notifySystem("ยอดเงินไม่พอ", "กรุณาเติมเงินหรือเลือกชำระเงินสด", "error");
     }
-    // ── หัก promoDiscount ออกจาก adminGP (Admin รับผิดชอบค่าส่วนลด) ─────────
-    const adminGP = Math.max(0, (foodTotal * (appConfig.gpFood / 100)) + (deliveryFee * (appConfig.gpDelivery / 100)) - (promoDiscount || 0));
-    const merchantIncome = foodTotal * (1 - (appConfig.gpFood / 100));
-    const riderIncome = deliveryFee * (1 - (appConfig.gpDelivery / 100));
+    const adminGP        = totalRawGP - effectivePromo;   // always >= 0
+    const merchantIncome = foodTotal - rawFoodGP;
+    const riderIncome    = deliveryFee - rawDeliveryGP;
     // ── ใช้ generateId() แทน Math.random()*10000 — ป้องกัน ID ชน ───────────
     const newOrder = {
       id: `OD-${generateId()}`,
@@ -1122,7 +1123,7 @@ export function AppProvider({ children }) {
       items: cart,
       foodTotal,
       deliveryFee,
-      promoDiscount: promoDiscount || 0,
+      promoDiscount: effectivePromo,
       grandTotal,
       paymentMethod,
       distance,
@@ -1145,8 +1146,6 @@ export function AppProvider({ children }) {
       riderId: null,
       riderUid: null,
       riderLocation: null,
-      pickupPhoto: null,
-      deliveryPhoto: null,
     };
     const restaurantName = cart[0]?.restaurantName || '';
     // ── mark as pending-local จนกว่า Firestore จะยืนยัน ─────────────────────
@@ -1244,8 +1243,6 @@ export function AppProvider({ children }) {
       riderId:        null,
       riderUid:       null,    // ต้องมี field นี้เพื่อให้ Firestore rule ทำงาน
       riderLocation:  null,
-      pickupPhoto:    null,
-      deliveryPhoto:  null,
     };
 
     pendingLocalOrderIdsRef.current.add(newOrder.id);
@@ -1420,46 +1417,7 @@ export function AppProvider({ children }) {
       if (finalOrder.completedAt)      dbFields.completedAt = finalOrder.completedAt;
       if (finalOrder.cancelReason)     dbFields.cancelReason = finalOrder.cancelReason;
       // ส่งรูปสลิปไว้ใน Firestore (จะถูก strip โดย stripImages ใน updateOrderStatusInDB)
-      if (extraData.pickupPhoto)       dbFields.pickupPhoto   = extraData.pickupPhoto;
-      if (extraData.deliveryPhoto)     dbFields.deliveryPhoto = extraData.deliveryPhoto;
       updateOrderStatusInDB(orderId, dbFields).catch(() => {});
-    }
-
-    // ── ส่งรูปหลักฐานไปยังแชทลูกค้าอัตโนมัติ ─────────────────────────────────
-    // เฉพาะ URL จาก Firebase Storage เท่านั้น (base64 มีขนาดใหญ่เกิน Firestore limit)
-    if (FIREBASE_ENABLED && targetOrder.customerId) {
-      const isStorageUrl = (v) => typeof v === 'string' && v.startsWith('http');
-      const chatId = `support-${targetOrder.customerId}`;
-      const riderDisplayName = targetOrder.riderName
-        || riders.find(r => r.id === targetOrder.riderId)?.name
-        || 'ไรเดอร์';
-      const time = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-
-      const pushProofMsg = (text, image, type) => {
-        const msg = {
-          id: generateId(),
-          sender: 'system',
-          senderName: riderDisplayName,
-          text,
-          image,
-          type,
-          orderId,
-          time,
-        };
-        setChats(prev => {
-          const updated = { ...prev, [chatId]: [...(prev[chatId] || []), msg] };
-          try { localStorage.setItem('boomrider_chats', JSON.stringify(updated)); } catch {}
-          return updated;
-        });
-        appendChatMessage(chatId, msg).catch(() => {});
-      };
-
-      if (newStatus === 'delivering' && isStorageUrl(extraData.pickupPhoto)) {
-        pushProofMsg('📦 ไรเดอร์รับสินค้าแล้ว กำลังนำส่งถึงคุณ', extraData.pickupPhoto, 'pickup_proof');
-      }
-      if (newStatus === 'delivered' && isStorageUrl(extraData.deliveryPhoto)) {
-        pushProofMsg('✅ ไรเดอร์ส่งสินค้าถึงที่หมายแล้ว กรุณายืนยันรับสินค้า', extraData.deliveryPhoto, 'delivery_proof');
-      }
     }
 
     // ── Notifications หลัง setOrders — ปลอดภัย ไม่ crash React ──
@@ -1609,49 +1567,6 @@ export function AppProvider({ children }) {
     }
   };
 
-  // --- Photo Handlers ---
-  const handleRiderPhotoUpload = async (orderId, type, event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const uploadKey = `${orderId}_${type}`;
-    setPhotoUploading(prev => ({ ...prev, [uploadKey]: true }));
-
-    try {
-      // บีบอัดก่อนเสมอ: กล้องมือถือผลิต 5-12 MB → ลดเหลือ ~300-500 KB (เร็วขึ้น 15-30x)
-      const compressed = await compressImage(file, 1280, 960, 0.82);
-
-      let photoUrl = compressed; // fallback: base64 local
-      if (FIREBASE_ENABLED) {
-        try {
-          const path = `orders/${orderId}/${type}_proof_${Date.now()}.jpg`;
-          // timeout 30 วิ — ป้องกัน promise ค้างตลอดเมื่อ network หลุด
-          photoUrl = await Promise.race([
-            uploadDataUrl(compressed, path),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(Object.assign(new Error('upload_timeout'), { code: 'timeout' })), 30_000)
-            ),
-          ]);
-        } catch (storageErr) {
-          // Storage ยังไม่พร้อม / quota / network → ใช้ base64 แทน ไรเดอร์ยังทำงานต่อได้
-          console.warn('[handleRiderPhotoUpload] storage fallback:', storageErr?.code, storageErr?.message);
-        }
-      }
-      setRiderJobPhotos(prev => ({ ...prev, [orderId]: { ...prev[orderId], [type]: photoUrl } }));
-      notifySystem("สำเร็จ", "บันทึกรูปภาพเรียบร้อย", "success");
-    } catch (err) {
-      console.error('[handleRiderPhotoUpload]', err?.code, err?.message);
-      notifySystem(
-        "อัปโหลดไม่สำเร็จ",
-        err?.code === 'timeout' ? 'เน็ตช้าเกินไป กรุณาเชื่อมต่อ WiFi แล้วลองใหม่' : 'กรุณาลองใหม่อีกครั้ง',
-        "error"
-      );
-    } finally {
-      // finally รันเสมอ — ปลด lock ปุ่มไม่ว่าผลจะเป็นอย่างไร
-      setPhotoUploading(prev => ({ ...prev, [uploadKey]: false }));
-    }
-  };
-
   const handleProfilePhotoChange = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -1722,11 +1637,6 @@ export function AppProvider({ children }) {
   const openImagePreview = (url) => {
     setPreviewImageUrl(url);
     setShowImageModal(true);
-  };
-
-  const openProofModal = (order) => {
-    setSelectedProofOrder(order);
-    setShowProofModal(true);
   };
 
   // --- Merchant Management ---
@@ -2680,10 +2590,6 @@ export function AppProvider({ children }) {
     cancelReasonInput, setCancelReasonInput,
     showRejectModal, setShowRejectModal,
     selectedRequestToReject, setSelectedRequestToReject,
-    riderJobPhotos, setRiderJobPhotos,
-    photoUploading,
-    showProofModal, setShowProofModal,
-    selectedProofOrder, setSelectedProofOrder,
     showImageModal, setShowImageModal,
     previewImageUrl, setPreviewImageUrl,
     showTopUpModal, setShowTopUpModal,
@@ -2703,14 +2609,12 @@ export function AppProvider({ children }) {
     removeToast,
 
     // Photo handlers
-    handleRiderPhotoUpload,
     handleProfilePhotoChange,
     handleShopPhotoChange,
     handleRegistrationPhotoSelect,
     handleTopUpSlipSelect,
     handleMenuPhotoSelect,
     openImagePreview,
-    openProofModal,
 
     // Merchant management
     handleUpdateShopLocation,

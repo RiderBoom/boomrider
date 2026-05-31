@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Bike, User, MessageSquare, Camera, Image as ImageIcon, AlertCircle,
+  Bike, User, MessageSquare, AlertCircle,
   ToggleLeft, ToggleRight, TrendingUp, Clock, DollarSign, Star, Loader, MapPin,
   XCircle, X, Wallet, CreditCard, ArrowUpCircle, ArrowDownCircle,
 } from 'lucide-react';
@@ -15,13 +15,10 @@ export default function RiderView() {
     riderTab, setRiderTab,
     orders, riders, restaurants, appConfig,
     userProfile, currentUser,
-    riderJobPhotos,
-    photoUploading,
     acceptOrder,
     updateOrderStatus,
     requestCancelByRole,
     hasPendingCancelRequest,
-    handleRiderPhotoUpload,
     openChatWindow,
     setProfileSubView, setActiveTab,
     updateRiderWorkingLocation,
@@ -500,11 +497,6 @@ export default function RiderView() {
               </div>
             ) : (
               myJobs.map(job => {
-                const pickupPhoto = riderJobPhotos[job.id]?.pickup;
-                const deliveryPhoto = riderJobPhotos[job.id]?.delivery;
-                const uploadingPickup = !!photoUploading[`${job.id}_pickup`];
-                const uploadingDelivery = !!photoUploading[`${job.id}_delivery`];
-
                 return (
                   <div key={job.id} className="bg-gray-800 p-4 rounded-xl border border-green-500">
                     {/* Header */}
@@ -625,41 +617,17 @@ export default function RiderView() {
                       </button>
                     )}
 
-                    {/* ── Step: picking_up → delivering (พร้อมรูปถ่าย) ── */}
+                    {/* ── Step: picking_up → delivering ── */}
                     {job.status === 'picking_up' && (
-                      <>
-                        <p className="text-xs text-gray-400 mb-2 font-bold">📷 ถ่ายรูปสินค้าก่อนรับ:</p>
-                        <div className="flex gap-2 mb-2">
-                          <label className="flex-1 py-3 rounded-xl border-2 border-dashed border-gray-600 text-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-700 hover:border-gray-500 text-sm">
-                            <Camera size={16} className="mr-1.5" /> ถ่ายรูป
-                            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => handleRiderPhotoUpload(job.id, 'pickup', e)} />
-                          </label>
-                          <label className="flex-1 py-3 rounded-xl border-2 border-dashed border-gray-600 text-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-700 hover:border-gray-500 text-sm">
-                            <ImageIcon size={16} className="mr-1.5" /> อัลบั้ม
-                            <input type="file" accept="image/*" className="hidden" onChange={e => handleRiderPhotoUpload(job.id, 'pickup', e)} />
-                          </label>
-                        </div>
-                        {pickupPhoto && (
-                          <img src={pickupPhoto} className="mb-2 h-36 w-full object-cover rounded-xl border border-green-500/50" alt="pickup" />
-                        )}
-                        <button
-                          disabled={!pickupPhoto || uploadingPickup}
-                          onClick={() => {
-                            if (!pickupPhoto || uploadingPickup) return;
-                            updateOrderStatus(job.id, 'delivering', null, { pickupPhoto });
-                          }}
-                          className={`w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${
-                            pickupPhoto && !uploadingPickup
-                              ? 'bg-blue-500 text-white hover:bg-blue-400'
-                              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                          }`}
-                        >
-                          {uploadingPickup ? '⏳ กำลังอัปโหลดรูป...' : pickupPhoto ? '✅ ยืนยันรับของแล้ว → ออกส่ง' : '⏳ รอถ่ายรูปสินค้าก่อน'}
-                        </button>
-                      </>
+                      <button
+                        onClick={() => updateOrderStatus(job.id, 'delivering')}
+                        className="w-full bg-blue-500 py-3 rounded-xl font-bold text-sm hover:bg-blue-400 active:scale-95 transition-all"
+                      >
+                        ✅ ยืนยันรับของแล้ว → ออกส่ง
+                      </button>
                     )}
 
-                    {/* ── Step: delivering → delivered (พร้อมรูปถ่าย) ── */}
+                    {/* ── Step: delivering → delivered ── */}
                     {job.status === 'delivering' && (
                       <>
                         {job.paymentMethod === 'cash' && (
@@ -674,33 +642,11 @@ export default function RiderView() {
                             )}
                           </div>
                         )}
-                        <p className="text-xs text-gray-400 mb-2 font-bold">📷 ถ่ายรูปหลักฐานการส่ง:</p>
-                        <div className="flex gap-2 mb-2">
-                          <label className="flex-1 py-3 rounded-xl border-2 border-dashed border-gray-600 text-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-700 hover:border-gray-500 text-sm">
-                            <Camera size={16} className="mr-1.5" /> ถ่ายรูป
-                            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => handleRiderPhotoUpload(job.id, 'delivery', e)} />
-                          </label>
-                          <label className="flex-1 py-3 rounded-xl border-2 border-dashed border-gray-600 text-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-700 hover:border-gray-500 text-sm">
-                            <ImageIcon size={16} className="mr-1.5" /> อัลบั้ม
-                            <input type="file" accept="image/*" className="hidden" onChange={e => handleRiderPhotoUpload(job.id, 'delivery', e)} />
-                          </label>
-                        </div>
-                        {deliveryPhoto && (
-                          <img src={deliveryPhoto} className="mb-2 h-36 w-full object-cover rounded-xl border border-green-500/50" alt="delivery" />
-                        )}
                         <button
-                          disabled={!deliveryPhoto || uploadingDelivery}
-                          onClick={() => {
-                            if (!deliveryPhoto || uploadingDelivery) return;
-                            updateOrderStatus(job.id, 'delivered', null, { deliveryPhoto });
-                          }}
-                          className={`w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${
-                            deliveryPhoto && !uploadingDelivery
-                              ? 'bg-green-500 text-white hover:bg-green-400 shadow-lg shadow-green-900/50'
-                              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                          }`}
+                          onClick={() => updateOrderStatus(job.id, 'delivered')}
+                          className="w-full bg-green-500 py-3 rounded-xl font-bold text-sm hover:bg-green-400 active:scale-95 transition-all shadow-lg shadow-green-900/50"
                         >
-                          {uploadingDelivery ? '⏳ กำลังอัปโหลดรูป...' : deliveryPhoto ? '🎉 ยืนยันส่งสำเร็จ!' : '⏳ รอถ่ายรูปหลักฐานก่อน'}
+                          🎉 ยืนยันส่งสำเร็จ!
                         </button>
                       </>
                     )}

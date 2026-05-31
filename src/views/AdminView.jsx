@@ -68,8 +68,6 @@ export default function AdminView() {
     showCancelModal, setShowCancelModal,
     showRejectModal, setShowRejectModal,
     cancelReasonInput, setCancelReasonInput,
-    selectedProofOrder,
-    showProofModal, setShowProofModal,
     showImageModal, setShowImageModal,
     previewImageUrl,
     handleApproveRequest,
@@ -77,7 +75,7 @@ export default function AdminView() {
     initiateCancelOrder, confirmCancelOrder,
     saveShopEdit,
     toggleRestaurantStatus, toggleRiderBan,
-    openChatWindow, openProofModal, openImagePreview,
+    openChatWindow, openImagePreview,
     notifySystem,
     deleteChat,
     // Promo
@@ -484,9 +482,6 @@ export default function AdminView() {
                         <td className="p-4 text-right">
                           {!['cancelled', 'delivered', 'completed'].includes(order.status) && (
                             <button onClick={() => initiateCancelOrder(order.id)} className="text-red-500 hover:bg-red-50 text-xs px-2 py-1 rounded border border-red-200">ยกเลิก</button>
-                          )}
-                          {(order.pickupPhoto || order.deliveryPhoto) && (
-                            <button onClick={() => openProofModal(order)} className="text-blue-500 hover:bg-blue-50 text-xs px-2 py-1 rounded border border-blue-200 ml-1">หลักฐาน</button>
                           )}
                         </td>
                       </tr>
@@ -1318,27 +1313,6 @@ export default function AdminView() {
             <div className="flex gap-2">
               <button onClick={() => setShowRejectModal(false)} className="flex-1 bg-gray-200 py-2 rounded-lg font-bold">ยกเลิก</button>
               <button onClick={confirmRejectRequest} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">ยืนยันปฏิเสธ</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showProofModal && selectedProofOrder && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-4 rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">หลักฐาน #{selectedProofOrder.id}</h3>
-              <button onClick={() => setShowProofModal(false)} className="p-1 hover:bg-gray-100 rounded-full"><X /></button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <p className="font-bold text-sm mb-2 text-indigo-600">รูปรับของ (Pickup)</p>
-                {selectedProofOrder.pickupPhoto ? <img src={selectedProofOrder.pickupPhoto} className="w-full rounded-lg border" alt="pickup" /> : <p className="text-gray-400 text-sm">ไม่มีรูปภาพ</p>}
-              </div>
-              <div>
-                <p className="font-bold text-sm mb-2 text-green-600">รูปส่งของ (Delivery)</p>
-                {selectedProofOrder.deliveryPhoto ? <img src={selectedProofOrder.deliveryPhoto} className="w-full rounded-lg border" alt="delivery" /> : <p className="text-gray-400 text-sm">ไม่มีรูปภาพ</p>}
-              </div>
             </div>
           </div>
         </div>

@@ -96,33 +96,6 @@ const ChatModal = () => {
               const isSystem = msg.sender === 'system';
               const isMine = !isSystem && msg.sender === activeRole;
 
-              // ── System proof messages (pickup/delivery photos) ─────────────
-              if (isSystem && msg.image) {
-                const isPickup = msg.type === 'pickup_proof';
-                const borderColor = isPickup ? 'border-indigo-300' : 'border-teal-300';
-                const labelColor  = isPickup ? 'text-indigo-700 bg-indigo-50'   : 'text-teal-700 bg-teal-50';
-                return (
-                  <div key={idx} className="flex flex-col items-center my-1">
-                    <div className={`w-full max-w-xs rounded-2xl border-2 ${borderColor} overflow-hidden shadow-sm`}>
-                      <div className={`px-3 py-1.5 ${labelColor} flex items-center gap-1.5`}>
-                        <span className="text-sm">{isPickup ? '📦' : '✅'}</span>
-                        <span className="text-xs font-bold">{msg.senderName}</span>
-                        <span className="text-[10px] ml-auto text-gray-400">{msg.time}</span>
-                      </div>
-                      <img
-                        src={msg.image}
-                        alt={isPickup ? 'pickup proof' : 'delivery proof'}
-                        className="w-full max-h-52 object-cover cursor-pointer"
-                        onClick={() => window.open(msg.image, '_blank')}
-                      />
-                      <div className={`px-3 py-2 ${labelColor}`}>
-                        <p className="text-xs font-semibold">{msg.text}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
               return (
                 <div key={idx} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
                   <span className="text-[10px] text-gray-400 mb-0.5 px-1">
