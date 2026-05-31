@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, FIREBASE_ENABLED } from '../constants';
-import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries } from '../firebase/firestore';
+import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries, fixAllWalletBalances } from '../firebase/firestore';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function StatCard({ label, value, color = 'green', icon: Icon }) {
@@ -156,6 +156,20 @@ export default function AdminView() {
       setTxList([]);
       setTxRefreshKey(k => k + 1);
       notifySystem('ล้างข้อมูล', 'ล้างบันทึกธุรกรรมเรียบร้อยแล้ว', 'success');
+    }
+  };
+
+  const [fixWalletStatus, setFixWalletStatus] = useState(null);
+  const handleFixWalletBalances = async () => {
+    if (!window.confirm('ปรับยอด balance ทุก wallet ให้เป็นตัวเลขที่ถูกต้อง (ปัดเศษ 2 ตำแหน่ง) ใช่หรือไม่?')) return;
+    setFixWalletStatus('กำลังประมวลผล...');
+    try {
+      const results = await fixAllWalletBalances();
+      const ok = results.filter(r => r.ok).length;
+      const fail = results.filter(r => !r.ok).length;
+      setFixWalletStatus(`สำเร็จ ${ok} รายการ${fail ? ` / ล้มเหลว ${fail} รายการ` : ''}`);
+    } catch (err) {
+      setFixWalletStatus(`ผิดพลาด: ${err?.message || 'unknown'}`);
     }
   };
 
@@ -1193,6 +1207,29 @@ export default function AdminView() {
           <button onClick={saveConfig} className="bg-green-600 text-white px-6 py-3 rounded-lg font-bold shadow hover:bg-green-700 flex items-center gap-2">
             <Save size={18} /> บันทึกการตั้งค่าทั้งหมด
           </button>
+
+          {/* ── เครื่องมือระบบ ────────────────────────────────────────────── */}
+          <div className="mt-8 border-t pt-6">
+            <h3 className="font-bold text-gray-500 border-b pb-2 mb-4 flex items-center gap-2">
+              <Sliders size={16} /> เครื่องมือระบบ (Admin Only)
+            </h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleFixWalletBalances}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-700 border border-orange-200 rounded-xl text-sm font-semibold hover:bg-orange-100 transition-colors"
+              >
+                <Wallet size={15} /> แก้ไข Balance Wallet ทั้งหมด
+              </button>
+              {fixWalletStatus && (
+                <span className="text-sm text-gray-600 bg-gray-50 border rounded-lg px-3 py-1.5">
+                  {fixWalletStatus}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              ปัดเศษทศนิยม balance ทุก wallet ให้เป็น 2 ตำแหน่ง และแก้ไข floating-point artifact
+            </p>
+          </div>
         </div>
       )}
 

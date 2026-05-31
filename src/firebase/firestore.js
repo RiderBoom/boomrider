@@ -819,3 +819,28 @@ export const clearWalletHistory = async (userId) => {
   }
 };
 
+/**
+ * ONE-TIME MIGRATION — Admin เท่านั้น
+ * อ่าน wallet ทุก document แล้วเขียน balance กลับเป็น Number ที่ปัดเศษ 2 ตำแหน่ง
+ * แก้ปัญหา floating-point artifact (เช่น 496.39999999999986 → 496.40)
+ * และ display artifact ที่อาจมี balance ซ้ำ
+ */
+export const fixAllWalletBalances = async () => {
+  const snap = await getDocs(collection(db, 'wallets'));
+  const results = [];
+  for (const docSnap of snap.docs) {
+    const raw = docSnap.data()?.balance;
+    const parsed = typeof raw === 'number' ? raw
+                 : typeof raw === 'string' ? parseFloat(raw)
+                 : 0;
+    const clean = isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
+    try {
+      await updateDoc(docSnap.ref, { balance: clean });
+      results.push({ id: docSnap.id, before: raw, after: clean, ok: true });
+    } catch (err) {
+      results.push({ id: docSnap.id, before: raw, after: clean, ok: false, err: err?.code });
+    }
+  }
+  return results;
+};
+
