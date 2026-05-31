@@ -1391,10 +1391,49 @@ export function AppProvider({ children }) {
       if (newStatus === 'cancelled')       notifySystem('ยกเลิกออเดอร์', `ออเดอร์ #${orderId} ถูกยกเลิก`, 'error');
     }
 
+    // ── Cash settlement บน device ไรเดอร์ (เมื่อกด "ส่งของแล้ว") ──────────────
+    // ต้องรันบน device ไรเดอร์เท่านั้น เพราะไรเดอร์เป็นเจ้าของ wallet ตัวเอง
+    // → Firestore rule isOwner(riderUid) = true → write ผ่าน
+    // หากรันบน device ลูกค้า rule จะ block เพราะ balance ลด + ไม่ใช่ owner/admin
+    if (newStatus === 'delivered' && targetOrder.paymentMethod === 'cash' && FIREBASE_ENABLED && ADMIN_UID && prevStatus !== 'delivered') {
+      const restaurant   = targetOrder.type === 'food' ? restaurants.find(r => r.id === targetOrder.restaurantId) : null;
+      const riderProfile = riders.find(r => r.id === targetOrder.riderId);
+      const riderUid     = targetOrder.riderUid || riderProfile?.userId || currentUser?.id || null;
+      const shopOwnerUid = restaurant?.ownerId || null;
+
+      const shortId      = targetOrder.id.slice(-6);
+      const restName     = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
+      const merchantIncome = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
+      const gpAmount       = typeof targetOrder.adminGP         === 'number' ? targetOrder.adminGP         : 0;
+      const _cashDate    = new Date().toLocaleString('th-TH');
+
+      // ── Firestore balance writes (เรียก allSettled — ไม่ block แม้ 1 ตัว fail) ──
+      const cashJobs = [];
+      if (riderUid) {
+        // ไรเดอร์หักยอดคืน platform (isOwner = true → ผ่าน rule แม้ balance ลด)
+        if (merchantIncome > 0) cashJobs.push(creditWalletInDB(riderUid, -merchantIncome, `โอนยอดอาหาร(สด) ${restName} #${shortId}`));
+        if (gpAmount       > 0) cashJobs.push(creditWalletInDB(riderUid, -gpAmount,       `GP(สด) ${restName} #${shortId}`));
+      }
+      if (shopOwnerUid && merchantIncome > 0) cashJobs.push(creditWalletInDB(shopOwnerUid, merchantIncome, `รายได้ร้าน(สด) #${shortId}`));
+      if (ADMIN_UID    && gpAmount       > 0) cashJobs.push(creditWalletInDB(ADMIN_UID,    gpAmount,       `GP(สด) #${shortId}`));
+      Promise.allSettled(cashJobs);
+
+      // ── Wallet entries (history) ───────────────────────────────────────────────
+      if (riderUid) {
+        if (merchantIncome > 0) addWalletEntry(riderUid, { type: 'expense', amount: -merchantIncome, desc: `โอนยอดอาหาร(สด) ${restName} #${shortId}`, date: _cashDate }).catch(() => {});
+        if (gpAmount       > 0) addWalletEntry(riderUid, { type: 'expense', amount: -gpAmount,       desc: `หัก GP(สด) ${restName} #${shortId}`,       date: _cashDate }).catch(() => {});
+      }
+      if (shopOwnerUid && merchantIncome > 0) addWalletEntry(shopOwnerUid, { type: 'income', amount: merchantIncome, desc: `รายได้ร้าน(สด) ${restName} #${shortId}`, date: _cashDate }).catch(() => {});
+      if (ADMIN_UID    && gpAmount       > 0) addWalletEntry(ADMIN_UID,    { type: 'income', amount: gpAmount,       desc: `GP(สด) ${restName} #${shortId}`,          date: _cashDate }).catch(() => {});
+
+      // ── Transaction log ───────────────────────────────────────────────────────
+      if (merchantIncome > 0 && shopOwnerUid) saveTransaction({ type: 'merchant_income', orderId, userId: shopOwnerUid, userName: restName || 'ร้านค้า', role: 'merchant', amount: merchantIncome, desc: `รายได้ร้าน(สด) #${shortId}`, date: _cashDate }).catch(() => {});
+      if (gpAmount > 0) saveTransaction({ type: 'admin_gp', orderId, userId: ADMIN_UID, userName: 'Admin', role: 'admin', amount: gpAmount, desc: `GP(สด) #${shortId}`, date: _cashDate }).catch(() => {});
+    }
+
     // ── ประมวลผล income หลัง setOrders (ใช้ข้อมูล order เก่าที่ดึงไว้ก่อนหน้า) ──
     // กัน double-credit: ทำงานเฉพาะเมื่อลูกค้ากด "ยืนยันรับ" (completed) เท่านั้น
     if (newStatus === 'completed' && targetOrder && prevStatus !== 'completed') {
-      // ── Multi-wallet atomic completion (Firestore) ────────────────────────
       if (FIREBASE_ENABLED && ADMIN_UID) {
         const restaurant   = targetOrder.type === 'food'
           ? restaurants.find(r => r.id === targetOrder.restaurantId)
@@ -1403,23 +1442,18 @@ export function AppProvider({ children }) {
         const riderUid     = targetOrder.riderUid || riderProfile?.userId || null;
         const shopOwnerUid = restaurant?.ownerId || null;
 
-        const shortId = targetOrder.id.slice(-6);
-        const riderIncome  = typeof targetOrder.riderIncome    === 'number' ? targetOrder.riderIncome    : 0;
+        const shortId      = targetOrder.id.slice(-6);
+        const riderIncome    = typeof targetOrder.riderIncome    === 'number' ? targetOrder.riderIncome    : 0;
         const merchantIncome = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
-        const gpAmount     = typeof targetOrder.adminGP         === 'number' ? targetOrder.adminGP         : 0;
-
-        // ── อัปเดต local state ทันทีสำหรับ user ที่ login อยู่บน device นี้ ──
-        // ป้องกัน race condition ระหว่าง saveWallet กับ subscribeToWallet
-        const myUidNow = userProfile.id || currentUser?.id;
-        const isCashOrder = targetOrder.paymentMethod === 'cash';
-
-        // ── ข้อมูลเพิ่มเติมสำหรับ description ─────────────────────────────────
-        const restName   = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
-        const deliveryFeeGP = targetOrder.deliveryFee > 0 ? Math.round(targetOrder.deliveryFee - riderIncome) : 0;
-        const foodGP        = targetOrder.foodTotal   > 0 ? Math.round(targetOrder.foodTotal   - merchantIncome) : 0;
+        const gpAmount       = typeof targetOrder.adminGP        === 'number' ? targetOrder.adminGP        : 0;
+        const myUidNow       = userProfile.id || currentUser?.id;
+        const isCashOrder    = targetOrder.paymentMethod === 'cash';
+        const restName       = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
+        const deliveryFeeGP  = targetOrder.deliveryFee > 0 ? Math.round(targetOrder.deliveryFee - riderIncome) : 0;
+        const foodGP         = targetOrder.foodTotal   > 0 ? Math.round(targetOrder.foodTotal   - merchantIncome) : 0;
 
         if (!isCashOrder) {
-          // ── Wallet payment: local update สำหรับ user ปัจจุบัน (processTransaction จะเขียน entry ด้วย) ──
+          // ── Wallet order: optimistic local update + wallet entries ─────────────
           if (riderUid && riderUid === myUidNow && riderIncome > 0) {
             const gpNote = deliveryFeeGP > 0 ? ` (หัก GP ฿${deliveryFeeGP})` : '';
             processTransaction('income', riderIncome, `ค่าส่ง ${restName} #${shortId}${gpNote}`);
@@ -1431,28 +1465,21 @@ export function AppProvider({ children }) {
           if (ADMIN_UID && ADMIN_UID === myUidNow && gpAmount > 0) {
             processTransaction('income', gpAmount, `GP ${restName} #${shortId}`);
           }
-        }
-        // cash: ไม่เรียก processTransaction — balance ถูกอัปเดตผ่าน atomicOrderCompletion → subscribeToWallet
 
-        // ── Firestore atomic write (ทุกกรณี — ใช้ increment/arrayUnion ไม่ต้อง read) ──
-        atomicOrderCompletion({
-          order:        targetOrder,
-          riderUid,
-          shopOwnerUid,
-          adminUid:     ADMIN_UID,
-          gpFood:       appConfig.gpFood,
-          gpDelivery:   appConfig.gpDelivery,
-        }).catch((err) => {
-          if (import.meta.env.DEV) console.error('[atomicOrderCompletion]', err?.message);
-        });
+          // ── Firestore atomic write (wallet orders only) ────────────────────────
+          atomicOrderCompletion({
+            order:        targetOrder,
+            riderUid,
+            shopOwnerUid,
+            adminUid:     ADMIN_UID,
+            gpFood:       appConfig.gpFood,
+            gpDelivery:   appConfig.gpDelivery,
+          }).catch((err) => {
+            if (import.meta.env.DEV) console.error('[atomicOrderCompletion]', err?.message);
+          });
 
-        // ── เขียน wallet entries ให้ทุกฝ่าย (ครอบคลุมทั้ง cash และ wallet) ──────
-        // wallet order: เขียนเฉพาะ user ที่ไม่ใช่ current (processTransaction ดูแล current แล้ว)
-        // cash order: เขียนทุก user เพราะ processTransaction ไม่ได้ถูกเรียก
-        const _entryDate = new Date().toLocaleString('th-TH');
-
-        if (!isCashOrder) {
-          // ── Wallet order: entries สำหรับ non-current-user ──────────────────────
+          // ── Wallet entries สำหรับ non-current-user (wallet orders) ───────────
+          const _entryDate = new Date().toLocaleString('th-TH');
           if (riderUid && riderIncome > 0 && riderUid !== myUidNow) {
             const gpNote = deliveryFeeGP > 0 ? ` (หัก GP ฿${deliveryFeeGP})` : '';
             addWalletEntry(riderUid, { type: 'income', amount: riderIncome, desc: `ค่าส่ง ${restName} #${shortId}${gpNote}`, date: _entryDate }).catch(() => {});
@@ -1464,56 +1491,33 @@ export function AppProvider({ children }) {
           if (ADMIN_UID && gpAmount > 0 && ADMIN_UID !== myUidNow) {
             addWalletEntry(ADMIN_UID, { type: 'income', amount: gpAmount, desc: `GP ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
           }
-        } else {
-          // ── Cash order: entries สำหรับทุก user (รวม current) ──────────────────
-          // ไรเดอร์: เก็บค่าส่ง(สด)ไว้เอง, ส่งยอดอาหาร+GP คืน platform ผ่าน wallet
-          if (riderUid) {
-            if (merchantIncome > 0) {
-              addWalletEntry(riderUid, { type: 'expense', amount: -merchantIncome, desc: `โอนยอดอาหาร(สด) ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
-            }
-            if (gpAmount > 0) {
-              addWalletEntry(riderUid, { type: 'expense', amount: -gpAmount, desc: `หัก GP(สด) ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
-            }
-          }
-          // ร้านค้า: รับยอดอาหาร (จากการหัก wallet ไรเดอร์)
-          if (shopOwnerUid && merchantIncome > 0) {
-            addWalletEntry(shopOwnerUid, { type: 'income', amount: merchantIncome, desc: `รายได้ร้าน(สด) ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
-          }
-          // Admin: รับ GP
-          if (ADMIN_UID && gpAmount > 0) {
-            addWalletEntry(ADMIN_UID, { type: 'income', amount: gpAmount, desc: `GP(สด) ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
-          }
         }
+        // cash: settlement + entries ถูกจัดการที่ 'delivered' stage แล้ว ไม่ทำซ้ำ
 
-        // ── บันทึก transaction log ────────────────────────────────────────────
+        // ── Transaction log (ทั้ง cash และ wallet orders) ─────────────────────────
         const txDate    = new Date().toLocaleString('th-TH');
         const txShortId = `#${orderId.slice(-6)}`;
         saveTransaction({ type: 'order_completed', orderId, userId: targetOrder.customerId, userName: targetOrder.customerName, role: 'customer', amount: 0, desc: `ออเดอร์เสร็จสิ้น ${txShortId}`, date: txDate }).catch(() => {});
-        if (riderIncome > 0 && riderUid) saveTransaction({ type: 'rider_income', orderId, userId: riderUid, userName: riderProfile?.name || 'ไรเดอร์', role: 'rider', amount: riderIncome, desc: `ค่าส่ง ${txShortId}`, date: txDate }).catch(() => {});
-        if (merchantIncome > 0 && shopOwnerUid) saveTransaction({ type: 'merchant_income', orderId, userId: shopOwnerUid, userName: targetOrder.restaurantName || 'ร้านค้า', role: 'merchant', amount: merchantIncome, desc: `รายได้ร้าน ${txShortId}`, date: txDate }).catch(() => {});
-        if (gpAmount > 0) saveTransaction({ type: 'admin_gp', orderId, userId: ADMIN_UID, userName: 'Admin', role: 'admin', amount: gpAmount, desc: `GP ${txShortId}`, date: txDate }).catch(() => {});
+        if (!isCashOrder) {
+          if (riderIncome    > 0 && riderUid)     saveTransaction({ type: 'rider_income',    orderId, userId: riderUid,     userName: riderProfile?.name || 'ไรเดอร์',             role: 'rider',    amount: riderIncome,    desc: `ค่าส่ง ${txShortId}`,       date: txDate }).catch(() => {});
+          if (merchantIncome > 0 && shopOwnerUid) saveTransaction({ type: 'merchant_income', orderId, userId: shopOwnerUid, userName: targetOrder.restaurantName || 'ร้านค้า',     role: 'merchant', amount: merchantIncome, desc: `รายได้ร้าน ${txShortId}`,   date: txDate }).catch(() => {});
+          if (gpAmount       > 0)                 saveTransaction({ type: 'admin_gp',         orderId, userId: ADMIN_UID,   userName: 'Admin',                                     role: 'admin',    amount: gpAmount,       desc: `GP ${txShortId}`,           date: txDate }).catch(() => {});
+        }
       } else {
         // ── Firebase ปิด → fallback (ใช้ creditWallet เพื่ออัปเดต globalWallets ด้วย) ──
         const shortId = targetOrder.id.slice(-6);
-        // รายได้ไรเดอร์ — creditWallet อัปเดต globalWallets (ทุก user) ไม่ใช่แค่ user ที่ login
         if (targetOrder.riderId) {
           const riderProfile = riders.find(r => r.id === targetOrder.riderId);
           const riderUserId  = targetOrder.riderUid || riderProfile?.userId;
           const income = typeof targetOrder.riderIncome === 'number' ? targetOrder.riderIncome : 0;
-          if (riderUserId && income > 0) {
-            creditWallet(riderUserId, income, `ค่าส่ง ${targetOrder.restaurantName || 'พัสดุ'} #${shortId}`);
-          }
+          if (riderUserId && income > 0) creditWallet(riderUserId, income, `ค่าส่ง ${targetOrder.restaurantName || 'พัสดุ'} #${shortId}`);
         }
-        // รายได้ร้านค้า — creditWallet ไม่ต้องเช็คว่า merchant login อยู่หรือเปล่า
         if (targetOrder.type === 'food') {
           const restaurant = restaurants.find(r => r.id === targetOrder.restaurantId);
           const shopUserId  = restaurant?.ownerId;
           const income = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
-          if (shopUserId && income > 0) {
-            creditWallet(shopUserId, income, `รายได้ร้าน #${shortId}`);
-          }
+          if (shopUserId && income > 0) creditWallet(shopUserId, income, `รายได้ร้าน #${shortId}`);
         }
-        // Admin GP
         if (ADMIN_UID) {
           const gp = typeof targetOrder.adminGP === 'number' ? targetOrder.adminGP : 0;
           if (gp > 0) creditWallet(ADMIN_UID, gp, `GP #${shortId} (local)`);
