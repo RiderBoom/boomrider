@@ -736,3 +736,86 @@ export const clearTransactionLog = async () => {
   }
 };
 
+// ===== Wallet Entries (per-user history subcollection) =========================
+
+/**
+ * เพิ่ม entry ลงใน wallets/{userId}/entries subcollection
+ * ใช้ addDoc — Firestore สร้าง ID อัตโนมัติ
+ */
+export const addWalletEntry = async (userId, entry) => {
+  if (!userId || !entry?.type) return;
+  try {
+    await addDoc(collection(db, 'wallets', userId, 'entries'), {
+      ...entry,
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[addWalletEntry]', err?.code, err?.message);
+  }
+};
+
+/**
+ * Real-time subscription สำหรับ wallet entries ของ user
+ * @param {string} userId
+ * @param {function} callback — รับ array ของ entries
+ */
+export const subscribeToWalletEntries = (userId, callback, onError) => {
+  if (!userId) return () => {};
+  const q = query(
+    collection(db, 'wallets', userId, 'entries'),
+    orderBy('createdAt', 'desc'),
+    limit(200),
+  );
+  return onSnapshot(q, (snap) => {
+    const entries = snap.docs.map(d => {
+      const data = d.data();
+      const ts = data.createdAt;
+      return { ...data, id: d.id, createdAtMs: ts?.toDate ? ts.toDate().getTime() : 0 };
+    });
+    callback(entries);
+  }, (err) => {
+    if (import.meta.env.DEV) console.error('[subscribeToWalletEntries]', err?.code, err?.message);
+    if (onError) onError(err);
+  });
+};
+
+/**
+ * โหลด wallet entries ของ user ครั้งเดียว (ใช้ใน Admin panel)
+ */
+export const loadWalletEntries = async (userId) => {
+  if (!userId) return [];
+  try {
+    const q = query(
+      collection(db, 'wallets', userId, 'entries'),
+      orderBy('createdAt', 'desc'),
+      limit(200),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => {
+      const data = d.data();
+      const ts = data.createdAt;
+      return { ...data, id: d.id, createdAtMs: ts?.toDate ? ts.toDate().getTime() : 0 };
+    });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[loadWalletEntries]', err?.code, err?.message);
+    return [];
+  }
+};
+
+/**
+ * เคลียร์ wallet history โดยอัปเดต historyClearedAt = now ใน wallet document
+ * Entries ยังอยู่ใน Firestore แต่จะถูก filter ออกเมื่อ clearedAt > entry.createdAt
+ */
+export const clearWalletHistory = async (userId) => {
+  if (!userId) return false;
+  try {
+    await setDoc(doc(db, 'wallets', userId), {
+      historyClearedAt: serverTimestamp(),
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[clearWalletHistory]', err?.code, err?.message);
+    return false;
+  }
+};
+

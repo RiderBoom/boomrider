@@ -642,8 +642,8 @@ export default function CustomerView() {
               ) : (
                 <div className="space-y-2">
                   {[...walletHistory].sort((a, b) => {
-                      const t = (id = '') => parseInt((id.match(/\d{10,}/) || ['0'])[0], 10);
-                      return t(b.id) - t(a.id);
+                      const ms = (e) => e.createdAtMs || parseInt(((e.id || '').match(/\d{10,}/) || ['0'])[0], 10);
+                      return ms(b) - ms(a);
                     }).map(tx => {
                     const amt = tx.amount ?? 0;
                     const isIncome = amt >= 0;

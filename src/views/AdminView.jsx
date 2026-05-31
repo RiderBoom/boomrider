@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, FIREBASE_ENABLED } from '../constants';
-import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta } from '../firebase/firestore';
+import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries } from '../firebase/firestore';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function StatCard({ label, value, color = 'green', icon: Icon }) {
@@ -85,6 +85,7 @@ export default function AdminView() {
     // Admin tools
     adminAdjustWallet, adminBanUser,
     creditWallet,
+    clearWalletHistory,
   } = useApp();
 
   // ── Local state ──────────────────────────────────────────────────────────
@@ -92,6 +93,8 @@ export default function AdminView() {
   const [adjustUserId, setAdjustUserId] = useState(null);
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustDesc, setAdjustDesc] = useState('');
+  const [userWalletEntries, setUserWalletEntries] = useState({});
+  const [userWalletLoading, setUserWalletLoading] = useState({});
 
   // Promo form
   const [promoForm, setPromoForm] = useState({
@@ -242,6 +245,25 @@ export default function AdminView() {
   ];
 
   // ── Wallet adjust ─────────────────────────────────────────────────────────
+  const loadUserWalletEntries = async (userId) => {
+    if (!userId || !FIREBASE_ENABLED) return;
+    setUserWalletLoading(prev => ({ ...prev, [userId]: true }));
+    try {
+      const entries = await loadWalletEntries(userId);
+      setUserWalletEntries(prev => ({ ...prev, [userId]: entries }));
+    } catch (_) {}
+    finally {
+      setUserWalletLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const handleClearUserWalletHistory = async (userId, userName) => {
+    if (!window.confirm(`ล้างประวัติกระเป๋าของ ${userName} ใช่หรือไม่?\n(รายการจะถูกซ่อน — ยอดเงินคงเดิม)`)) return;
+    await clearWalletHistory(userId);
+    setUserWalletEntries(prev => ({ ...prev, [userId]: [] }));
+    notifySystem('Admin', `ล้างประวัติกระเป๋าของ ${userName} แล้ว`, 'success');
+  };
+
   const handleAdjust = () => {
     const amt = parseFloat(adjustAmount);
     if (!adjustUserId || isNaN(amt) || amt === 0 || !adjustDesc) {
@@ -324,8 +346,10 @@ export default function AdminView() {
           {/* ── กระเป๋าเงิน Admin (GP สะสม) ───────────────────────────────── */}
           {(() => {
             const adminBal = userWallet ?? 0;
-            const txTs = (id = '') => parseInt((id.match(/\d{10,}/) || ['0'])[0], 10);
-            const displayHistory = [...(walletHistory ?? [])].sort((a, b) => txTs(b.id) - txTs(a.id));
+            const displayHistory = [...(walletHistory ?? [])].sort((a, b) => {
+              const ms = (e) => e.createdAtMs || parseInt(((e.id || '').match(/\d{10,}/) || ['0'])[0], 10);
+              return ms(b) - ms(a);
+            });
             return (
               <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
                 <div className="p-4 border-b bg-green-50 flex items-center justify-between">
@@ -702,7 +726,11 @@ export default function AdminView() {
                       </div>
                       <div className="flex gap-2 shrink-0">
                         <button
-                          onClick={() => setAdjustUserId(adjustUserId === user.id ? null : user.id)}
+                          onClick={() => {
+                            const next = adjustUserId === user.id ? null : user.id;
+                            setAdjustUserId(next);
+                            if (next) loadUserWalletEntries(next);
+                          }}
                           className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-lg font-bold hover:bg-green-200"
                         >
                           <Wallet size={12} className="inline mr-1" /> Wallet
@@ -718,9 +746,9 @@ export default function AdminView() {
 
                     {/* Wallet adjust panel */}
                     {adjustUserId === user.id && (
-                      <div className="mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200 animate-fade-in">
-                        <p className="text-xs font-bold text-gray-600 mb-2">ปรับยอด Wallet ของ {user.name}</p>
-                        <div className="flex gap-2 mb-2">
+                      <div className="mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200 animate-fade-in space-y-3">
+                        <p className="text-xs font-bold text-gray-600">ปรับยอด Wallet ของ {user.name}</p>
+                        <div className="flex gap-2">
                           <input
                             type="number"
                             placeholder="จำนวนเงิน (ใส่ - เพื่อหัก)"
@@ -739,6 +767,54 @@ export default function AdminView() {
                         <div className="flex gap-2">
                           <button onClick={() => setAdjustUserId(null)} className="flex-1 bg-gray-200 py-2 rounded text-sm">ยกเลิก</button>
                           <button onClick={handleAdjust} className="flex-1 bg-green-600 text-white py-2 rounded text-sm font-bold">ยืนยัน</button>
+                        </div>
+
+                        {/* Wallet history */}
+                        <div className="border-t pt-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-bold text-gray-600">ประวัติธุรกรรม</p>
+                            <div className="flex gap-2">
+                              {FIREBASE_ENABLED && (
+                                <button
+                                  onClick={() => loadUserWalletEntries(user.id)}
+                                  className="text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded font-bold hover:bg-blue-200"
+                                >รีเฟรช</button>
+                              )}
+                              {FIREBASE_ENABLED && (userWalletEntries[user.id] || []).length > 0 && (
+                                <button
+                                  onClick={() => handleClearUserWalletHistory(user.id, user.name)}
+                                  className="text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded font-bold hover:bg-red-200"
+                                >ล้างประวัติ</button>
+                              )}
+                            </div>
+                          </div>
+                          {userWalletLoading[user.id] ? (
+                            <p className="text-xs text-gray-400 text-center py-3">กำลังโหลด...</p>
+                          ) : !FIREBASE_ENABLED ? (
+                            <p className="text-xs text-gray-400 text-center py-2">ต้องเปิด Firebase เพื่อดูประวัติ</p>
+                          ) : (userWalletEntries[user.id] || []).length === 0 ? (
+                            <p className="text-xs text-gray-400 text-center py-2">ยังไม่มีประวัติธุรกรรม</p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                              {[...(userWalletEntries[user.id] || [])].sort((a, b) => {
+                                const ms = (e) => e.createdAtMs || parseInt(((e.id || '').match(/\d{10,}/) || ['0'])[0], 10);
+                                return ms(b) - ms(a);
+                              }).map((entry, idx) => {
+                                const amt = entry.amount ?? 0;
+                                return (
+                                  <div key={entry.id || idx} className="flex justify-between items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-100 text-xs">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-semibold text-gray-700 truncate">{entry.desc || '—'}</div>
+                                      <div className="text-gray-400 text-[10px]">{entry.date || ''}</div>
+                                    </div>
+                                    <span className={`font-bold flex-shrink-0 ${amt >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                      {amt >= 0 ? '+' : ''}฿{Math.abs(amt).toLocaleString()}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

@@ -863,8 +863,8 @@ export default function RiderView() {
             ) : (
               <div className="space-y-2">
                 {[...(walletHistory || [])].sort((a, b) => {
-                    const t = (id = '') => parseInt((id.match(/\d{10,}/) || ['0'])[0], 10);
-                    return t(b.id) - t(a.id);
+                    const ms = (e) => e.createdAtMs || parseInt(((e.id || '').match(/\d{10,}/) || ['0'])[0], 10);
+                    return ms(b) - ms(a);
                   }).slice(0, 40).map((entry, i) => {
                   const amt = entry.amount ?? 0;
                   return (

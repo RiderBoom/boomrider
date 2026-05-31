@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, FIREBASE_ENABLED, ADMIN_UID,
@@ -21,6 +21,7 @@ import {
   acceptOrderTransaction, subscribeToOrders,
   atomicOrderCompletion, subscribeToConfig,
   saveTransaction,
+  addWalletEntry, subscribeToWalletEntries, clearWalletHistory,
 } from '../firebase/firestore';
 import { uploadDataUrl } from '../firebase/storage';
 
@@ -68,7 +69,13 @@ export function AppProvider({ children }) {
     { id: 1, label: 'บ้าน', address: '123 คอนโดใจกลางเมือง', location: USER_LOCATION },
   ]);
   const [userWallet, setUserWallet] = useState(0);
-  const [walletHistory, setWalletHistory] = useState([]);
+  const [walletAllEntries, setWalletAllEntries] = useState([]);
+  const [walletClearedAt, setWalletClearedAt] = useState(null);
+  const walletHistory = useMemo(() => {
+    if (!walletClearedAt) return walletAllEntries;
+    const ms = walletClearedAt?.toMillis ? walletClearedAt.toMillis() : 0;
+    return walletAllEntries.filter(e => (e.createdAtMs || 0) > ms);
+  }, [walletAllEntries, walletClearedAt]);
 
   // --- Cart & Order State ---
   const [cart, setCart] = useState([]);
@@ -156,6 +163,7 @@ export function AppProvider({ children }) {
   // subscription จะ fire ครั้งแรก (race condition ระหว่าง onAuthChange กับ subscribeToWallet)
   const walletSubscribedRef = React.useRef(false);
   const walletUnsubRef = React.useRef(null);
+  const walletEntriesUnsubRef = React.useRef(null);
 
   // --- Global Wallet Store ---
   const [globalWallets, setGlobalWallets] = useState(() => {
@@ -199,7 +207,9 @@ export function AppProvider({ children }) {
     });
     if (currentUser?.id === userId) {
       setUserWallet(prev => prev + amount);
-      setWalletHistory(prev => [{ id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: new Date().toLocaleString('th-TH'), desc }, ...prev]);
+      if (!FIREBASE_ENABLED) {
+        setWalletAllEntries(prev => [{ id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: new Date().toLocaleString('th-TH'), desc, createdAtMs: Date.now() }, ...prev]);
+      }
     }
   };
 
@@ -325,7 +335,7 @@ export function AppProvider({ children }) {
       setUserRoles(mergedRoles);
       const gw = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}')[user.id];
       setUserWallet(gw?.balance ?? user.wallet ?? 0);
-      setWalletHistory(gw?.history ?? user.walletHistory ?? []);
+      setWalletAllEntries(gw?.history ?? user.walletHistory ?? []);
       setUserAddresses(user.addresses || []);
     }
 
@@ -730,14 +740,20 @@ export function AppProvider({ children }) {
 
         // ── Subscribe wallet (real-time) ─────────────────────────────────
         // เมื่อ Admin อนุมัติ topup/withdraw → Firestore เปลี่ยน → callback นี้ fire ทันที
-        if (walletUnsubRef.current) walletUnsubRef.current(); // cleanup ตัวเก่า
-        walletSubscribedRef.current = false; // reset — ยัง subscribe ใหม่ไม่ fire
+        if (walletUnsubRef.current) walletUnsubRef.current();
+        if (walletEntriesUnsubRef.current) walletEntriesUnsubRef.current();
+        walletSubscribedRef.current = false;
         if (FIREBASE_ENABLED) {
+          // Subscribe wallet document (balance + historyClearedAt)
           walletUnsubRef.current = subscribeToWallet(firebaseUser.uid, (data) => {
-            walletFromFirestoreRef.current = true;   // บอก useEffect ว่า "มาจาก Firestore"
-            walletSubscribedRef.current = true;      // subscription fire แล้ว — saveWallet ทำได้
+            walletFromFirestoreRef.current = true;
+            walletSubscribedRef.current = true;
             setUserWallet(data.balance ?? 0);
-            setWalletHistory(data.history ?? []);
+            setWalletClearedAt(data.historyClearedAt || null);
+          });
+          // Subscribe wallet entries subcollection (transaction history)
+          walletEntriesUnsubRef.current = subscribeToWalletEntries(firebaseUser.uid, (entries) => {
+            setWalletAllEntries(entries);
           });
         } else {
           // Firebase ปิด → fallback โหลดครั้งเดียว
@@ -745,7 +761,7 @@ export function AppProvider({ children }) {
             const cloudWallet = await loadWallet(firebaseUser.uid);
             if (cloudWallet) {
               setUserWallet(cloudWallet.balance ?? 0);
-              setWalletHistory(cloudWallet.history ?? []);
+              setWalletAllEntries(cloudWallet.history ?? []);
             }
           } catch (_) {}
         }
@@ -766,6 +782,7 @@ export function AppProvider({ children }) {
         if (window.__boomriderUnsubChats)   { window.__boomriderUnsubChats();   window.__boomriderUnsubChats   = null; }
         if (window.__boomriderUnsubShared)  { window.__boomriderUnsubShared.forEach(fn => fn()); window.__boomriderUnsubShared = null; }
         if (walletUnsubRef.current)         { walletUnsubRef.current();         walletUnsubRef.current         = null; }
+        if (walletEntriesUnsubRef.current)  { walletEntriesUnsubRef.current();  walletEntriesUnsubRef.current  = null; }
       };
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -988,11 +1005,12 @@ export function AppProvider({ children }) {
   // --- Wallet ---
   const processTransaction = (type, amount, description) => {
     setUserWallet(prev => prev + amount);
-    setWalletHistory(prev => [{
-      id: generateId(), type, amount,
-      date: new Date().toLocaleString('th-TH'),
-      desc: description,
-    }, ...prev]);
+    const entry = { id: generateId(), type, amount, date: new Date().toLocaleString('th-TH'), desc: description, createdAtMs: Date.now() };
+    if (!FIREBASE_ENABLED) setWalletAllEntries(prev => [entry, ...prev]);
+    if (FIREBASE_ENABLED) {
+      const uid = currentUserRef.current?.id;
+      if (uid) addWalletEntry(uid, { type, amount, desc: description, date: entry.date }).catch(() => {});
+    }
   };
 
   // --- Order Placement ---
@@ -1424,6 +1442,19 @@ export function AppProvider({ children }) {
         }).catch((err) => {
           if (import.meta.env.DEV) console.error('[atomicOrderCompletion]', err?.message);
         });
+
+        // ── เขียน wallet entries สำหรับ rider/merchant/admin ที่ไม่ใช่ user ปัจจุบัน ──
+        // (processTransaction จัดการ user ปัจจุบันไปแล้ว — เขียนซ้ำจะทำให้ double entry)
+        const _entryDate = new Date().toLocaleString('th-TH');
+        if (!isCashOrder && riderUid && riderIncome > 0 && riderUid !== myUidNow) {
+          addWalletEntry(riderUid, { type: 'income', amount: riderIncome, desc: `ค่าส่ง ${targetOrder.restaurantName || 'พัสดุ'} #${shortId}`, date: _entryDate }).catch(() => {});
+        }
+        if (!isCashOrder && shopOwnerUid && merchantIncome > 0 && shopOwnerUid !== myUidNow) {
+          addWalletEntry(shopOwnerUid, { type: 'income', amount: merchantIncome, desc: `รายได้ร้าน #${shortId}`, date: _entryDate }).catch(() => {});
+        }
+        if (!isCashOrder && ADMIN_UID && gpAmount > 0 && ADMIN_UID !== myUidNow) {
+          addWalletEntry(ADMIN_UID, { type: 'income', amount: gpAmount, desc: `GP #${shortId}`, date: _entryDate }).catch(() => {});
+        }
 
         // ── บันทึก transaction log ────────────────────────────────────────────
         const txDate    = new Date().toLocaleString('th-TH');
@@ -1877,7 +1908,11 @@ export function AppProvider({ children }) {
   const adminAdjustWallet = useCallback((userId, amount, desc) => {
     const fullDesc = `[Admin] ${desc}`;
     creditWallet(userId, amount, fullDesc);
-    if (FIREBASE_ENABLED) creditWalletInDB(userId, amount, fullDesc).catch(() => {});
+    if (FIREBASE_ENABLED) {
+      const _adjDate = new Date().toLocaleString('th-TH');
+      creditWalletInDB(userId, amount, fullDesc).catch(() => {});
+      addWalletEntry(userId, { type: amount > 0 ? 'deposit' : 'withdraw', amount, desc: fullDesc, date: _adjDate }).catch(() => {});
+    }
     notifySystem('Admin', `ปรับยอด ${amount > 0 ? '+' : ''}฿${amount} ให้ผู้ใช้เรียบร้อย`, 'success');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1896,8 +1931,10 @@ export function AppProvider({ children }) {
       const topupDesc = `เติมเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`;
       creditWallet(req.userId, amt, topupDesc);
       if (FIREBASE_ENABLED) {
+        const _topupDate = new Date().toLocaleString('th-TH');
         creditWalletInDB(req.userId, amt, topupDesc).catch(() => {});
-        saveTransaction({ type: 'topup_approved', userId: req.userId, userName: req.user, role: 'customer', amount: amt, desc: topupDesc, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+        addWalletEntry(req.userId, { type: 'deposit', amount: amt, desc: topupDesc, date: _topupDate }).catch(() => {});
+        saveTransaction({ type: 'topup_approved', userId: req.userId, userName: req.user, role: 'customer', amount: amt, desc: topupDesc, date: _topupDate }).catch(() => {});
       }
       notifySystem("Admin ✅", `อนุมัติเติมเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
 
@@ -1920,8 +1957,10 @@ export function AppProvider({ children }) {
       }
       creditWallet(req.userId, -amt, withdrawDesc);
       if (FIREBASE_ENABLED) {
+        const _wdDate = new Date().toLocaleString('th-TH');
         creditWalletInDB(req.userId, -amt, withdrawDesc).catch(() => {});
-        saveTransaction({ type: 'withdraw_approved', userId: req.userId, userName: req.user, role: 'customer', amount: -amt, desc: withdrawDesc, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+        addWalletEntry(req.userId, { type: 'withdraw', amount: -amt, desc: withdrawDesc, date: _wdDate }).catch(() => {});
+        saveTransaction({ type: 'withdraw_approved', userId: req.userId, userName: req.user, role: 'customer', amount: -amt, desc: withdrawDesc, date: _wdDate }).catch(() => {});
       }
       notifySystem("Admin ✅", `อนุมัติถอนเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
     } else if (req.type === 'merchant_reg') {
@@ -1977,8 +2016,10 @@ export function AppProvider({ children }) {
         const refundDesc = `คืนเงิน: ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)} (Admin อนุมัติ)`;
         creditWallet(req.userId, req.data.grandTotal, refundDesc);
         if (FIREBASE_ENABLED) {
+          const _refDate = new Date().toLocaleString('th-TH');
           creditWalletInDB(req.userId, req.data.grandTotal, refundDesc).catch(() => {});
-          saveTransaction({ type: 'wallet_refund', orderId: req.data.orderId, userId: req.userId, userName: req.user, role: 'customer', amount: req.data.grandTotal, desc: refundDesc, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+          addWalletEntry(req.userId, { type: 'refund', amount: req.data.grandTotal, desc: refundDesc, date: _refDate }).catch(() => {});
+          saveTransaction({ type: 'wallet_refund', orderId: req.data.orderId, userId: req.userId, userName: req.user, role: 'customer', amount: req.data.grandTotal, desc: refundDesc, date: _refDate }).catch(() => {});
         }
       }
       const refundNote = req.data.paymentMethod === 'wallet'
@@ -2041,8 +2082,10 @@ export function AppProvider({ children }) {
       const desc = `คืนเงิน: ยกเลิกออเดอร์ #${order.id.slice(-6)} (${reason})`;
       creditWallet(order.customerId, order.grandTotal, desc);
       if (FIREBASE_ENABLED) {
+        const _cancelDate = new Date().toLocaleString('th-TH');
         creditWalletInDB(order.customerId, order.grandTotal, desc).catch(() => {});
-        saveTransaction({ type: 'wallet_refund', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: order.grandTotal, desc, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+        addWalletEntry(order.customerId, { type: 'refund', amount: order.grandTotal, desc, date: _cancelDate }).catch(() => {});
+        saveTransaction({ type: 'wallet_refund', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: order.grandTotal, desc, date: _cancelDate }).catch(() => {});
       }
     }
 
@@ -2279,7 +2322,7 @@ export function AppProvider({ children }) {
         };
         localStorage.setItem('boomrider_user', JSON.stringify(user));
         setCurrentUser(user); setIsLoggedIn(true); setUserProfile(profile); setTempProfile(profile);
-        setUserRoles(finalRoles); setUserWallet(user.wallet); setWalletHistory(user.walletHistory); setUserAddresses(user.addresses);
+        setUserRoles(finalRoles); setUserWallet(user.wallet); setWalletAllEntries(user.walletHistory ?? []); setUserAddresses(user.addresses);
         notifySystem("สำเร็จ", "เข้าสู่ระบบเรียบร้อย!", "success");
         return;
       } catch (err) {
@@ -2299,7 +2342,7 @@ export function AppProvider({ children }) {
     const updatedUser = { ...user, roles: localFinalRoles };
     localStorage.setItem('boomrider_user', JSON.stringify(updatedUser));
     setCurrentUser(updatedUser); setIsLoggedIn(true); setUserProfile(user.profile); setTempProfile(user.profile);
-    setUserRoles(localFinalRoles); setUserWallet(user.wallet); setWalletHistory(user.walletHistory); setUserAddresses(user.addresses);
+    setUserRoles(localFinalRoles); setUserWallet(user.wallet); setWalletAllEntries(user.walletHistory ?? []); setUserAddresses(user.addresses);
     notifySystem("สำเร็จ", "เข้าสู่ระบบเรียบร้อย!", "success");
   };
 
@@ -2342,7 +2385,7 @@ export function AppProvider({ children }) {
         };
         localStorage.setItem('boomrider_user', JSON.stringify(newUser));
         setCurrentUser(newUser); setIsLoggedIn(true); setUserProfile(profile); setTempProfile(profile);
-        setUserRoles(['customer']); setUserWallet(0); setWalletHistory([]); setUserAddresses(newUser.addresses);
+        setUserRoles(['customer']); setUserWallet(0); setWalletAllEntries([]); setWalletClearedAt(null); setUserAddresses(newUser.addresses);
         notifySystem("สำเร็จ", "สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ", "success");
         return;
       } catch (err) {
@@ -2370,7 +2413,7 @@ export function AppProvider({ children }) {
     localStorage.setItem('boomrider_users', JSON.stringify(users));
     localStorage.setItem('boomrider_user', JSON.stringify(newUser));
     setCurrentUser(newUser); setIsLoggedIn(true); setUserProfile(newUser.profile); setTempProfile(newUser.profile);
-    setUserRoles(newUser.roles); setUserWallet(newUser.wallet); setWalletHistory(newUser.walletHistory); setUserAddresses(newUser.addresses);
+    setUserRoles(newUser.roles); setUserWallet(newUser.wallet); setWalletAllEntries(newUser.walletHistory ?? []); setUserAddresses(newUser.addresses);
     notifySystem("สำเร็จ", "สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ", "success");
   };
 
@@ -2391,10 +2434,14 @@ export function AppProvider({ children }) {
     }
     lastChatCountsRef.current = {};
     chatSubInitializedRef.current = false;
-    // ── cleanup wallet subscription ───────────────────────────────────────────
+    // ── cleanup wallet subscriptions ─────────────────────────────────────────
     if (walletUnsubRef.current) {
       walletUnsubRef.current();
       walletUnsubRef.current = null;
+    }
+    if (walletEntriesUnsubRef.current) {
+      walletEntriesUnsubRef.current();
+      walletEntriesUnsubRef.current = null;
     }
     walletFromFirestoreRef.current = false;
     walletSubscribedRef.current = false;
@@ -2404,7 +2451,8 @@ export function AppProvider({ children }) {
     setTempProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
     setUserRoles(['customer']);
     setUserWallet(0);
-    setWalletHistory([]);
+    setWalletAllEntries([]);
+    setWalletClearedAt(null);
     setUserAddresses([]);
     localStorage.removeItem('boomrider_user');
     if (FIREBASE_ENABLED) firebaseLogout().catch(() => {});
@@ -2448,7 +2496,8 @@ export function AppProvider({ children }) {
     userRoles, setUserRoles,
     userAddresses, setUserAddresses,
     userWallet, setUserWallet,
-    walletHistory, setWalletHistory,
+    walletHistory,
+    clearWalletHistory,
     tempProfile, setTempProfile,
     isAdmin,
     globalWallets,

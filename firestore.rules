@@ -79,6 +79,14 @@ service cloud.firestore {
                        && request.resource.data.balance >= resource.data.balance)
                    || (isAuth() && resource == null
                        && request.resource.data.balance > 0);
+
+      // ── Wallet Entries subcollection ──────────────────────────────────────
+      match /entries/{entryId} {
+        allow read:   if isAdmin() || isOwner(userId);
+        allow create: if isAuth();
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
     }
 
     // ─── System Config — ทุกคนอ่านได้, Admin เขียนได้ ───────────────────────
