@@ -1412,24 +1412,27 @@ export function AppProvider({ children }) {
         // ป้องกัน race condition ระหว่าง saveWallet กับ subscribeToWallet
         const myUidNow = userProfile.id || currentUser?.id;
         const isCashOrder = targetOrder.paymentMethod === 'cash';
-        if (riderUid && riderUid === myUidNow) {
-          if (!isCashOrder && riderIncome > 0) {
-            // wallet: local optimistic update ก่อน subscribeToWallet ตามมา
-            processTransaction('income', riderIncome, `ค่าส่ง ${targetOrder.restaurantName || 'พัสดุ'} #${shortId}`);
+
+        // ── ข้อมูลเพิ่มเติมสำหรับ description ─────────────────────────────────
+        const restName   = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
+        const deliveryFeeGP = targetOrder.deliveryFee > 0 ? Math.round(targetOrder.deliveryFee - riderIncome) : 0;
+        const foodGP        = targetOrder.foodTotal   > 0 ? Math.round(targetOrder.foodTotal   - merchantIncome) : 0;
+
+        if (!isCashOrder) {
+          // ── Wallet payment: local update สำหรับ user ปัจจุบัน (processTransaction จะเขียน entry ด้วย) ──
+          if (riderUid && riderUid === myUidNow && riderIncome > 0) {
+            const gpNote = deliveryFeeGP > 0 ? ` (หัก GP ฿${deliveryFeeGP})` : '';
+            processTransaction('income', riderIncome, `ค่าส่ง ${restName} #${shortId}${gpNote}`);
           }
-          // cash: ไม่อัปเดต local state ที่นี่ — ปล่อยให้ atomicOrderCompletion → creditWalletInDB
-          // → subscribeToWallet จัดการแทน เพราะถ้า processTransaction + saveWallet ทำงานพร้อม
-          // creditWalletInDB จะเกิด double-deduction (หักสองรอบ)
+          if (shopOwnerUid && shopOwnerUid === myUidNow && merchantIncome > 0) {
+            const gpNote = foodGP > 0 ? ` (หัก GP ฿${foodGP})` : '';
+            processTransaction('income', merchantIncome, `รายได้ร้าน ${restName} #${shortId}${gpNote}`);
+          }
+          if (ADMIN_UID && ADMIN_UID === myUidNow && gpAmount > 0) {
+            processTransaction('income', gpAmount, `GP ${restName} #${shortId}`);
+          }
         }
-        // cash: ห้าม processTransaction สำหรับ merchant/admin เช่นเดียวกับ rider
-        // เพราะ processTransaction → saveWallet (setDoc) อาจ race กับ creditWalletInDB (increment)
-        // ทำให้ double-credit ถ้าอยู่บน device เดียวกัน — ปล่อยให้ subscribeToWallet จัดการแทน
-        if (!isCashOrder && shopOwnerUid && shopOwnerUid === myUidNow && merchantIncome > 0) {
-          processTransaction('income', merchantIncome, `รายได้ร้าน #${shortId}`);
-        }
-        if (!isCashOrder && ADMIN_UID && ADMIN_UID === myUidNow && gpAmount > 0) {
-          processTransaction('income', gpAmount, `GP #${shortId}`);
-        }
+        // cash: ไม่เรียก processTransaction — balance ถูกอัปเดตผ่าน atomicOrderCompletion → subscribeToWallet
 
         // ── Firestore atomic write (ทุกกรณี — ใช้ increment/arrayUnion ไม่ต้อง read) ──
         atomicOrderCompletion({
@@ -1443,17 +1446,43 @@ export function AppProvider({ children }) {
           if (import.meta.env.DEV) console.error('[atomicOrderCompletion]', err?.message);
         });
 
-        // ── เขียน wallet entries สำหรับ rider/merchant/admin ที่ไม่ใช่ user ปัจจุบัน ──
-        // (processTransaction จัดการ user ปัจจุบันไปแล้ว — เขียนซ้ำจะทำให้ double entry)
+        // ── เขียน wallet entries ให้ทุกฝ่าย (ครอบคลุมทั้ง cash และ wallet) ──────
+        // wallet order: เขียนเฉพาะ user ที่ไม่ใช่ current (processTransaction ดูแล current แล้ว)
+        // cash order: เขียนทุก user เพราะ processTransaction ไม่ได้ถูกเรียก
         const _entryDate = new Date().toLocaleString('th-TH');
-        if (!isCashOrder && riderUid && riderIncome > 0 && riderUid !== myUidNow) {
-          addWalletEntry(riderUid, { type: 'income', amount: riderIncome, desc: `ค่าส่ง ${targetOrder.restaurantName || 'พัสดุ'} #${shortId}`, date: _entryDate }).catch(() => {});
-        }
-        if (!isCashOrder && shopOwnerUid && merchantIncome > 0 && shopOwnerUid !== myUidNow) {
-          addWalletEntry(shopOwnerUid, { type: 'income', amount: merchantIncome, desc: `รายได้ร้าน #${shortId}`, date: _entryDate }).catch(() => {});
-        }
-        if (!isCashOrder && ADMIN_UID && gpAmount > 0 && ADMIN_UID !== myUidNow) {
-          addWalletEntry(ADMIN_UID, { type: 'income', amount: gpAmount, desc: `GP #${shortId}`, date: _entryDate }).catch(() => {});
+
+        if (!isCashOrder) {
+          // ── Wallet order: entries สำหรับ non-current-user ──────────────────────
+          if (riderUid && riderIncome > 0 && riderUid !== myUidNow) {
+            const gpNote = deliveryFeeGP > 0 ? ` (หัก GP ฿${deliveryFeeGP})` : '';
+            addWalletEntry(riderUid, { type: 'income', amount: riderIncome, desc: `ค่าส่ง ${restName} #${shortId}${gpNote}`, date: _entryDate }).catch(() => {});
+          }
+          if (shopOwnerUid && merchantIncome > 0 && shopOwnerUid !== myUidNow) {
+            const gpNote = foodGP > 0 ? ` (หัก GP ฿${foodGP})` : '';
+            addWalletEntry(shopOwnerUid, { type: 'income', amount: merchantIncome, desc: `รายได้ร้าน ${restName} #${shortId}${gpNote}`, date: _entryDate }).catch(() => {});
+          }
+          if (ADMIN_UID && gpAmount > 0 && ADMIN_UID !== myUidNow) {
+            addWalletEntry(ADMIN_UID, { type: 'income', amount: gpAmount, desc: `GP ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
+          }
+        } else {
+          // ── Cash order: entries สำหรับทุก user (รวม current) ──────────────────
+          // ไรเดอร์: เก็บค่าส่ง(สด)ไว้เอง, ส่งยอดอาหาร+GP คืน platform ผ่าน wallet
+          if (riderUid) {
+            if (merchantIncome > 0) {
+              addWalletEntry(riderUid, { type: 'expense', amount: -merchantIncome, desc: `โอนยอดอาหาร(สด) ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
+            }
+            if (gpAmount > 0) {
+              addWalletEntry(riderUid, { type: 'expense', amount: -gpAmount, desc: `หัก GP(สด) ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
+            }
+          }
+          // ร้านค้า: รับยอดอาหาร (จากการหัก wallet ไรเดอร์)
+          if (shopOwnerUid && merchantIncome > 0) {
+            addWalletEntry(shopOwnerUid, { type: 'income', amount: merchantIncome, desc: `รายได้ร้าน(สด) ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
+          }
+          // Admin: รับ GP
+          if (ADMIN_UID && gpAmount > 0) {
+            addWalletEntry(ADMIN_UID, { type: 'income', amount: gpAmount, desc: `GP(สด) ${restName} #${shortId}`, date: _entryDate }).catch(() => {});
+          }
         }
 
         // ── บันทึก transaction log ────────────────────────────────────────────
