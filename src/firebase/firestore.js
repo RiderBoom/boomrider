@@ -671,3 +671,68 @@ export const atomicOrderCompletion = async ({
   return { totalAdminGP, shopEarning, riderEarning, isCash };
 };
 
+// ===== Transaction Log =========================================================
+
+/**
+ * บันทึก transaction เข้า Firestore (immutable — ไม่มี update/delete)
+ * ใช้ addDoc เพื่อให้ Firestore สร้าง ID อัตโนมัติ
+ */
+export const saveTransaction = async (tx) => {
+  if (!tx?.type) return;
+  try {
+    await addDoc(collection(db, 'transactions'), {
+      ...tx,
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[saveTransaction]', err?.code, err?.message);
+  }
+};
+
+/**
+ * ดึง metadata ของ transaction log (clearedAt ล่าสุด)
+ */
+export const getTransactionLogMeta = async () => {
+  try {
+    const snap = await getDoc(doc(db, 'system', 'transaction_log'));
+    return snap.exists() ? snap.data() : {};
+  } catch { return {}; }
+};
+
+/**
+ * Real-time subscription สำหรับ transactions (Admin only)
+ * @param {Timestamp|null} clearedAt — กรองเฉพาะ records หลัง clearedAt (null = ดูทั้งหมด)
+ */
+export const subscribeToTransactions = (clearedAt, callback, onError) => {
+  const q = clearedAt
+    ? query(collection(db, 'transactions'), where('createdAt', '>', clearedAt), orderBy('createdAt', 'desc'), limit(500))
+    : query(collection(db, 'transactions'), orderBy('createdAt', 'desc'), limit(500));
+  return onSnapshot(q, (snap) => {
+    const txs = snap.docs.map(d => {
+      const data = d.data();
+      const ts = data.createdAt;
+      return { ...data, _docId: d.id, createdAtMs: ts?.toDate ? ts.toDate().getTime() : 0 };
+    });
+    callback(txs);
+  }, (err) => {
+    if (import.meta.env.DEV) console.error('[subscribeToTransactions]', err?.code, err?.message);
+    if (onError) onError(err);
+  });
+};
+
+/**
+ * เคลียร์ transaction log — อัปเดต clearedAt = now (ไม่ลบ documents จริง)
+ * ประหยัด Firestore quota + ป้องกัน race condition
+ */
+export const clearTransactionLog = async () => {
+  try {
+    await setDoc(doc(db, 'system', 'transaction_log'), {
+      clearedAt: serverTimestamp(),
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[clearTransactionLog]', err?.code, err?.message);
+    return false;
+  }
+};
+

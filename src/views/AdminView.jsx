@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShieldAlert, ArrowLeft, MessageSquare, Bell, Check, XCircle,
   ChefHat, Bike, Sliders, Save, CreditCard,
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, FIREBASE_ENABLED } from '../constants';
-import { saveAppConfig } from '../firebase/firestore';
+import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta } from '../firebase/firestore';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function StatCard({ label, value, color = 'green', icon: Icon }) {
@@ -101,9 +101,15 @@ export default function AdminView() {
 
   const [searchLedger, setSearchLedger] = useState('');
 
-  // Load all users from localStorage
+  // Transaction log state
+  const [txList, setTxList] = useState([]);
+  const [txLoading, setTxLoading] = useState(false);
+  const [txRefreshKey, setTxRefreshKey] = useState(0);
+  const txUnsubRef = useRef(null);
+
+  // Load all users from localStorage (users tab only)
   useEffect(() => {
-    if (adminTab === 'users' || adminTab === 'ledger') {
+    if (adminTab === 'users') {
       const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
       const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
       const roles = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
@@ -115,6 +121,40 @@ export default function AdminView() {
       setAllUsers(merged);
     }
   }, [adminTab]);
+
+  // Firestore transaction log subscription
+  useEffect(() => {
+    if (adminTab !== 'ledger' || !FIREBASE_ENABLED) return;
+
+    let cancelled = false;
+    setTxLoading(true);
+    setTxList([]);
+
+    getTransactionLogMeta().then(meta => {
+      if (cancelled) return;
+      const clearedAt = meta?.clearedAt || null;
+      txUnsubRef.current?.();
+      txUnsubRef.current = subscribeToTransactions(clearedAt, (txs) => {
+        if (!cancelled) { setTxList(txs); setTxLoading(false); }
+      }, () => { if (!cancelled) setTxLoading(false); });
+    }).catch(() => { if (!cancelled) setTxLoading(false); });
+
+    return () => {
+      cancelled = true;
+      txUnsubRef.current?.();
+      txUnsubRef.current = null;
+    };
+  }, [adminTab, txRefreshKey]);
+
+  const handleClearTransactions = async () => {
+    if (!window.confirm('ล้างข้อมูลธุรกรรมทั้งหมดหรือไม่?\n(ข้อมูลจะถูกซ่อน ไม่ได้ลบออกจากระบบ)')) return;
+    const ok = await clearTransactionLog();
+    if (ok) {
+      setTxList([]);
+      setTxRefreshKey(k => k + 1);
+      notifySystem('ล้างข้อมูล', 'ล้างบันทึกธุรกรรมเรียบร้อยแล้ว', 'success');
+    }
+  };
 
   const saveConfig = async () => {
     setAppConfig(editConfig);
@@ -1132,46 +1172,51 @@ export default function AdminView() {
 
       {/* ── ธุรกรรมทั้งระบบ ─────────────────────────────────────────────── */}
       {adminTab === 'ledger' && (() => {
-        // Build user lookup map
-        const userMap = {};
-        allUsers.forEach(u => { userMap[u.id] = u; });
+        const txTypeBadge = (type) => {
+          const map = {
+            order_placed:      { label: 'สั่งซื้อ',    cls: 'bg-blue-100 text-blue-700' },
+            order_completed:   { label: 'จบงาน',       cls: 'bg-green-100 text-green-700' },
+            order_cancelled:   { label: 'ยกเลิก',      cls: 'bg-red-100 text-red-700' },
+            rider_income:      { label: 'ค่าส่ง',      cls: 'bg-yellow-100 text-yellow-700' },
+            merchant_income:   { label: 'รายได้ร้าน',  cls: 'bg-orange-100 text-orange-700' },
+            admin_gp:          { label: 'GP',           cls: 'bg-purple-100 text-purple-700' },
+            topup_approved:    { label: 'เติมเงิน',    cls: 'bg-emerald-100 text-emerald-700' },
+            withdraw_approved: { label: 'ถอนเงิน',     cls: 'bg-rose-100 text-rose-700' },
+            wallet_refund:     { label: 'คืนเงิน',     cls: 'bg-teal-100 text-teal-700' },
+          };
+          return map[type] || { label: type || '?', cls: 'bg-gray-100 text-gray-600' };
+        };
+        const txRoleBadge = (role) => {
+          const map = {
+            admin:    { label: 'Admin',   cls: 'bg-red-100 text-red-700' },
+            rider:    { label: 'ไรเดอร์', cls: 'bg-yellow-100 text-yellow-700' },
+            merchant: { label: 'ร้านค้า', cls: 'bg-green-100 text-green-700' },
+            customer: { label: 'ลูกค้า',  cls: 'bg-blue-100 text-blue-700' },
+          };
+          return map[role] || { label: role || '-', cls: 'bg-gray-100 text-gray-600' };
+        };
 
-        // Flatten all wallet histories with userId attached
-        const allEntries = [];
-        Object.entries(globalWallets).forEach(([uid, w]) => {
-          (w.history || []).forEach(h => allEntries.push({ ...h, userId: uid }));
-        });
-
-        // Sort newest-first using timestamp embedded in entry ID
-        allEntries.sort((a, b) => {
-          const tsA = parseInt((a.id?.match(/\d{10,}/) || ['0'])[0], 10);
-          const tsB = parseInt((b.id?.match(/\d{10,}/) || ['0'])[0], 10);
-          return tsB - tsA;
-        });
-
-        // Filter
+        // Filter by search
         const q = searchLedger.toLowerCase().trim();
         const filtered = q
-          ? allEntries.filter(e => {
-              const u = userMap[e.userId];
-              return (
-                (e.desc || '').toLowerCase().includes(q) ||
-                (u?.name || '').toLowerCase().includes(q) ||
-                (u?.phone || '').includes(q) ||
-                (e.userId || '').toLowerCase().includes(q)
-              );
-            })
-          : allEntries;
-
-        const roleBadge = (roles = []) => {
-          if (roles.includes('admin'))    return { label: 'Admin',   cls: 'bg-red-100 text-red-700' };
-          if (roles.includes('rider'))    return { label: 'ไรเดอร์', cls: 'bg-yellow-100 text-yellow-700' };
-          if (roles.includes('merchant')) return { label: 'ร้านค้า', cls: 'bg-green-100 text-green-700' };
-          return                                 { label: 'ลูกค้า',  cls: 'bg-blue-100 text-blue-700' };
-        };
+          ? txList.filter(e =>
+              (e.desc || '').toLowerCase().includes(q) ||
+              (e.userName || '').toLowerCase().includes(q) ||
+              (e.orderId || '').toLowerCase().includes(q) ||
+              (e.type || '').toLowerCase().includes(q)
+            )
+          : txList;
 
         const totalIn  = filtered.reduce((s, e) => s + Math.max(0, e.amount ?? 0), 0);
         const totalOut = filtered.reduce((s, e) => s + Math.min(0, e.amount ?? 0), 0);
+
+        if (!FIREBASE_ENABLED) return (
+          <div className="bg-white rounded-xl p-12 text-center text-gray-400 shadow-sm">
+            <Wallet size={40} className="mx-auto mb-3 opacity-20" />
+            <p className="font-semibold">ต้องเชื่อมต่อ Firebase</p>
+            <p className="text-xs mt-1">ระบบบันทึกธุรกรรมทำงานผ่าน Firestore</p>
+          </div>
+        );
 
         return (
           <div>
@@ -1182,16 +1227,22 @@ export default function AdminView() {
                   <List size={18} className="text-green-600" /> ธุรกรรมทั้งระบบ
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {filtered.length} รายการ · {Object.keys(globalWallets).length} กระเป๋า
+                  {txLoading ? 'กำลังโหลด...' : `${filtered.length} รายการ`}
                 </p>
               </div>
               <input
                 type="search"
-                placeholder="ค้นหาชื่อ / รายการ..."
+                placeholder="ค้นหาชื่อ / รายการ / ออเดอร์..."
                 value={searchLedger}
                 onChange={e => setSearchLedger(e.target.value)}
                 className="border rounded-xl px-3 py-2 text-sm w-full sm:w-52 focus:outline-none focus:ring-2 focus:ring-green-400"
               />
+              <button
+                onClick={handleClearTransactions}
+                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold hover:bg-red-100 transition-colors whitespace-nowrap"
+              >
+                <Trash2 size={15} /> ล้างข้อมูล
+              </button>
             </div>
 
             {/* Summary cards */}
@@ -1210,11 +1261,16 @@ export default function AdminView() {
               </div>
             </div>
 
-            {filtered.length === 0 ? (
+            {txLoading ? (
+              <div className="bg-white rounded-xl p-12 text-center text-gray-400 shadow-sm">
+                <div className="animate-spin w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full mx-auto mb-3" />
+                <p className="text-sm">กำลังโหลดข้อมูล...</p>
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="bg-white rounded-xl p-12 text-center text-gray-400 shadow-sm">
                 <Wallet size={40} className="mx-auto mb-3 opacity-20" />
                 <p className="font-semibold">ยังไม่มีข้อมูลธุรกรรม</p>
-                <p className="text-xs mt-1">ข้อมูลจะแสดงเมื่อผู้ใช้มีการทำธุรกรรม</p>
+                <p className="text-xs mt-1">ข้อมูลจะแสดงเมื่อมีการสั่งซื้อ / เติมเงิน / ถอนเงิน</p>
               </div>
             ) : (
               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -1222,7 +1278,8 @@ export default function AdminView() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase sticky top-0 shadow-sm">
                       <tr>
-                        <th className="p-3 text-left">วันที่</th>
+                        <th className="p-3 text-left">เวลา</th>
+                        <th className="p-3 text-left">ประเภท</th>
                         <th className="p-3 text-left">ผู้ใช้</th>
                         <th className="p-3 text-left">รายการ</th>
                         <th className="p-3 text-right">จำนวน</th>
@@ -1230,21 +1287,26 @@ export default function AdminView() {
                     </thead>
                     <tbody className="divide-y">
                       {filtered.slice(0, 300).map((entry, i) => {
-                        const u = userMap[entry.userId];
-                        const badge = roleBadge(u?.roles || []);
+                        const typeBadge = txTypeBadge(entry.type);
+                        const roleBadge = txRoleBadge(entry.role);
                         const amt = entry.amount ?? 0;
+                        const timeStr = entry.date || (entry.createdAtMs ? new Date(entry.createdAtMs).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '—');
                         return (
-                          <tr key={entry.id || `${entry.userId}-${i}`} className="hover:bg-gray-50 transition-colors">
-                            <td className="p-3 text-xs text-gray-400 whitespace-nowrap align-top pt-3.5">{entry.date || '—'}</td>
+                          <tr key={entry._docId || `tx-${i}`} className="hover:bg-gray-50 transition-colors">
+                            <td className="p-3 text-xs text-gray-400 whitespace-nowrap align-top pt-3.5">{timeStr}</td>
+                            <td className="p-3 align-top pt-3.5">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${typeBadge.cls}`}>{typeBadge.label}</span>
+                            </td>
                             <td className="p-3 align-top pt-3.5">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-xs font-semibold text-gray-700">{u?.name || entry.userId.slice(-8)}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${badge.cls}`}>{badge.label}</span>
+                                <span className="text-xs font-semibold text-gray-700">{entry.userName || '—'}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${roleBadge.cls}`}>{roleBadge.label}</span>
                               </div>
+                              {entry.orderId && <p className="text-[10px] text-gray-400 mt-0.5">#{entry.orderId.slice(-6)}</p>}
                             </td>
-                            <td className="p-3 text-xs text-gray-600 max-w-[200px] truncate align-top pt-3.5">{entry.desc || '—'}</td>
+                            <td className="p-3 text-xs text-gray-600 max-w-[180px] truncate align-top pt-3.5">{entry.desc || '—'}</td>
                             <td className={`p-3 text-right font-bold text-sm whitespace-nowrap align-top pt-3.5 ${amt > 0 ? 'text-green-600' : amt < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                              {amt > 0 ? '+' : amt < 0 ? '-' : ''}฿{Math.abs(amt).toLocaleString()}
+                              {amt !== 0 ? `${amt > 0 ? '+' : ''}฿${Math.abs(amt).toLocaleString()}` : '—'}
                             </td>
                           </tr>
                         );

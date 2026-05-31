@@ -20,6 +20,7 @@ import {
   safeLocalSet,
   acceptOrderTransaction, subscribeToOrders,
   atomicOrderCompletion, subscribeToConfig,
+  saveTransaction,
 } from '../firebase/firestore';
 import { uploadDataUrl } from '../firebase/storage';
 
@@ -1059,7 +1060,20 @@ export function AppProvider({ children }) {
         if (uid) creditWalletInDB(uid, -grandTotal, `ชำระค่าอาหาร (${restaurantName})`).catch(() => {});
       }
     }
-    if (FIREBASE_ENABLED) saveOrder(newOrder).catch(() => {});
+    if (FIREBASE_ENABLED) {
+      saveOrder(newOrder).catch(() => {});
+      saveTransaction({
+        type: 'order_placed',
+        orderId: newOrder.id,
+        userId: newOrder.customerId,
+        userName: newOrder.customerName,
+        role: 'customer',
+        amount: newOrder.paymentMethod === 'wallet' ? -newOrder.grandTotal : 0,
+        desc: `สั่งอาหาร ${newOrder.restaurantName} ฿${newOrder.grandTotal.toLocaleString()}`,
+        date: new Date().toLocaleString('th-TH'),
+        paymentMethod: newOrder.paymentMethod,
+      }).catch(() => {});
+    }
     setPaymentMethod('wallet');
     notifySystem("สั่งซื้อสำเร็จ", "ออเดอร์ถูกส่งไปยังร้านค้าแล้ว", "success");
     notifyAdmin("🛍️ ออเดอร์ใหม่", `${userProfile.name} สั่งจาก ${restaurantName} ฿${grandTotal}`, "info");
@@ -1143,7 +1157,20 @@ export function AppProvider({ children }) {
         if (uid) creditWalletInDB(uid, -grandTotal, 'ชำระค่าส่งพัสดุ').catch(() => {});
       }
     }
-    if (FIREBASE_ENABLED) saveOrder(newOrder).catch(() => {});
+    if (FIREBASE_ENABLED) {
+      saveOrder(newOrder).catch(() => {});
+      saveTransaction({
+        type: 'order_placed',
+        orderId: newOrder.id,
+        userId: newOrder.customerId,
+        userName: newOrder.customerName,
+        role: 'customer',
+        amount: newOrder.paymentMethod === 'wallet' ? -newOrder.grandTotal : 0,
+        desc: `ส่งพัสดุ ฿${newOrder.grandTotal.toLocaleString()} (${newOrder.pickup || ''} → ${newOrder.dropoff || ''})`,
+        date: new Date().toLocaleString('th-TH'),
+        paymentMethod: newOrder.paymentMethod,
+      }).catch(() => {});
+    }
 
     notifySystem("เรียกรถสำเร็จ", `ค่าส่ง ฿${grandTotal} — กำลังค้นหาไรเดอร์...`, "success");
     setTimeout(() => notifySystem("ไรเดอร์", "มีงานส่งพัสดุใหม่เข้ามา!", "warning"), 1000);
@@ -1397,6 +1424,14 @@ export function AppProvider({ children }) {
         }).catch((err) => {
           if (import.meta.env.DEV) console.error('[atomicOrderCompletion]', err?.message);
         });
+
+        // ── บันทึก transaction log ────────────────────────────────────────────
+        const txDate    = new Date().toLocaleString('th-TH');
+        const txShortId = `#${orderId.slice(-6)}`;
+        saveTransaction({ type: 'order_completed', orderId, userId: targetOrder.customerId, userName: targetOrder.customerName, role: 'customer', amount: 0, desc: `ออเดอร์เสร็จสิ้น ${txShortId}`, date: txDate }).catch(() => {});
+        if (riderIncome > 0 && riderUid) saveTransaction({ type: 'rider_income', orderId, userId: riderUid, userName: riderProfile?.name || 'ไรเดอร์', role: 'rider', amount: riderIncome, desc: `ค่าส่ง ${txShortId}`, date: txDate }).catch(() => {});
+        if (merchantIncome > 0 && shopOwnerUid) saveTransaction({ type: 'merchant_income', orderId, userId: shopOwnerUid, userName: targetOrder.restaurantName || 'ร้านค้า', role: 'merchant', amount: merchantIncome, desc: `รายได้ร้าน ${txShortId}`, date: txDate }).catch(() => {});
+        if (gpAmount > 0) saveTransaction({ type: 'admin_gp', orderId, userId: ADMIN_UID, userName: 'Admin', role: 'admin', amount: gpAmount, desc: `GP ${txShortId}`, date: txDate }).catch(() => {});
       } else {
         // ── Firebase ปิด → fallback (ใช้ creditWallet เพื่ออัปเดต globalWallets ด้วย) ──
         const shortId = targetOrder.id.slice(-6);
@@ -1860,7 +1895,10 @@ export function AppProvider({ children }) {
       const amt       = Number(req.data.amount);
       const topupDesc = `เติมเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`;
       creditWallet(req.userId, amt, topupDesc);
-      if (FIREBASE_ENABLED) creditWalletInDB(req.userId, amt, topupDesc).catch(() => {});
+      if (FIREBASE_ENABLED) {
+        creditWalletInDB(req.userId, amt, topupDesc).catch(() => {});
+        saveTransaction({ type: 'topup_approved', userId: req.userId, userName: req.user, role: 'customer', amount: amt, desc: topupDesc, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+      }
       notifySystem("Admin ✅", `อนุมัติเติมเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
 
     } else if (req.type === 'withdraw') {
@@ -1881,7 +1919,10 @@ export function AppProvider({ children }) {
         return notifySystem("ผิดพลาด", `${req.user} มียอดเงินไม่พอ (มี ฿${liveBalance.toLocaleString()}, ต้องการ ฿${amt.toLocaleString()})`, "error");
       }
       creditWallet(req.userId, -amt, withdrawDesc);
-      if (FIREBASE_ENABLED) creditWalletInDB(req.userId, -amt, withdrawDesc).catch(() => {});
+      if (FIREBASE_ENABLED) {
+        creditWalletInDB(req.userId, -amt, withdrawDesc).catch(() => {});
+        saveTransaction({ type: 'withdraw_approved', userId: req.userId, userName: req.user, role: 'customer', amount: -amt, desc: withdrawDesc, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+      }
       notifySystem("Admin ✅", `อนุมัติถอนเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, "success");
     } else if (req.type === 'merchant_reg') {
       const newId = `rest_${Date.now()}`;
@@ -1926,18 +1967,19 @@ export function AppProvider({ children }) {
       if (targetOrder && !['cancelled', 'completed'].includes(targetOrder.status)) {
         const cancelledOrder = { ...targetOrder, status: 'cancelled', cancelReason };
         setOrders(prev => prev.map(o => o.id === req.data.orderId ? cancelledOrder : o));
-        if (FIREBASE_ENABLED) updateOrderStatusInDB(req.data.orderId, {
-          status: 'cancelled',
-          cancelReason,
-        }).catch(() => {});
+        if (FIREBASE_ENABLED) {
+          updateOrderStatusInDB(req.data.orderId, { status: 'cancelled', cancelReason }).catch(() => {});
+          saveTransaction({ type: 'order_cancelled', orderId: req.data.orderId, userId: req.userId, userName: req.user, role: 'customer', amount: 0, desc: `ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)}`, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+        }
       }
       // คืนเงินเฉพาะ wallet payment
       if (req.data.paymentMethod === 'wallet' && req.data.grandTotal > 0) {
         const refundDesc = `คืนเงิน: ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)} (Admin อนุมัติ)`;
-        // ── อัปเดต in-memory state ──────────────────────────────────────────
         creditWallet(req.userId, req.data.grandTotal, refundDesc);
-        // ── sync เงินคืนไป Firestore ของ user ทันที ─────────────────────────
-        if (FIREBASE_ENABLED) creditWalletInDB(req.userId, req.data.grandTotal, refundDesc).catch(() => {});
+        if (FIREBASE_ENABLED) {
+          creditWalletInDB(req.userId, req.data.grandTotal, refundDesc).catch(() => {});
+          saveTransaction({ type: 'wallet_refund', orderId: req.data.orderId, userId: req.userId, userName: req.user, role: 'customer', amount: req.data.grandTotal, desc: refundDesc, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+        }
       }
       const refundNote = req.data.paymentMethod === 'wallet'
         ? ` — คืนเงิน ฿${(req.data.grandTotal || 0).toLocaleString()} แล้ว`
@@ -1998,15 +2040,17 @@ export function AppProvider({ children }) {
     if (order.paymentMethod === 'wallet' && order.grandTotal > 0) {
       const desc = `คืนเงิน: ยกเลิกออเดอร์ #${order.id.slice(-6)} (${reason})`;
       creditWallet(order.customerId, order.grandTotal, desc);
-      // ── sync เงินคืนไป Firestore ของลูกค้าทันที ────────────────────────
-      if (FIREBASE_ENABLED) creditWalletInDB(order.customerId, order.grandTotal, desc).catch(() => {});
+      if (FIREBASE_ENABLED) {
+        creditWalletInDB(order.customerId, order.grandTotal, desc).catch(() => {});
+        saveTransaction({ type: 'wallet_refund', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: order.grandTotal, desc, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+      }
     }
 
     // ── บันทึก Firestore (partial update) ────────────────────────────────
-    if (FIREBASE_ENABLED) updateOrderStatusInDB(orderId, {
-      status: 'cancelled',
-      cancelReason: reason,
-    }).catch(() => {});
+    if (FIREBASE_ENABLED) {
+      updateOrderStatusInDB(orderId, { status: 'cancelled', cancelReason: reason }).catch(() => {});
+      saveTransaction({ type: 'order_cancelled', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: 0, desc: `ยกเลิกออเดอร์ #${order.id.slice(-6)}: ${reason}`, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+    }
 
     setShowCancelModal(false);
     setSelectedOrderToCancel(null);
