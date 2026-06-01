@@ -92,7 +92,6 @@ jobs:
           3. กดติดตั้ง
 
           > ⚠️ นี่คือ Debug build สำหรับทดสอบ ไม่ใช่ Production release" \
-            --prerelease \
             --latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
