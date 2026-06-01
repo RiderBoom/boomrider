@@ -6,15 +6,22 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
  *
  * Mirrors the client-side creditWalletInDB() in src/firebase/firestore.js.
  */
+const formatDateTH = () => {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
 const creditWallet = async (userId, amount, desc) => {
   if (!userId || !amount) return;
   const db    = getFirestore();
   const ref   = db.collection('wallets').doc(userId);
   const entry = {
-    id:     `${userId.slice(-4)}_${Date.now()}`,
-    type:   amount > 0 ? 'deposit' : 'withdraw',
+    id:          `${userId.slice(-4)}_${Date.now()}`,
+    type:        amount > 0 ? 'deposit' : 'withdraw',
     amount,
-    date:   new Date().toLocaleString('th-TH'),
+    date:        formatDateTH(),
+    createdAtMs: Date.now(),
     desc,
   };
   await ref.set(
@@ -38,8 +45,9 @@ const addEntry = async (userId, type, amount, desc) => {
     type,
     amount,
     desc,
-    date:      new Date().toLocaleString('th-TH'),
-    createdAt: FieldValue.serverTimestamp(),
+    date:        formatDateTH(),
+    createdAtMs: Date.now(),
+    createdAt:   FieldValue.serverTimestamp(),
   });
 };
 

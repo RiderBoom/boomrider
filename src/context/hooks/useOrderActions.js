@@ -22,7 +22,7 @@ export function useOrderActions(deps) {
     setSelectedRestaurant, setActiveTab,
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
-    creditWallet, processTransaction,
+    creditWallet, processTransaction, setUserWallet,
     notifySystem, notifyAdmin,
   } = deps;
 
@@ -353,21 +353,28 @@ export function useOrderActions(deps) {
         const deliveryFeeGP  = targetOrder.deliveryFee > 0 ? Math.round(targetOrder.deliveryFee - riderIncome)    : 0;
         const foodGP         = targetOrder.foodTotal   > 0 ? Math.round(targetOrder.foodTotal   - merchantIncome) : 0;
 
-        // Update local wallet state only for the current logged-in user
-        if (riderUid && riderUid === myUidNow && riderIncome > 0) {
-          const gpNote = deliveryFeeGP > 0 ? ` (หัก GP ฿${deliveryFeeGP})` : '';
-          processTransaction('income', riderIncome, `ค่าส่ง ${restName} #${shortId}${gpNote}`);
-        }
-        if (shopOwnerUid && shopOwnerUid === myUidNow && merchantIncome > 0) {
-          const gpNote = foodGP > 0 ? ` (หัก GP ฿${foodGP})` : '';
-          processTransaction('income', merchantIncome, `รายได้ร้าน ${restName} #${shortId}${gpNote}`);
-        }
-        if (ADMIN_UID && ADMIN_UID === myUidNow && gpAmount > 0) {
-          processTransaction('income', gpAmount, `GP ${restName} #${shortId}`);
-        }
-
-        // Firebase disabled fallback (dev mode / emulator without Functions)
-        if (!FIREBASE_ENABLED) {
+        if (FIREBASE_ENABLED) {
+          // Cloud Function processOrderPayment handles all Firestore wallet writes.
+          // Only update local state here to give instant UI feedback; the subscription
+          // will re-sync the canonical value shortly after.
+          let localDelta = 0;
+          if (riderUid     && riderUid     === myUidNow && riderIncome    > 0) localDelta += riderIncome;
+          if (shopOwnerUid && shopOwnerUid === myUidNow && merchantIncome > 0) localDelta += merchantIncome;
+          if (ADMIN_UID    && ADMIN_UID    === myUidNow && gpAmount       > 0) localDelta += gpAmount;
+          if (localDelta > 0) setUserWallet(prev => prev + localDelta);
+        } else {
+          // Firebase disabled — no Cloud Functions, so write everything client-side.
+          if (riderUid     && riderIncome    > 0) {
+            const gpNote = deliveryFeeGP > 0 ? ` (หัก GP ฿${deliveryFeeGP})` : '';
+            processTransaction('income', riderIncome, `ค่าส่ง ${restName} #${shortId}${gpNote}`);
+          }
+          if (shopOwnerUid && merchantIncome > 0) {
+            const gpNote = foodGP > 0 ? ` (หัก GP ฿${foodGP})` : '';
+            processTransaction('income', merchantIncome, `รายได้ร้าน ${restName} #${shortId}${gpNote}`);
+          }
+          if (ADMIN_UID && gpAmount > 0) {
+            processTransaction('income', gpAmount, `GP ${restName} #${shortId}`);
+          }
           if (riderUid     && riderIncome    > 0) creditWallet(riderUid,     riderIncome,    `ค่าส่ง ${restName} #${shortId}`);
           if (shopOwnerUid && merchantIncome > 0) creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน #${shortId}`);
           if (ADMIN_UID    && gpAmount       > 0) creditWallet(ADMIN_UID,    gpAmount,        `GP #${shortId}`);

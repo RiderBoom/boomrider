@@ -246,7 +246,7 @@ export function AppProvider({ children }) {
     setSelectedRestaurant, setActiveTab,
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
-    creditWallet, processTransaction,
+    creditWallet, processTransaction, setUserWallet,
     notifySystem, notifyAdmin,
   });
 
