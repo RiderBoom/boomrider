@@ -71,19 +71,16 @@ service cloud.firestore {
     }
 
     // ─── Wallets — อ่าน/เขียนเฉพาะของตัวเอง, Admin จัดการได้ ───────────────
+    // All income credits go through Cloud Functions (Admin SDK, bypasses rules).
+    // Client-side writes: owner deducts own balance (payment), Admin credits refunds.
     match /wallets/{userId} {
       allow read:  if isAdmin() || isOwner(userId);
-      allow write: if isAdmin()
-                   || isOwner(userId)
-                   || (isAuth() && resource != null
-                       && request.resource.data.balance >= resource.data.balance)
-                   || (isAuth() && resource == null
-                       && request.resource.data.balance > 0);
+      allow write: if isAdmin() || isOwner(userId);
 
       // ── Wallet Entries subcollection ──────────────────────────────────────
       match /entries/{entryId} {
         allow read:   if isAdmin() || isOwner(userId);
-        allow create: if isAuth();
+        allow create: if isAdmin() || isOwner(userId);
         allow update: if false;
         allow delete: if isAdmin();
       }

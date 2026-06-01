@@ -119,7 +119,9 @@ const processOrderPayment = onDocumentWritten(
     }
 
     // ── 7. Distribute income ──────────────────────────────────────────────
-    const now  = new Date().toLocaleString('th-TH');
+    const _d   = new Date();
+    const _p   = n => String(n).padStart(2, '0');
+    const now  = `${_p(_d.getDate())}/${_p(_d.getMonth()+1)}/${_d.getFullYear()} ${_p(_d.getHours())}:${_p(_d.getMinutes())}`;
     const jobs = [];
 
     if (riderUid && riderIncome > 0) {
