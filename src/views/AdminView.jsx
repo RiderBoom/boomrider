@@ -222,9 +222,9 @@ export default function AdminView() {
     return last && last.sender !== 'admin';
   }).length;
 
-  // Today's date string (Thai locale day)
-  const todayStr = new Date().toLocaleDateString('th-TH');
-  const todayOrders = orders.filter(o => o.timestamp && o.timestamp.includes(todayStr));
+  // Today's date string — must match formatDateTime() output: DD/MM/YYYY
+  const todayStr = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`; })();
+  const todayOrders = orders.filter(o => o.timestamp && o.timestamp.startsWith(todayStr));
   const todayCompletedOrders = todayOrders.filter(o => ['completed', 'delivered'].includes(o.status));
   const todayGMV  = todayCompletedOrders.reduce((s, o) => s + (o.grandTotal || 0), 0);
   const todayGP   = todayCompletedOrders.reduce((s, o) => s + (o.adminGP || 0), 0);

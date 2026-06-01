@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
-import { getDistanceFromLatLonInKm } from '../utils';
+import { getDistanceFromLatLonInKm, formatDateTimeFromMs, formatDateTime } from '../utils';
 import { USER_LOCATION } from '../constants';
 
 export default function RiderView() {
@@ -159,8 +159,8 @@ export default function RiderView() {
 
   // Earnings stats
   const completedJobs = historyJobs.filter(j => ['delivered', 'completed'].includes(j.status));
-  const todayStr = new Date().toLocaleDateString('th-TH');
-  const todayJobs = completedJobs.filter(j => j.timestamp && j.timestamp.includes(todayStr));
+  const todayStr = formatDateTime().slice(0, 10); // DD/MM/YYYY
+  const todayJobs = completedJobs.filter(j => j.timestamp && j.timestamp.startsWith(todayStr));
   const todayEarning = todayJobs.reduce((s, j) => s + (j.riderIncome || 0), 0);
   const totalEarning = completedJobs.reduce((s, j) => s + (j.riderIncome || 0), 0);
 
@@ -818,7 +818,7 @@ export default function RiderView() {
                       <div className="flex justify-between items-start gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="text-xs text-gray-300 truncate">{entry.desc || '—'}</div>
-                          <div className="text-[10px] text-gray-500 mt-0.5">{entry.date || ''}</div>
+                          <div className="text-[10px] text-gray-500 mt-0.5">{entry.createdAtMs ? formatDateTimeFromMs(entry.createdAtMs) : (entry.date || '')}</div>
                         </div>
                         <div className={`font-bold text-sm flex-shrink-0 ${amt >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {amt >= 0 ? '+' : '-'}฿{Math.abs(amt).toLocaleString()}

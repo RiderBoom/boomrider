@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS } from '../constants';
+import { formatDateTimeFromMs } from '../utils';
 import InteractiveMap from '../components/InteractiveMap';
 
 export default function MerchantView() {
@@ -451,7 +452,7 @@ export default function MerchantView() {
                   <div key={tx.id || i} className="flex justify-between items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-100 shadow-sm">
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-gray-800 text-sm truncate">{tx.desc || '—'}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{tx.date || ''}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{tx.createdAtMs ? formatDateTimeFromMs(tx.createdAtMs) : (tx.date || '')}</div>
                     </div>
                     <span className={`font-bold text-sm flex-shrink-0 ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
                       {isIncome ? '+' : '-'}฿{Math.abs(amt).toLocaleString()}
