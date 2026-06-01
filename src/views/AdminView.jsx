@@ -11,6 +11,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, FIREBASE_ENABLED, ADMIN_UID } from '../constants';
 import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries, fixAllWalletBalances, loadAllUsers } from '../firebase/firestore';
+import { formatDateTimeFromMs } from '../utils';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function StatCard({ label, value, color = 'green', icon: Icon }) {
@@ -415,7 +416,7 @@ export default function AdminView() {
                       <tbody className="divide-y">
                         {displayHistory.slice(0, 50).map((h, i) => {
                           const label   = h.desc || h.description || '';
-                          const dateStr = h.date || '';
+                          const dateStr = h.createdAtMs ? formatDateTimeFromMs(h.createdAtMs) : (h.date || '');
                           const amt     = h.amount ?? 0;
                           const balAfter = null;
                           return (
@@ -882,7 +883,7 @@ export default function AdminView() {
                                   <div key={entry.id || idx} className="flex justify-between items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-100 text-xs">
                                     <div className="flex-1 min-w-0">
                                       <div className="font-semibold text-gray-700 truncate">{entry.desc || '—'}</div>
-                                      <div className="text-gray-400 text-[10px]">{entry.date || ''}</div>
+                                      <div className="text-gray-400 text-[10px]">{entry.createdAtMs ? formatDateTimeFromMs(entry.createdAtMs) : (entry.date || '')}</div>
                                     </div>
                                     <span className={`font-bold flex-shrink-0 ${amt >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                                       {amt >= 0 ? '+' : ''}฿{Math.abs(amt).toLocaleString()}

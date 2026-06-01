@@ -4,6 +4,7 @@ import {
   safeLocalSet,
 } from '../../firebase/firestore';
 import { FIREBASE_ENABLED, ADMIN_UID, USER_LOCATION } from '../../constants';
+import { formatDateTime } from '../../utils';
 
 export function useAdminActions(deps) {
   const {
@@ -26,7 +27,7 @@ export function useAdminActions(deps) {
       const topupDesc = `เติมเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`;
       creditWallet(req.userId, amt, topupDesc);
       if (FIREBASE_ENABLED) {
-        const _topupDate = new Date().toLocaleString('th-TH');
+        const _topupDate = formatDateTime();
         creditWalletInDB(req.userId, amt, topupDesc).catch(() => {});
         addWalletEntry(req.userId, { type: 'deposit', amount: amt, desc: topupDesc, date: _topupDate }).catch(() => {});
         saveTransaction({ type: 'topup_approved', userId: req.userId, userName: req.user, role: 'customer', amount: amt, desc: topupDesc, date: _topupDate }).catch(() => {});
@@ -51,7 +52,7 @@ export function useAdminActions(deps) {
       }
       creditWallet(req.userId, -amt, withdrawDesc);
       if (FIREBASE_ENABLED) {
-        const _wdDate = new Date().toLocaleString('th-TH');
+        const _wdDate = formatDateTime();
         creditWalletInDB(req.userId, -amt, withdrawDesc).catch(() => {});
         addWalletEntry(req.userId, { type: 'withdraw', amount: -amt, desc: withdrawDesc, date: _wdDate }).catch(() => {});
         saveTransaction({ type: 'withdraw_approved', userId: req.userId, userName: req.user, role: 'customer', amount: -amt, desc: withdrawDesc, date: _wdDate }).catch(() => {});
@@ -100,14 +101,14 @@ export function useAdminActions(deps) {
         setOrders(prev => prev.map(o => o.id === req.data.orderId ? cancelledOrder : o));
         if (FIREBASE_ENABLED) {
           updateOrderStatusInDB(req.data.orderId, { status: 'cancelled', cancelReason }).catch(() => {});
-          saveTransaction({ type: 'order_cancelled', orderId: req.data.orderId, userId: req.userId, userName: req.user, role: 'customer', amount: 0, desc: `ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)}`, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+          saveTransaction({ type: 'order_cancelled', orderId: req.data.orderId, userId: req.userId, userName: req.user, role: 'customer', amount: 0, desc: `ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)}`, date: formatDateTime() }).catch(() => {});
         }
       }
       if (req.data.paymentMethod === 'wallet' && req.data.grandTotal > 0) {
         const refundDesc = `คืนเงิน: ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)} (Admin อนุมัติ)`;
         creditWallet(req.userId, req.data.grandTotal, refundDesc);
         if (FIREBASE_ENABLED) {
-          const _refDate = new Date().toLocaleString('th-TH');
+          const _refDate = formatDateTime();
           creditWalletInDB(req.userId, req.data.grandTotal, refundDesc).catch(() => {});
           addWalletEntry(req.userId, { type: 'refund', amount: req.data.grandTotal, desc: refundDesc, date: _refDate }).catch(() => {});
           saveTransaction({ type: 'wallet_refund', orderId: req.data.orderId, userId: req.userId, userName: req.user, role: 'customer', amount: req.data.grandTotal, desc: refundDesc, date: _refDate }).catch(() => {});

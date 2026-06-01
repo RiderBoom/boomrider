@@ -9,7 +9,7 @@ import {
   Bike, ChefHat, X, Edit, Tag, CheckCircle, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { getDistanceFromLatLonInKm } from '../utils';
+import { getDistanceFromLatLonInKm, formatDateTimeFromMs } from '../utils';
 import RestaurantCard from '../components/RestaurantCard';
 import InteractiveMap from '../components/InteractiveMap';
 import ToastContainer from '../components/ToastContainer';
@@ -651,7 +651,7 @@ export default function CustomerView() {
                       <div key={tx.id} className="flex justify-between items-center gap-3 p-3.5 bg-gray-50 rounded-xl border border-gray-100">
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold text-gray-800 text-sm truncate">{tx.desc || '—'}</div>
-                          <div className="text-xs text-gray-400 mt-0.5">{tx.date || ''}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">{tx.createdAtMs ? formatDateTimeFromMs(tx.createdAtMs) : (tx.date || '')}</div>
                         </div>
                         <span className={`font-bold text-sm flex-shrink-0 ${isIncome ? 'text-green-600' : 'text-red-500'}`}>
                           {isIncome ? '+' : '-'}฿{Math.abs(amt).toLocaleString()}

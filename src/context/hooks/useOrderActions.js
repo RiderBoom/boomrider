@@ -3,7 +3,7 @@ import {
   creditWalletInDB, addWalletEntry, acceptOrderTransaction,
   loadAllOrders, loadPendingRequests, savePendingRequest, safeLocalSet,
 } from '../../firebase/firestore';
-import { generateId } from '../../utils';
+import { generateId, formatDateTime } from '../../utils';
 import { FIREBASE_ENABLED, ADMIN_UID, USER_LOCATION } from '../../constants';
 
 export function useOrderActions(deps) {
@@ -92,7 +92,7 @@ export function useOrderActions(deps) {
       address: userAddresses[0]?.address,
       location: userProfile.location || userAddresses[0]?.location || USER_LOCATION,
       pickupLocation: restaurants.find(r => r.id === cart[0].restaurantId)?.location || USER_LOCATION,
-      timestamp: new Date().toLocaleString('th-TH'),
+      timestamp: formatDateTime(),
       riderId: null,
       riderUid: null,
       riderLocation: null,
@@ -118,7 +118,7 @@ export function useOrderActions(deps) {
         role: 'customer',
         amount: newOrder.paymentMethod === 'wallet' ? -newOrder.grandTotal : 0,
         desc: `สั่งอาหาร ${newOrder.restaurantName} ฿${newOrder.grandTotal.toLocaleString()}`,
-        date: new Date().toLocaleString('th-TH'),
+        date: formatDateTime(),
         paymentMethod: newOrder.paymentMethod,
       }).catch(() => {});
     }
@@ -177,7 +177,7 @@ export function useOrderActions(deps) {
       customerId:     userProfile.id || currentUser?.id,
       receiverName:   parcelDetails.receiverName  || '',
       receiverPhone:  parcelDetails.receiverPhone || '',
-      timestamp:      new Date().toLocaleString('th-TH'),
+      timestamp:      formatDateTime(),
       riderId:        null,
       riderUid:       null,
       riderLocation:  null,
@@ -203,7 +203,7 @@ export function useOrderActions(deps) {
         role: 'customer',
         amount: newOrder.paymentMethod === 'wallet' ? -newOrder.grandTotal : 0,
         desc: `ส่งพัสดุ ฿${newOrder.grandTotal.toLocaleString()} (${newOrder.pickup || ''} → ${newOrder.dropoff || ''})`,
-        date: new Date().toLocaleString('th-TH'),
+        date: formatDateTime(),
         paymentMethod: newOrder.paymentMethod,
       }).catch(() => {});
     }
@@ -401,7 +401,7 @@ export function useOrderActions(deps) {
       const desc = `คืนเงิน: ยกเลิกออเดอร์ #${order.id.slice(-6)} (${reason})`;
       creditWallet(order.customerId, order.grandTotal, desc);
       if (FIREBASE_ENABLED) {
-        const _cancelDate = new Date().toLocaleString('th-TH');
+        const _cancelDate = formatDateTime();
         creditWalletInDB(order.customerId, order.grandTotal, desc).catch(() => {});
         addWalletEntry(order.customerId, { type: 'refund', amount: order.grandTotal, desc, date: _cancelDate }).catch(() => {});
         saveTransaction({ type: 'wallet_refund', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: order.grandTotal, desc, date: _cancelDate }).catch(() => {});
@@ -410,7 +410,7 @@ export function useOrderActions(deps) {
 
     if (FIREBASE_ENABLED) {
       updateOrderStatusInDB(orderId, { status: 'cancelled', cancelReason: reason }).catch(() => {});
-      saveTransaction({ type: 'order_cancelled', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: 0, desc: `ยกเลิกออเดอร์ #${order.id.slice(-6)}: ${reason}`, date: new Date().toLocaleString('th-TH') }).catch(() => {});
+      saveTransaction({ type: 'order_cancelled', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: 0, desc: `ยกเลิกออเดอร์ #${order.id.slice(-6)}: ${reason}`, date: formatDateTime() }).catch(() => {});
     }
 
     setShowCancelModal(false);
@@ -430,7 +430,7 @@ export function useOrderActions(deps) {
       type: 'cancel_order',
       userId: uid,
       user: userProfile.name || 'ลูกค้า',
-      timestamp: new Date().toLocaleString('th-TH'),
+      timestamp: formatDateTime(),
       data: {
         orderId:        order.id,
         orderType:      order.type,
@@ -458,7 +458,7 @@ export function useOrderActions(deps) {
       type: 'cancel_order',
       userId: userProfile.id || currentUser?.uid || '',
       user: `${roleName}: ${userProfile.name || ''}`,
-      timestamp: new Date().toLocaleString('th-TH'),
+      timestamp: formatDateTime(),
       data: {
         orderId:        order.id,
         orderType:      order.type,

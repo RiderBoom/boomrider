@@ -6,6 +6,7 @@ import {
   increment, arrayUnion,
 } from 'firebase/firestore';
 import { db } from './config';
+import { formatDateTime } from '../utils';
 
 // ─── helper: strip base64 images ก่อน save (ป้องกัน quota exceeded) ────────
 // IMPORTANT: ต้องรองรับ Array — ห้ามแปลง array เป็น plain object
@@ -375,7 +376,7 @@ export const creditWalletInDB = async (userId, amount, desc) => {
     id: `${userId.slice(-4)}_${Date.now()}`,
     type: amount > 0 ? 'deposit' : 'withdraw',
     amount,
-    date: new Date().toLocaleString('th-TH'),
+    date: formatDateTime(),
     desc,
   };
   try {

@@ -3,7 +3,7 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, FIREBASE_ENABLED, ADMIN_UID,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, compressImage, playNotificationSound } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, compressImage, playNotificationSound, formatDateTime } from '../utils';
 import {
   loginWithEmail, registerWithEmail, loginWithGoogle, logout as firebaseLogout, onAuthChange,
 } from '../firebase/auth';
@@ -191,7 +191,7 @@ export function AppProvider({ children }) {
 
   // --- Admin notification ---
   const notifyAdmin = useCallback((title, message, type = 'warning') => {
-    const notif = { id: Date.now(), title, message, type, at: new Date().toLocaleString('th-TH') };
+    const notif = { id: Date.now(), title, message, type, at: formatDateTime() };
     if (FIREBASE_ENABLED) saveAdminNotif(notif).catch(() => {});
     if (!FIREBASE_ENABLED) {
       const queue = JSON.parse(localStorage.getItem('boomrider_admin_notifs') || '[]');
@@ -1019,11 +1019,14 @@ export function AppProvider({ children }) {
 
   const handleTopUpSlipSelect = (event) => {
     const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setTopUpSlip(reader.result);
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    compressImage(file, 1024, 1400, 0.8)
+      .then(compressed => setTopUpSlip(compressed))
+      .catch(() => {
+        const reader = new FileReader();
+        reader.onloadend = () => setTopUpSlip(reader.result);
+        reader.readAsDataURL(file);
+      });
   };
 
   const handleMenuPhotoSelect = (event) => {
@@ -1130,7 +1133,7 @@ export function AppProvider({ children }) {
       },
       _hasImages: !!(idCardImage || shopImage),
       userId: uid, user: userProfile.name,
-      timestamp: new Date().toLocaleString('th-TH'),
+      timestamp: formatDateTime(),
     };
     if (FIREBASE_ENABLED) {
       savePendingRequest({ ...newReq, data: { ...data } }).catch(() => {});
@@ -1156,7 +1159,7 @@ export function AppProvider({ children }) {
       },
       _hasImages: !!(idCardImage || profileImage),
       userId: uid, user: userProfile.name,
-      timestamp: new Date().toLocaleString('th-TH'),
+      timestamp: formatDateTime(),
     };
     if (FIREBASE_ENABLED) {
       savePendingRequest({ ...newReq, data: { ...data } }).catch(() => {});

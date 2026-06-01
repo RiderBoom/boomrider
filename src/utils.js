@@ -2,6 +2,12 @@
 
 export const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+const _pad = n => String(n).padStart(2, '0');
+const _fmt = (d) => `${_pad(d.getDate())}/${_pad(d.getMonth()+1)}/${d.getFullYear()} ${_pad(d.getHours())}:${_pad(d.getMinutes())}:${_pad(d.getSeconds())}`;
+
+export const formatDateTime = () => _fmt(new Date());
+export const formatDateTimeFromMs = (ms) => _fmt(new Date(Number(ms)));
+
 /**
  * บีบอัดรูปภาพผ่าน Canvas ก่อนเก็บ — คืนค่า base64 ขนาดเล็ก
  * @param {File} file         — ไฟล์รูปจาก <input type="file">
