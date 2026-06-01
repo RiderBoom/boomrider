@@ -9,6 +9,8 @@ jobs:
   build-apk:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write           # ต้องการสำหรับสร้าง/อัปเดต GitHub Release
 
     steps:
       # ── 1. Checkout code ────────────────────────────────────────────────────
@@ -55,23 +57,52 @@ jobs:
 
       # ── 6. Build APK ─────────────────────────────────────────────────────────
       - name: 🔨 Build Debug APK
-        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
+        run: cd android && ./gradlew assembleDebug --no-daemon
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
 
-      # ── 7. Upload artifact ───────────────────────────────────────────────────
-      - name: 📤 Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: BoomRider-Debug-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+      # ── 7. Rename APK with build date ────────────────────────────────────────
+      - name: 📝 Rename APK
+        run: |
+          BUILD_DATE=$(date +'%Y%m%d-%H%M')
+          SHORT_SHA=$(echo "$GITHUB_SHA" | head -c7)
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             BoomRider-${BUILD_DATE}-${SHORT_SHA}.apk
+          echo "APK_NAME=BoomRider-${BUILD_DATE}-${SHORT_SHA}.apk" >> $GITHUB_ENV
 
-      # ── 8. Show download info ────────────────────────────────────────────────
+      # ── 8. Update GitHub Release (latest-build tag) ──────────────────────────
+      - name: 🚀 Publish to GitHub Releases
+        run: |
+          SHORT_SHA=$(echo "$GITHUB_SHA" | head -c7)
+          BUILD_DATE=$(date +'%d/%m/%Y %H:%M น.')
+          # ลบ release เก่าและ tag เก่าก่อน (ถ้ามี)
+          gh release delete latest-build --yes 2>/dev/null || true
+          git push origin :refs/tags/latest-build 2>/dev/null || true
+          # สร้าง release ใหม่พร้อม APK ล่าสุด
+          gh release create latest-build "${{ env.APK_NAME }}" \
+            --title "BoomRider — Latest Build" \
+            --notes "## 📱 BoomRider Android APK (Debug)
+
+          **Build:** \`${SHORT_SHA}\`
+          **วันที่:** ${BUILD_DATE}
+
+          ### วิธีติดตั้ง
+          1. ดาวน์โหลดไฟล์ \`.apk\` ด้านล่าง
+          2. เปิดไฟล์บน Android — เปิดใช้ *\"Install from unknown sources\"* ถ้าระบบถาม
+          3. กดติดตั้ง
+
+          > ⚠️ นี่คือ Debug build สำหรับทดสอบ ไม่ใช่ Production release" \
+            --prerelease \
+            --latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 9. Show download link ────────────────────────────────────────────────
       - name: ✅ Build complete
         run: |
           echo "================================================================"
-          echo "✅ APK built successfully!"
-          echo "📥 Download from: Actions tab → This workflow run → Artifacts"
+          echo "✅ APK built and published to GitHub Releases!"
+          echo "🔗 https://github.com/${{ github.repository }}/releases/tag/latest-build"
+          echo "📦 File: ${{ env.APK_NAME }}"
           echo "================================================================"
-          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh "${{ env.APK_NAME }}"
