@@ -377,6 +377,7 @@ export const creditWalletInDB = async (userId, amount, desc) => {
     type: amount > 0 ? 'deposit' : 'withdraw',
     amount,
     date: formatDateTime(),
+    createdAtMs: Date.now(),
     desc,
   };
   try {

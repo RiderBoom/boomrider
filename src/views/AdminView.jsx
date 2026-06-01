@@ -1446,7 +1446,7 @@ export default function AdminView() {
                         const typeBadge = txTypeBadge(entry.type);
                         const roleBadge = txRoleBadge(entry.role);
                         const amt = entry.amount ?? 0;
-                        const timeStr = entry.date || (entry.createdAtMs ? new Date(entry.createdAtMs).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '—');
+                        const timeStr = entry.createdAtMs ? formatDateTimeFromMs(entry.createdAtMs) : (entry.date || '—');
                         return (
                           <tr key={entry._docId || `tx-${i}`} className="hover:bg-gray-50 transition-colors">
                             <td className="p-3 text-xs text-gray-400 whitespace-nowrap align-top pt-3.5">{timeStr}</td>
