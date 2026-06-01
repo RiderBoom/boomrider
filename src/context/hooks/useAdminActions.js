@@ -2,8 +2,8 @@ import {
   creditWalletInDB, addWalletEntry, saveTransaction, deletePendingRequest,
   updateOrderStatusInDB, saveRestaurant, saveRider, saveMenuItems, loadWallet, setBanUser,
   safeLocalSet,
-} from '../firebase/firestore';
-import { FIREBASE_ENABLED, ADMIN_UID, USER_LOCATION } from '../constants';
+} from '../../firebase/firestore';
+import { FIREBASE_ENABLED, ADMIN_UID, USER_LOCATION } from '../../constants';
 
 export function useAdminActions(deps) {
   const {

@@ -376,8 +376,11 @@ export default function AdminView() {
           </div>
           {/* ── กระเป๋าเงิน Admin (GP สะสม) ───────────────────────────────── */}
           {(() => {
-            const adminBal = userWallet ?? 0;
-            const displayHistory = [...(walletHistory ?? [])].sort((a, b) => {
+            const adminBal = globalWallets[ADMIN_UID]?.balance ?? userWallet ?? 0;
+            const rawHistory = globalWallets[ADMIN_UID]?.history?.length
+              ? globalWallets[ADMIN_UID].history
+              : (walletHistory ?? []);
+            const displayHistory = [...rawHistory].sort((a, b) => {
               const ms = (e) => e.createdAtMs || parseInt(((e.id || '').match(/\d{10,}/) || ['0'])[0], 10);
               return ms(b) - ms(a);
             });
@@ -454,7 +457,11 @@ export default function AdminView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {orders.slice(0, 50).map(order => {
+                  {[...orders].sort((a, b) => {
+                    const tsA = parseInt((a.id || '').split('-')[0], 10) || 0;
+                    const tsB = parseInt((b.id || '').split('-')[0], 10) || 0;
+                    return tsB - tsA;
+                  }).slice(0, 50).map(order => {
                     const rider = riders.find(r => r.id === order.riderId);
                     const restaurant = restaurants.find(r => r.id === order.restaurantId);
                     return (

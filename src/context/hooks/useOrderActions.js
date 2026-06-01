@@ -2,9 +2,9 @@ import {
   saveOrder, updateOrderStatusInDB, saveTransaction,
   creditWalletInDB, addWalletEntry, acceptOrderTransaction,
   loadAllOrders, loadPendingRequests, savePendingRequest, safeLocalSet,
-} from '../firebase/firestore';
-import { generateId } from '../utils';
-import { FIREBASE_ENABLED, ADMIN_UID, USER_LOCATION } from '../constants';
+} from '../../firebase/firestore';
+import { generateId } from '../../utils';
+import { FIREBASE_ENABLED, ADMIN_UID, USER_LOCATION } from '../../constants';
 
 export function useOrderActions(deps) {
   const {

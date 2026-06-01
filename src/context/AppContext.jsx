@@ -523,7 +523,11 @@ export function AppProvider({ children }) {
                 }
               });
               const deduped = merged.filter((o, i, arr) => arr.findIndex(x => x.id === o.id) === i);
-              deduped.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+              deduped.sort((a, b) => {
+                const tsA = parseInt((a.id || '').split('-')[0], 10) || 0;
+                const tsB = parseInt((b.id || '').split('-')[0], 10) || 0;
+                return tsB - tsA;
+              });
               safeLocalSet('boomrider_orders', deduped);
               return deduped;
             });
@@ -603,7 +607,11 @@ export function AppProvider({ children }) {
                 }
               });
               const deduped = merged.filter((o, i, arr) => arr.findIndex(x => x.id === o.id) === i);
-              deduped.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+              deduped.sort((a, b) => {
+                const tsA = parseInt((a.id || '').split('-')[0], 10) || 0;
+                const tsB = parseInt((b.id || '').split('-')[0], 10) || 0;
+                return tsB - tsA;
+              });
               safeLocalSet('boomrider_orders', deduped);
               return deduped;
             });
@@ -630,7 +638,11 @@ export function AppProvider({ children }) {
                     }
                   });
                   const deduped = merged.filter((o, i, arr) => arr.findIndex(x => x.id === o.id) === i);
-                  deduped.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+                  deduped.sort((a, b) => {
+                const tsA = parseInt((a.id || '').split('-')[0], 10) || 0;
+                const tsB = parseInt((b.id || '').split('-')[0], 10) || 0;
+                return tsB - tsA;
+              });
                   safeLocalSet('boomrider_orders', deduped);
                   return deduped;
                 });

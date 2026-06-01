@@ -1,8 +1,8 @@
 import {
   creditWalletInDB, addWalletEntry, savePendingRequest,
-} from '../firebase/firestore';
-import { generateId } from '../utils';
-import { FIREBASE_ENABLED } from '../constants';
+} from '../../firebase/firestore';
+import { generateId } from '../../utils';
+import { FIREBASE_ENABLED } from '../../constants';
 
 export function useWalletActions(deps) {
   const {
@@ -34,7 +34,7 @@ export function useWalletActions(deps) {
         [userId]: {
           balance: cur.balance + amount,
           history: [
-            { id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: new Date().toLocaleString('th-TH'), desc },
+            { id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: new Date().toLocaleString('th-TH'), desc, createdAtMs: Date.now() },
             ...cur.history,
           ],
         },
