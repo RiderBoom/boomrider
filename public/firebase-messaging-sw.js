@@ -15,17 +15,23 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   const { title, body, icon, badge, image } = payload.notification || {};
-  const notifTitle = title || 'BoomRider';
+  const data        = payload.data || {};
+  const isNewOrder  = data.type === 'food' || data.type === 'parcel';
+  const notifTitle  = title || 'BoomRider';
+
   const notifOptions = {
-    body:  body  || 'มีการอัพเดทออเดอร์ของคุณ',
-    icon:  icon  || '/icons/icon-192.png',
-    badge: badge || '/icons/badge-72.png',
+    body:      body  || 'มีการอัพเดทออเดอร์ของคุณ',
+    icon:      icon  || '/icons/icon-192.png',
+    badge:     badge || '/icons/badge-72.png',
     image,
-    tag: 'boomrider-bg',
-    renotify: true,
-    data: payload.data || {},
+    // Use a unique tag per order so each order shows its own notification
+    tag:       data.orderId ? `order-${data.orderId}` : 'boomrider-bg',
+    renotify:  true,
+    // Pulse vibration for new orders: buzz–pause–buzz–pause–long buzz
+    vibrate:   isNewOrder ? [200, 100, 200, 100, 400] : [200],
+    data,
     actions: [
-      { action: 'view', title: 'ดูออเดอร์' },
+      { action: 'view',    title: '📋 ดูออเดอร์' },
       { action: 'dismiss', title: 'ปิด' },
     ],
   };

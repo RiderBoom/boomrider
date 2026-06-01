@@ -36,16 +36,20 @@ export const onForegroundMessage = async (callback) => {
   });
 };
 
-// ===== Save FCM Token to user profile =====
-// เรียกหลัง login สำเร็จ เพื่อ store token สำหรับส่ง push notification
+// ===== Save FCM Token to Firestore =====
+// เรียกหลัง login สำเร็จ — เก็บ token ไว้ใน users/{userId} เพื่อให้
+// Cloud Function onOrderCreated ดึงไปส่ง push notification ได้
 
 export const saveFcmToken = async (userId, token) => {
   if (!token || !userId) return;
-  // When Firestore is added: save token to users/{userId}/fcmToken
-  // For now: store in localStorage as fallback
   try {
-    const existing = JSON.parse(localStorage.getItem('boomrider_fcm_tokens') || '{}');
-    existing[userId] = token;
-    localStorage.setItem('boomrider_fcm_tokens', JSON.stringify(existing));
+    // Lazy-import to avoid circular dep with config
+    const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+    const { db } = await import('./config');
+    await setDoc(
+      doc(db, 'users', userId),
+      { fcmToken: token, fcmUpdatedAt: serverTimestamp() },
+      { merge: true },
+    );
   } catch (_) {}
 };
