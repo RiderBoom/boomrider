@@ -70,7 +70,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" v
         font-family="Arial, sans-serif"
         font-weight="600"
         font-size="26"
-        fill="white">boomrider.app</text>
+        fill="white">boomrider.vercel.app</text>
 
   <!-- Bottom strip -->
   <rect x="0" y="600" width="1200" height="30" fill="rgba(0,0,0,0.15)"/>
@@ -78,7 +78,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" v
         text-anchor="middle"
         font-family="Arial, sans-serif"
         font-size="18"
-        fill="rgba(255,255,255,0.65)">Order now at boomrider.app</text>
+        fill="rgba(255,255,255,0.65)">Order now at boomrider.vercel.app</text>
 </svg>`;
 
 const png = await sharp(Buffer.from(svg)).png({ compressionLevel: 8 }).toBuffer();
