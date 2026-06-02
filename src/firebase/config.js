@@ -29,14 +29,23 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 // Firestore — persistent cache (IndexedDB) + multi-tab support
-// แอปโหลดข้อมูลจาก cache ก่อนในแวบแรก แล้วซิงค์เฉพาะส่วนที่เปลี่ยนแปลง
-// ช่วยประหยัด Firestore reads และทำให้แอปทำงานได้แม้อินเทอร์เน็ตช้า
-export const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true,
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-});
+// Fallback to basic Firestore if persistence fails (private browsing / storage quota)
+let db;
+try {
+  db = initializeFirestore(app, {
+    ignoreUndefinedProperties: true,
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
+  });
+} catch {
+  try {
+    db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+  } catch {
+    db = initializeFirestore(app, {});
+  }
+}
+export { db };
 
 // Messaging (async — not supported in all browsers / service workers)
 export const getMessagingInstance = async () => {

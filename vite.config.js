@@ -27,6 +27,9 @@ export default defineConfig({
           if (id.includes('leaflet') || id.includes('react-leaflet')) return 'vendor-maps';
           if (id.includes('lucide-react')) return 'vendor-icons';
           if (id.includes('react-dom') || id.includes('react/jsx') || id.includes('scheduler')) return 'vendor-react';
+          // QR packages are dynamically imported only when top-up modal renders —
+          // keep them out of the startup bundle so a load error can't white-screen the app
+          if (id.includes('promptpay-qr') || id.includes('/qrcode/') || id.includes('/crc/') || id.includes('buffer-crc')) return undefined;
           return 'vendor-misc';
         },
         // Asset naming for long-term caching
