@@ -6,3 +6,4 @@ functions/.env
 
 .vercel/
 # android/ ← เปิดให้ track เพื่อ GitHub Actions build APK
+seed.html
