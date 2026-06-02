@@ -208,8 +208,8 @@
           'background:linear-gradient(160deg,#fff7ed 0%,#fff 40%,#eff6ff 100%)">' +
           '<div style="font-size:52px;margin-bottom:16px">⚠️</div>' +
           '<h2 style="color:#ef4444;font-size:20px;font-weight:800;margin-bottom:8px">โหลดแอปไม่สำเร็จ</h2>' +
-          '<p style="color:#6b7280;margin-bottom:6px;max-width:320px;line-height:1.6">แคชหรือ Service Worker เวอร์ชันเก่าขัดแย้งกัน<br>กดปุ่มด้านล่างเพื่อรีเซ็ตและโหลดใหม่</p>' +
-          (__boomLastErr ? '<p style="color:#9ca3af;font-size:11px;margin-bottom:16px;max-width:320px;word-break:break-all">' + __boomLastErr.substring(0,120) + '</p>' : '') +
+          '<p style="color:#6b7280;margin-bottom:6px;max-width:320px;line-height:1.6">ไฟล์บางอย่างโหลดผิดพลาด กดล้างแคชและโหลดใหม่เพื่อดาวน์โหลดเวอร์ชันล่าสุด</p>' +
+          (__boomLastErr ? '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 14px;margin-bottom:16px;max-width:320px;text-align:left"><p style="color:#dc2626;font-size:12px;font-weight:700;margin-bottom:4px">รายละเอียดข้อผิดพลาด:</p><p style="color:#991b1b;font-size:11px;word-break:break-all;font-family:monospace;margin:0">' + __boomLastErr.substring(0,160) + '</p></div>' : '') +
           '<button onclick="__boomHardReset()" style="background:linear-gradient(to right,#f97316,#ea580c);' +
           'color:white;border:none;border-radius:14px;padding:14px 36px;font-weight:bold;' +
           'font-size:16px;cursor:pointer;box-shadow:0 4px 12px rgba(249,115,22,0.3);margin-bottom:10px">' +
