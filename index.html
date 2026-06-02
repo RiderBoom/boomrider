@@ -166,26 +166,52 @@
         }, 800);
       });
 
-      // Global safety net: if JS crashes before React mounts, show reload prompt
+      // Global safety net: clear SW + caches then hard-reload
+      function __boomHardReset() {
+        var keys = ['boomrider_orders','boomrider_pending_requests','boomrider_restaurants',
+                    'boomrider_menu_items','boomrider_appconfig','boomrider_riders'];
+        keys.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs) {
+            Promise.all(regs.map(function(r){ return r.unregister(); })).then(function() {
+              caches.keys().then(function(ks) {
+                Promise.all(ks.map(function(k){ return caches.delete(k); })).then(function() {
+                  window.location.reload(true);
+                });
+              });
+            });
+          });
+        } else { window.location.reload(true); }
+      }
+
+      var __boomLastErr = '';
+      function __boomShowError() {
+        var root = document.getElementById('root');
+        if (!root || root.children.length > 0) return;
+        root.innerHTML =
+          '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+          'padding:32px;text-align:center;font-family:\'Noto Sans Thai\',\'Inter\',sans-serif;' +
+          'background:linear-gradient(160deg,#fff7ed 0%,#fff 40%,#eff6ff 100%)">' +
+          '<div style="font-size:52px;margin-bottom:16px">⚠️</div>' +
+          '<h2 style="color:#ef4444;font-size:20px;font-weight:800;margin-bottom:8px">โหลดแอปไม่สำเร็จ</h2>' +
+          '<p style="color:#6b7280;margin-bottom:6px;max-width:320px;line-height:1.6">แคชหรือ Service Worker เวอร์ชันเก่าขัดแย้งกัน<br>กดปุ่มด้านล่างเพื่อรีเซ็ตและโหลดใหม่</p>' +
+          (__boomLastErr ? '<p style="color:#9ca3af;font-size:11px;margin-bottom:16px;max-width:320px;word-break:break-all">' + __boomLastErr.substring(0,120) + '</p>' : '') +
+          '<button onclick="__boomHardReset()" style="background:linear-gradient(to right,#f97316,#ea580c);' +
+          'color:white;border:none;border-radius:14px;padding:14px 36px;font-weight:bold;' +
+          'font-size:16px;cursor:pointer;box-shadow:0 4px 12px rgba(249,115,22,0.3);margin-bottom:10px">' +
+          '🗑️ ล้างแคชและโหลดใหม่</button><br>' +
+          '<button onclick="window.location.reload()" style="background:transparent;color:#9ca3af;border:1px solid #e5e7eb;' +
+          'border-radius:14px;padding:10px 24px;font-size:13px;cursor:pointer;margin-top:4px">' +
+          '🔄 โหลดใหม่เฉยๆ</button></div>';
+      }
+
       window.addEventListener('error', function(e) {
-        setTimeout(function() {
-          var root = document.getElementById('root');
-          if (root && root.children.length === 0) {
-            root.innerHTML = [
-              '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;',
-              'padding:32px;text-align:center;font-family:\'Noto Sans Thai\',\'Inter\',sans-serif;',
-              'background:linear-gradient(160deg,#fff7ed 0%,#fff 40%,#eff6ff 100%)">',
-              '<div style="font-size:52px;margin-bottom:16px">⚠️</div>',
-              '<h2 style="color:#ef4444;font-size:20px;font-weight:800;margin-bottom:8px">โหลดแอปไม่สำเร็จ</h2>',
-              '<p style="color:#6b7280;margin-bottom:24px;max-width:300px;line-height:1.6">',
-              'กรุณาล้างข้อมูลแคชของเบราว์เซอร์และลองใหม่</p>',
-              '<button onclick="window.location.reload()" style="background:linear-gradient(to right,#f97316,#ea580c);',
-              'color:white;border:none;border-radius:14px;padding:14px 36px;font-weight:bold;',
-              'font-size:16px;cursor:pointer;box-shadow:0 4px 12px rgba(249,115,22,0.3)">',
-              '🔄 โหลดใหม่</button></div>'
-            ].join('');
-          }
-        }, 3000);
+        __boomLastErr = (e.message || '') + (e.filename ? ' @ ' + e.filename.split('/').pop() : '');
+        setTimeout(__boomShowError, 3000);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        __boomLastErr = String(e.reason && e.reason.message ? e.reason.message : e.reason || 'Promise rejected');
+        setTimeout(__boomShowError, 3000);
       });
     </script>
   </body>
