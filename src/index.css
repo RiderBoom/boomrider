@@ -1,3 +1,6 @@
+/* Leaflet map styles — @import ต้องอยู่ก่อน @tailwind */
+@import 'leaflet/dist/leaflet.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
