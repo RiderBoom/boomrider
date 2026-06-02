@@ -152,6 +152,7 @@ export function AppProvider({ children }) {
   const userProfileUnsubRef    = React.useRef(null);
   const promoUnsubRef          = React.useRef(null);
   const adminNotifsUnsubRef    = React.useRef(null);
+  const gpsSessionRef          = React.useRef('');
 
   // --- Global Wallet Store ---
   const [globalWallets, setGlobalWallets] = useState(() => {
@@ -407,6 +408,44 @@ export function AppProvider({ children }) {
       return withAdmin;
     });
   }, [globalUserRoles, isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-capture GPS location on login ───────────────────────────────────
+  useEffect(() => {
+    if (!isLoggedIn) { gpsSessionRef.current = ''; return; }
+    const uid = currentUser?.id;
+    if (!uid || gpsSessionRef.current === uid) return;
+    gpsSessionRef.current = uid;
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserProfile(prev => ({ ...prev, location: loc }));
+        try {
+          const sv = JSON.parse(localStorage.getItem('boomrider_user') || '{}');
+          if (sv?.profile) { sv.profile.location = loc; localStorage.setItem('boomrider_user', JSON.stringify(sv)); }
+          if (uid) localStorage.setItem(`boomrider_loc_${uid}`, JSON.stringify(loc));
+        } catch {}
+        if (FIREBASE_ENABLED && uid) saveUserProfile(uid, { location: loc }).catch(() => {});
+        try {
+          const r = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json&accept-language=th`,
+            { headers: { 'Accept-Language': 'th' } }
+          );
+          const d = await r.json();
+          const parts = [d.address?.road, d.address?.neighbourhood || d.address?.suburb, d.address?.city || d.address?.town].filter(Boolean);
+          const addr = parts.join(', ') || d.display_name?.split(',').slice(0, 3).join(',') || `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+          notifySystem('📍 บันทึกตำแหน่งแล้ว', addr.substring(0, 60), 'success');
+        } catch {
+          notifySystem('📍 บันทึกตำแหน่งแล้ว', `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`, 'success');
+        }
+      },
+      (err) => {
+        if (err.code === 1) notifySystem('📍 ไม่สามารถดึงตำแหน่งได้', 'กรุณาอนุญาตสิทธิ์ GPS ในเบราว์เซอร์', 'warning');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 }
+    );
+  }, [isLoggedIn, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Auth Session Restore ---
   useEffect(() => {
