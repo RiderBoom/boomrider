@@ -938,3 +938,58 @@ export const subscribeToAdminNotifs = (callback) => {
   }, () => {});
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// RATINGS — ratings/{orderId}
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * บันทึกคะแนนรีวิวหลังส่งสำเร็จ:
+ * 1) เขียน ratings/{orderId}
+ * 2) อัปเดต avg rating ของร้านและไรเดอร์ด้วย transaction
+ * 3) mark orders/{orderId}.rated = true
+ */
+export const saveRating = async ({ orderId, customerId, restaurantId, riderId, restaurantRating, riderRating, comment }) => {
+  try {
+    await setDoc(doc(db, 'ratings', String(orderId)), {
+      orderId: String(orderId),
+      customerId: customerId || null,
+      restaurantId: restaurantId || null,
+      riderId: riderId || null,
+      restaurantRating: restaurantRating || null,
+      riderRating: riderRating || null,
+      comment: comment || '',
+      createdAt: serverTimestamp(),
+    });
+
+    if (restaurantId && restaurantRating) {
+      const restRef = doc(db, 'restaurants', String(restaurantId));
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(restRef);
+        if (!snap.exists()) return;
+        const d = snap.data();
+        const prevCount = d.ratingCount || 0;
+        const count = prevCount + 1;
+        const avg = parseFloat((((d.rating || 5) * prevCount + restaurantRating) / count).toFixed(1));
+        tx.update(restRef, { rating: avg, ratingCount: count });
+      });
+    }
+
+    if (riderId && riderRating) {
+      const riderRef = doc(db, 'riders', String(riderId));
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(riderRef);
+        if (!snap.exists()) return;
+        const d = snap.data();
+        const prevCount = d.ratingCount || 0;
+        const count = prevCount + 1;
+        const avg = parseFloat((((d.avgRating || 5) * prevCount + riderRating) / count).toFixed(1));
+        tx.update(riderRef, { avgRating: avg, ratingCount: count });
+      });
+    }
+
+    await updateDoc(doc(db, 'orders', String(orderId)), { rated: true, updatedAt: serverTimestamp() });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[saveRating]', err?.code, err?.message);
+  }
+};
+

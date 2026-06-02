@@ -28,6 +28,7 @@ import {
   addWalletEntry, subscribeToWalletEntries, clearWalletHistory,
   savePromoCodes, subscribeToPromoCodes,
   saveAdminNotif, subscribeToAdminNotifs,
+  saveRating,
 } from '../firebase/firestore';
 
 import { useWalletActions } from './hooks/useWalletActions';
@@ -116,6 +117,10 @@ export function AppProvider({ children }) {
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [topUpSlip, setTopUpSlip] = useState(null);
   const [profileUploading, setProfileUploading] = useState(false);
+
+  // --- Rating Modal ---
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [ratingOrderData, setRatingOrderData] = useState(null);
 
   // --- Chat State ---
   const [activeChat, setActiveChat] = useState(null);
@@ -1630,6 +1635,44 @@ export function AppProvider({ children }) {
     setProfileSubView('main');
   };
 
+  // --- Rating ---
+  const openRatingModal = useCallback((order) => {
+    setRatingOrderData(order);
+    setShowRatingModal(true);
+  }, []);
+
+  const submitRating = useCallback(async ({ orderId, restaurantId, riderId, restaurantRating, riderRating, comment }) => {
+    const uid = currentUser?.id || userProfile?.id;
+
+    if (restaurantId && restaurantRating) {
+      setRestaurants(prev => prev.map(r => {
+        if (r.id !== restaurantId) return r;
+        const prevCount = r.ratingCount || 0;
+        const count = prevCount + 1;
+        const avg = parseFloat((((r.rating || 5) * prevCount + restaurantRating) / count).toFixed(1));
+        return { ...r, rating: avg, ratingCount: count };
+      }));
+    }
+    if (riderId && riderRating) {
+      setRiders(prev => prev.map(r => {
+        if (r.id !== riderId) return r;
+        const prevCount = r.ratingCount || 0;
+        const count = prevCount + 1;
+        const avg = parseFloat((((r.avgRating || 5) * prevCount + riderRating) / count).toFixed(1));
+        return { ...r, avgRating: avg, ratingCount: count };
+      }));
+    }
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, rated: true } : o));
+
+    if (FIREBASE_ENABLED) {
+      saveRating({ orderId, customerId: uid, restaurantId, riderId, restaurantRating, riderRating, comment }).catch(() => {});
+    }
+
+    setShowRatingModal(false);
+    setRatingOrderData(null);
+    notifySystem('ขอบคุณ! 🌟', 'บันทึกรีวิวของคุณแล้ว', 'success');
+  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // --- Context Value ---
   const value = {
     // Navigation
@@ -1710,6 +1753,10 @@ export function AppProvider({ children }) {
     previewImageUrl, setPreviewImageUrl,
     showTopUpModal, setShowTopUpModal,
     topUpSlip, setTopUpSlip,
+    showRatingModal, setShowRatingModal,
+    ratingOrderData,
+    openRatingModal,
+    submitRating,
 
     // Chat
     activeChat, setActiveChat,

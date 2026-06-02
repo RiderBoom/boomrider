@@ -45,6 +45,10 @@ export default function CustomerView() {
     riderRegForm, setRiderRegForm,
     showTopUpModal, setShowTopUpModal,
     topUpSlip, setTopUpSlip,
+    showRatingModal, setShowRatingModal,
+    ratingOrderData,
+    openRatingModal,
+    submitRating,
     pendingRequests,
     isAdmin,
     toasts, removeToast, notifySystem,
@@ -82,6 +86,11 @@ export default function CustomerView() {
   const [showCancelReqModal, setShowCancelReqModal] = useState(false);
   const [cancelReqOrderId, setCancelReqOrderId]     = useState(null);
   const [cancelReqReason,  setCancelReqReason]      = useState('');
+
+  // ── Rating modal state ────────────────────────────────────────────────
+  const [ratingRestaurantStars, setRatingRestaurantStars] = useState(5);
+  const [ratingRiderStars,      setRatingRiderStars]      = useState(5);
+  const [ratingComment,         setRatingComment]         = useState('');
 
   // ── Refresh button spinning state ────────────────────────────────────
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1177,7 +1186,13 @@ export default function CustomerView() {
                       {order.status === 'delivered' && (
                         <div className="px-3 pt-2 pb-3">
                           <button
-                            onClick={() => updateOrderStatus(order.id, 'completed')}
+                            onClick={() => {
+                              updateOrderStatus(order.id, 'completed');
+                              setRatingRestaurantStars(5);
+                              setRatingRiderStars(5);
+                              setRatingComment('');
+                              openRatingModal(order);
+                            }}
                             className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-teal-400 active:scale-95 transition-all shadow-lg shadow-teal-900/20 animate-pulse"
                           >
                             <CheckCircle size={18} />
@@ -1270,6 +1285,22 @@ export default function CustomerView() {
                           <span>👛</span><span>ตัดจาก Wallet เรียบร้อยแล้ว</span>
                         </div>
                       )}
+                      {!order.rated && (
+                        <button
+                          onClick={() => {
+                            setRatingRestaurantStars(5);
+                            setRatingRiderStars(5);
+                            setRatingComment('');
+                            openRatingModal(order);
+                          }}
+                          className="mt-3 w-full bg-yellow-400 text-yellow-900 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-yellow-300 active:scale-95 transition-all"
+                        >
+                          <Star size={16} className="fill-current" /> ให้คะแนนรีวิว
+                        </button>
+                      )}
+                      {order.rated && (
+                        <p className="mt-3 text-center text-xs text-green-600 font-semibold">⭐ รีวิวแล้ว ขอบคุณ!</p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1301,6 +1332,22 @@ export default function CustomerView() {
                         <div className="font-bold text-gray-800 mt-1">฿{(order.grandTotal || 0).toLocaleString()}</div>
                       </div>
                     </div>
+                    {order.status === 'completed' && !order.rated && (
+                      <button
+                        onClick={() => {
+                          setRatingRestaurantStars(5);
+                          setRatingRiderStars(5);
+                          setRatingComment('');
+                          openRatingModal(order);
+                        }}
+                        className="mt-2 w-full bg-yellow-50 border border-yellow-300 text-yellow-700 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 hover:bg-yellow-100 active:scale-95 transition-all"
+                      >
+                        <Star size={13} className="fill-current" /> ให้คะแนน
+                      </button>
+                    )}
+                    {order.status === 'completed' && order.rated && (
+                      <p className="mt-2 text-center text-xs text-green-500 font-semibold">⭐ รีวิวแล้ว</p>
+                    )}
                   </div>
                 ))}
               </>
@@ -1485,6 +1532,89 @@ export default function CustomerView() {
           </div>
         </div>
       )}
+
+      {/* Rating Modal */}
+      {showRatingModal && ratingOrderData && (() => {
+        const o = ratingOrderData;
+        const isFood = o.type === 'food';
+        const StarRow = ({ value, onChange, label }) => (
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-gray-700 mb-2">{label}</p>
+            <div className="flex gap-2 justify-center">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} onClick={() => onChange(n)} className="focus:outline-none transition-transform active:scale-90">
+                  <Star
+                    size={36}
+                    className={n <= value ? 'text-yellow-400 fill-current' : 'text-gray-300'}
+                  />
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-xs text-gray-400 mt-1">
+              {value === 1 ? 'แย่มาก' : value === 2 ? 'แย่' : value === 3 ? 'พอใช้' : value === 4 ? 'ดี' : 'ดีมาก!'}
+            </p>
+          </div>
+        );
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50 backdrop-blur-sm" onClick={() => setShowRatingModal(false)}>
+            <div className="bg-white w-full max-w-md rounded-t-3xl p-6 pb-10 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="text-lg font-black text-gray-900">ให้คะแนนรีวิว ⭐</h3>
+                  <p className="text-xs text-gray-400">{isFood ? o.restaurantName : '📦 ' + (o.dropoff || 'พัสดุ')}</p>
+                </div>
+                <button onClick={() => setShowRatingModal(false)} className="p-2 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {isFood && (
+                <StarRow
+                  value={ratingRestaurantStars}
+                  onChange={setRatingRestaurantStars}
+                  label={`🍽️ ร้านอาหาร: ${o.restaurantName}`}
+                />
+              )}
+
+              {o.riderId && (
+                <StarRow
+                  value={ratingRiderStars}
+                  onChange={setRatingRiderStars}
+                  label="🛵 ไรเดอร์"
+                />
+              )}
+
+              <textarea
+                value={ratingComment}
+                onChange={e => setRatingComment(e.target.value)}
+                placeholder="ความคิดเห็นเพิ่มเติม (ไม่บังคับ)..."
+                rows={2}
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-yellow-300 mb-4"
+              />
+
+              <button
+                onClick={() => submitRating({
+                  orderId:          o.id,
+                  restaurantId:     isFood ? o.restaurantId : null,
+                  riderId:          o.riderId || null,
+                  restaurantRating: isFood ? ratingRestaurantStars : null,
+                  riderRating:      o.riderId ? ratingRiderStars : null,
+                  comment:          ratingComment,
+                })}
+                className="w-full bg-yellow-400 text-yellow-900 py-3.5 rounded-2xl font-black text-base hover:bg-yellow-300 active:scale-95 transition-all shadow-lg shadow-yellow-200"
+              >
+                ส่งรีวิว 🌟
+              </button>
+              <button
+                onClick={() => setShowRatingModal(false)}
+                className="w-full mt-2 text-gray-400 text-sm py-2 hover:text-gray-600"
+              >
+                ข้ามไปก่อน
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
