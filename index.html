@@ -46,6 +46,10 @@
 
     <!-- PWA Manifest & Icons -->
     <link rel="manifest" href="/manifest.json" />
+    <!-- favicon.ico — Google crawler ใช้อันนี้แสดงโลโก้ใน Search Results -->
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
@@ -84,14 +88,20 @@
     }
     </script>
 
-    <!-- Structured Data: Organization -->
+    <!-- Structured Data: Organization — logo ช่วยให้ Google แสดงโลโก้ใน Knowledge Panel -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "Organization",
       "name": "BoomRider",
       "url": "https://boomrider.vercel.app",
-      "logo": "https://boomrider.vercel.app/icons/icon-512.png",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://boomrider.vercel.app/icons/icon-512.png",
+        "width": 512,
+        "height": 512
+      },
+      "image": "https://boomrider.vercel.app/og-image.png",
       "sameAs": [
         "https://www.facebook.com/boomrider",
         "https://twitter.com/boomrider_app",
