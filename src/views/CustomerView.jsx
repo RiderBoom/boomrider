@@ -305,26 +305,34 @@ export default function CustomerView() {
                 <p className="text-xs text-gray-500 text-center">ค่าบริการเริ่มต้น {appConfig.baseFee}บ. + {appConfig.perKmFee}บ./กม.</p>
                 <div className="mb-4">
                   <div className="flex gap-2 mb-2">
-                    <button onClick={() => setParcelMapTarget('pickup')} className={`flex-1 py-2 text-xs font-bold rounded ${parcelMapTarget === 'pickup' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}>📍 ปักหมุดจุดรับ</button>
-                    <button onClick={() => setParcelMapTarget('dropoff')} className={`flex-1 py-2 text-xs font-bold rounded ${parcelMapTarget === 'dropoff' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}>🏁 ปักหมุดจุดส่ง</button>
+                    <button
+                      onClick={() => setParcelMapTarget('pickup')}
+                      className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${parcelMapTarget === 'pickup' ? 'bg-green-500 text-white shadow-md shadow-green-200' : 'bg-gray-100 text-gray-600'}`}
+                    >
+                      📍 จุดรับของ{parcelDetails.pickupLocation ? ' ✓' : ''}
+                    </button>
+                    <button
+                      onClick={() => setParcelMapTarget('dropoff')}
+                      className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${parcelMapTarget === 'dropoff' ? 'bg-red-500 text-white shadow-md shadow-red-200' : 'bg-gray-100 text-gray-600'}`}
+                    >
+                      🏁 จุดส่งของ{parcelDetails.dropoffLocation ? ' ✓' : ''}
+                    </button>
                   </div>
                   <InteractiveMap
                     mode="select"
                     isParcel={true}
+                    activeParcelTarget={parcelMapTarget}
                     shopLocation={parcelDetails.pickupLocation}
                     userLocation={parcelDetails.dropoffLocation}
                     centerOverride={
                       parcelMapTarget === 'pickup'
-                        ? (parcelDetails.pickupLocation || userProfile.location)
+                        ? (parcelDetails.pickupLocation || userProfile?.location)
                         : parcelMapTarget === 'dropoff'
-                          ? (parcelDetails.dropoffLocation || userProfile.location)
-                          : (userProfile.location || undefined)
+                          ? (parcelDetails.dropoffLocation || userProfile?.location)
+                          : (userProfile?.location || undefined)
                     }
                     onLocationSelect={handleParcelMapSelect}
                   />
-                  <p className="text-xs text-center text-gray-400 mt-1">
-                    {parcelMapTarget ? `กำลังเลือก: ${parcelMapTarget === 'pickup' ? 'จุดรับสินค้า' : 'จุดส่งสินค้า'}` : 'กรุณาเลือกประเภทหมุดก่อนแตะแผนที่'}
-                  </p>
                 </div>
                 <div>
                   <div className="flex justify-between items-center mb-1">
@@ -383,8 +391,11 @@ export default function CustomerView() {
                 </div>
 
                 {parcelDistance > 0 && (
-                  <div className="bg-blue-50 p-2 rounded text-center text-sm text-blue-800 font-bold my-2">
-                    ระยะทาง: {parcelDistance} กม. | ค่าส่ง: ฿{parcelEstimate}
+                  <div className="bg-blue-50 p-3 rounded-xl text-center my-2 border border-blue-200">
+                    <p className="text-sm font-bold text-blue-800">
+                      📏 ระยะทาง {parcelDistance.toFixed(1)} กม. &nbsp;|&nbsp; ค่าส่ง ฿{parcelEstimate}
+                    </p>
+                    <p className="text-xs text-blue-500 mt-0.5">คำนวณจากจุดรับถึงจุดส่ง</p>
                   </div>
                 )}
 

@@ -5,7 +5,6 @@ import { Crosshair, Navigation } from 'lucide-react';
 const TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
-// DivIcon marker — ไม่ต้องใช้ไฟล์ PNG (ป้องกันปัญหา asset path ใน Vite)
 function makeIcon(L, color, emoji) {
   return L.divIcon({
     className: '',
@@ -32,13 +31,21 @@ export default function InteractiveMap({
   riderLocation,
   onLocationSelect,
   isParcel = false,
+  activeParcelTarget = null,  // 'pickup' | 'dropoff'
   centerOverride,
   className = '',
 }) {
   const containerRef  = useRef(null);
-  const mapRef        = useRef(null);   // Leaflet map instance
-  const markersRef    = useRef({});     // { user, shop, rider, pin }
-  const leafletRef    = useRef(null);   // L reference (for updates without reinit)
+  const mapRef        = useRef(null);
+  const markersRef    = useRef({});     // { pin, secondary, user, shop, rider }
+  const leafletRef    = useRef(null);
+
+  // Always-fresh refs — updated every render so stale closures see current values
+  const onLocationSelectRef   = useRef(onLocationSelect);
+  const activeParcelTargetRef = useRef(activeParcelTarget);
+  useEffect(() => { onLocationSelectRef.current   = onLocationSelect; });
+  useEffect(() => { activeParcelTargetRef.current = activeParcelTarget; });
+
   const [locating, setLocating] = useState(false);
   const [pinned,   setPinned]   = useState(null);
 
@@ -61,7 +68,6 @@ export default function InteractiveMap({
     if (!containerRef.current) return;
     let destroyed = false;
 
-    // Dynamic import — ป้องกัน top-level module execution crash
     import('leaflet').then(({ default: L }) => {
       if (destroyed || mapRef.current) return;
       leafletRef.current = L;
@@ -84,27 +90,32 @@ export default function InteractiveMap({
       // ── SELECT MODE ────────────────────────────────────────────────────
       if (mode === 'select') {
         const placePin = (latlng) => {
-          const loc = { lat: latlng.lat, lng: latlng.lng };
+          const loc    = { lat: latlng.lat, lng: latlng.lng };
+          const target = activeParcelTargetRef.current;
+          const color  = target === 'dropoff' ? '#ef4444' : '#22c55e';
+          const emoji  = target === 'dropoff' ? '🏁' : '📍';
+
           setPinned(loc);
-          onLocationSelect?.(loc);
+          onLocationSelectRef.current?.(loc);   // always calls the latest callback
+
           if (markersRef.current.pin) {
             markersRef.current.pin.setLatLng(latlng);
+            markersRef.current.pin.setIcon(makeIcon(L, color, emoji));
           } else {
             const m = L.marker(latlng, {
-              icon:      makeIcon(L, '#f97316', '📍'),
+              icon:      makeIcon(L, color, emoji),
               draggable: true,
             }).addTo(map);
             m.on('dragend', (e) => {
-              const p = e.target.getLatLng();
+              const p      = e.target.getLatLng();
               const newLoc = { lat: p.lat, lng: p.lng };
               setPinned(newLoc);
-              onLocationSelect?.(newLoc);
+              onLocationSelectRef.current?.(newLoc);
             });
             markersRef.current.pin = m;
           }
         };
 
-        // คลิกบนแผนที่ = ปักหมุด
         map.on('click', (e) => placePin(e.latlng));
 
         // แสดงตำแหน่งที่เลือกไว้แล้ว (ถ้ามี)
@@ -137,7 +148,6 @@ export default function InteractiveMap({
           latlngs.push([riderLocation.lat, riderLocation.lng]);
         }
 
-        // Fit map เพื่อแสดงทุก marker
         if (latlngs.length > 1) {
           map.fitBounds(latlngs, { padding: [40, 40], maxZoom: 16 });
         }
@@ -148,14 +158,14 @@ export default function InteractiveMap({
       destroyed = true;
       if (mapRef.current) {
         mapRef.current.remove();
-        mapRef.current  = null;
+        mapRef.current     = null;
         markersRef.current = {};
         leafletRef.current = null;
       }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── อัปเดต rider marker แบบ real-time (ไม่ต้อง reinit map) ───────────────
+  // ── อัปเดต rider marker แบบ real-time (view mode) ────────────────────────
   useEffect(() => {
     if (!mapRef.current || !leafletRef.current || mode !== 'view') return;
     const L = leafletRef.current;
@@ -173,38 +183,101 @@ export default function InteractiveMap({
     }
   }, [riderLocation, centerOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── centerOverride เปลี่ยน (เช่น switch pickup↔dropoff) ──────────────────
+  // ── pan เมื่อ centerOverride เปลี่ยน (select mode) ───────────────────────
   useEffect(() => {
     if (!mapRef.current || !centerOverride || mode !== 'select') return;
     mapRef.current.panTo([centerOverride.lat, centerOverride.lng], { animate: true });
   }, [centerOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Parcel: sync active pin + secondary static marker when target/locations change ──
+  useEffect(() => {
+    if (!mapRef.current || !leafletRef.current || mode !== 'select' || !isParcel) return;
+    const L   = leafletRef.current;
+    const map = mapRef.current;
+
+    // shopLocation = pickup, userLocation = dropoff (parcel convention in CustomerView)
+    const activeLocation = activeParcelTarget === 'pickup' ? shopLocation : userLocation;
+    const otherLocation  = activeParcelTarget === 'pickup' ? userLocation  : shopLocation;
+    const activeColor    = activeParcelTarget === 'pickup' ? '#22c55e' : '#ef4444';
+    const activeEmoji    = activeParcelTarget === 'pickup' ? '📍' : '🏁';
+    const otherColor     = activeParcelTarget === 'pickup' ? '#ef4444' : '#22c55e';
+    const otherEmoji     = activeParcelTarget === 'pickup' ? '🏁' : '📍';
+
+    // Move / create the active (draggable) pin
+    if (activeLocation) {
+      const latlng = [activeLocation.lat, activeLocation.lng];
+      if (markersRef.current.pin) {
+        markersRef.current.pin.setLatLng(latlng);
+        markersRef.current.pin.setIcon(makeIcon(L, activeColor, activeEmoji));
+      } else {
+        const m = L.marker(latlng, {
+          icon:      makeIcon(L, activeColor, activeEmoji),
+          draggable: true,
+        }).addTo(map);
+        m.on('dragend', (e) => {
+          const p      = e.target.getLatLng();
+          const newLoc = { lat: p.lat, lng: p.lng };
+          setPinned(newLoc);
+          onLocationSelectRef.current?.(newLoc);
+        });
+        markersRef.current.pin = m;
+      }
+      setPinned(activeLocation);
+    } else if (markersRef.current.pin) {
+      // Target has no location yet — just update the icon color/emoji
+      markersRef.current.pin.setIcon(makeIcon(L, activeColor, activeEmoji));
+    }
+
+    // Show the "other" location as a static secondary marker
+    if (otherLocation) {
+      if (markersRef.current.secondary) {
+        markersRef.current.secondary.setLatLng([otherLocation.lat, otherLocation.lng]);
+        markersRef.current.secondary.setIcon(makeIcon(L, otherColor, otherEmoji));
+      } else {
+        markersRef.current.secondary = L.marker([otherLocation.lat, otherLocation.lng], {
+          icon:      makeIcon(L, otherColor, otherEmoji),
+          draggable: false,
+        }).addTo(map);
+      }
+    } else if (markersRef.current.secondary) {
+      markersRef.current.secondary.remove();
+      markersRef.current.secondary = null;
+    }
+  }, [activeParcelTarget, shopLocation, userLocation, isParcel, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── GPS ──────────────────────────────────────────────────────────────────
   const useGPS = () => {
-    if (!navigator.geolocation || !onLocationSelect) return;
+    if (!navigator.geolocation) return;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocating(false);
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        onLocationSelect(loc);
+        const loc    = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const target = activeParcelTargetRef.current;
+        const color  = target === 'dropoff' ? '#ef4444' : '#22c55e';
+        const emoji  = target === 'dropoff' ? '🏁' : '📍';
+
+        onLocationSelectRef.current?.(loc);
         setPinned(loc);
+
         if (!mapRef.current || !leafletRef.current) return;
         const L   = leafletRef.current;
         const map = mapRef.current;
         map.setView([loc.lat, loc.lng], 16, { animate: true });
+
         if (markersRef.current.pin) {
           markersRef.current.pin.setLatLng([loc.lat, loc.lng]);
+          markersRef.current.pin.setIcon(makeIcon(L, color, emoji));
         } else {
           const m = L.marker([loc.lat, loc.lng], {
-            icon:      makeIcon(L, '#f97316', '📍'),
+            icon:      makeIcon(L, color, emoji),
             draggable: true,
           }).addTo(map);
           m.on('dragend', (e) => {
-            const p = e.target.getLatLng();
+            const p      = e.target.getLatLng();
             const newLoc = { lat: p.lat, lng: p.lng };
             setPinned(newLoc);
-            onLocationSelect(newLoc);
+            onLocationSelectRef.current?.(newLoc);
           });
           markersRef.current.pin = m;
         }
@@ -215,11 +288,21 @@ export default function InteractiveMap({
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  const borderColor = mode !== 'select'
+    ? 'border-gray-200'
+    : isParcel && activeParcelTarget === 'dropoff'
+      ? 'border-red-500'
+      : 'border-green-500';
+
+  const hintText = isParcel
+    ? (activeParcelTarget === 'pickup'  ? '📍 แตะแผนที่เพื่อเลือกจุดรับของ'
+     : activeParcelTarget === 'dropoff' ? '🏁 แตะแผนที่เพื่อเลือกจุดส่งของ'
+     : '📍 กรุณาเลือกประเภทหมุดก่อน')
+    : '📍 แตะแผนที่เพื่อปักหมุดตำแหน่ง';
+
   return (
     <div
-      className={`relative overflow-hidden rounded-xl border-2 w-full mb-4 ${heightClass} ${
-        mode === 'select' ? 'border-green-500' : 'border-gray-200'
-      }`}
+      className={`relative overflow-hidden rounded-xl border-2 w-full mb-4 ${heightClass} ${borderColor}`}
       style={{ zIndex: 0 }}
     >
       {/* Leaflet container */}
@@ -228,8 +311,12 @@ export default function InteractiveMap({
       {mode === 'select' && (
         <>
           {/* คำแนะนำบนสุด */}
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-green-600/90 text-white text-xs px-3 py-1 rounded-full shadow pointer-events-none z-[1000] whitespace-nowrap backdrop-blur-sm">
-            {isParcel ? '📍 แตะแผนที่เพื่อเลือกตำแหน่ง' : '📍 แตะแผนที่เพื่อปักหมุดตำแหน่ง'}
+          <div
+            className={`absolute top-2 left-1/2 -translate-x-1/2 text-white text-xs px-3 py-1 rounded-full shadow pointer-events-none z-[1000] whitespace-nowrap backdrop-blur-sm ${
+              isParcel && activeParcelTarget === 'dropoff' ? 'bg-red-600/90' : 'bg-green-600/90'
+            }`}
+          >
+            {hintText}
           </div>
 
           {/* ปุ่ม GPS + พิกัด */}
