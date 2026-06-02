@@ -65,6 +65,7 @@ export default function CustomerView() {
     hasPendingCancelRequest,
     forceRefresh,
     openImagePreview,
+    isDataLoading,
     // Promo
     validatePromoCode, usePromoCode,
   } = useApp();
@@ -263,11 +264,26 @@ export default function CustomerView() {
                 <span className="text-xs text-orange-500 font-medium">{visibleRestaurants.length} ร้าน</span>
               </div>
               {visibleRestaurants.length === 0 && (
-                <div className="text-center py-16 text-gray-400">
-                  <Search size={40} className="mx-auto mb-2 opacity-20" />
-                  <p className="font-medium">ไม่พบร้านอาหารที่ค้นหา</p>
-                  <button onClick={() => { setSearchQuery(''); setSelectedCategory('ทั้งหมด'); }} className="mt-2 text-orange-500 text-sm underline">ล้างการค้นหา</button>
-                </div>
+                isDataLoading && !searchQuery && selectedCategory === 'ทั้งหมด' ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="bg-white rounded-2xl p-3 flex gap-3 shadow-sm animate-pulse">
+                        <div className="w-20 h-20 rounded-xl bg-gray-200 flex-shrink-0" />
+                        <div className="flex-1 space-y-2 py-1">
+                          <div className="h-4 bg-gray-200 rounded w-3/4" />
+                          <div className="h-3 bg-gray-200 rounded w-1/2" />
+                          <div className="h-3 bg-gray-200 rounded w-2/3" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 text-gray-400">
+                    <Search size={40} className="mx-auto mb-2 opacity-20" />
+                    <p className="font-medium">ไม่พบร้านอาหารที่ค้นหา</p>
+                    <button onClick={() => { setSearchQuery(''); setSelectedCategory('ทั้งหมด'); }} className="mt-2 text-orange-500 text-sm underline">ล้างการค้นหา</button>
+                  </div>
+                )
               )}
               <div className="stagger">
                 {visibleRestaurants.map(rest => (

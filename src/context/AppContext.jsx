@@ -53,6 +53,7 @@ export function AppProvider({ children }) {
   const [riders, setRiders] = useState(INITIAL_RIDERS);
   const [menuItems, setMenuItems] = useState(INITIAL_MENU_ITEMS);
   const [pendingRequests, setPendingRequests] = useState([]);
+  const [isDataLoading, setIsDataLoading] = useState(FIREBASE_ENABLED);
 
   // --- Auth State ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -503,7 +504,14 @@ export function AppProvider({ children }) {
         pendingLocalOrderIdsRef.current = new Set();
 
         try {
-          const initialOrders = await loadAllOrders();
+          const [initialOrders, restData, ridersData, menuData, cfgData] = await Promise.all([
+            loadAllOrders(),
+            loadRestaurants(),
+            loadRiders(),
+            loadMenuItems(),
+            loadAppConfig(),
+          ]);
+
           if (initialOrders && initialOrders.length > 0) {
             const STATUS_RANK = {
               pending: 1, preparing: 2, ready_to_pickup: 3,
@@ -532,7 +540,27 @@ export function AppProvider({ children }) {
               return deduped;
             });
           }
+
+          if (Array.isArray(restData) && restData.length > 0) {
+            setRestaurants(restData);
+            safeLocalSet('boomrider_restaurants', restData);
+          }
+          if (Array.isArray(ridersData) && ridersData.length > 0) {
+            setRiders(ridersData);
+            safeLocalSet('boomrider_riders', ridersData);
+          }
+          if (menuData && Object.keys(menuData).length > 0) {
+            setMenuItems(menuData);
+            safeLocalSet('boomrider_menu_items', menuData);
+          }
+          if (cfgData && typeof cfgData === 'object') {
+            const { updatedAt: _ts, ...cfg } = cfgData;
+            setAppConfig(prev => ({ ...prev, ...cfg }));
+            setEditConfig(prev => ({ ...prev, ...cfg }));
+            safeLocalSet('boomrider_appconfig', cfg);
+          }
         } catch (_) {}
+        setIsDataLoading(false);
 
         const unsubOrders = subscribeToOrders(
           (cloudOrders) => {
@@ -1599,6 +1627,7 @@ export function AppProvider({ children }) {
 
     // Firebase flag
     FIREBASE_ENABLED,
+    isDataLoading,
 
     // Sync
     syncRoles,
