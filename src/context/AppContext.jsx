@@ -871,11 +871,15 @@ export function AppProvider({ children }) {
           if (fcmToken) await saveFcmToken(firebaseUser.uid, fcmToken);
         } catch (_) {}
       });
+      // foreground message listener — store unsubscribe to prevent multiple registrations
+      let unsubForeground = () => {};
       onForegroundMessage((msg) => {
         notifySystem(msg.title, msg.body, 'info');
-      });
+      }).then((unsub) => { unsubForeground = unsub || (() => {}); }).catch(() => {});
+
       return () => {
         unsubscribe();
+        unsubForeground();
         if (window.__boomriderUnsubOrders)  { window.__boomriderUnsubOrders();  window.__boomriderUnsubOrders  = null; }
         if (window.__boomriderUnsubPending) { window.__boomriderUnsubPending(); window.__boomriderUnsubPending = null; }
         if (window.__boomriderUnsubChats)   { window.__boomriderUnsubChats();   window.__boomriderUnsubChats   = null; }
