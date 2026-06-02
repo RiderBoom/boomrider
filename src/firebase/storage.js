@@ -83,3 +83,21 @@ export const deleteFile = async (path) => {
     await deleteObject(ref(storage, path));
   } catch (_) { /* ignore if not found */ }
 };
+
+// ===== Upload Image (File | Blob | base64 data URL) =====
+// ใช้แทน raw FileReader base64 ก่อน save ลง Firestore
+// - ถ้าเป็น https:// อยู่แล้ว → คืน URL เดิมโดยไม่อัปโหลดซ้ำ
+// - ถ้าเป็น data:image → แปลงเป็น Blob แล้ว upload
+// - ถ้าเป็น File/Blob → upload ตรง
+export const uploadImageAuto = async (fileOrDataUrl, path) => {
+  if (!fileOrDataUrl) return null;
+  if (typeof fileOrDataUrl === 'string') {
+    if (fileOrDataUrl.startsWith('https://')) return fileOrDataUrl;
+    if (fileOrDataUrl.startsWith('data:'))   return uploadDataUrl(fileOrDataUrl, path);
+    return null;
+  }
+  if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
+    return uploadFile(fileOrDataUrl, path);
+  }
+  return null;
+};

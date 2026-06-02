@@ -152,17 +152,51 @@ const onOrderCreated = onDocumentCreated(
       return;
     }
 
-    // ── Food: notify admin only — riders get notified when shop marks ready ──
-    if (isFood && ADMIN_UID) {
-      const { adminToken } = await fetchTokens({ includeRiders: false, includeAdmin: true });
-      if (adminToken) {
-        await sendMulticast({
-          tokens: [adminToken],
-          title:  '🛍️ ออเดอร์อาหารใหม่',
-          body:   `${order.customerName || 'ลูกค้า'} สั่งจาก ${order.restaurantName || ''} ฿${order.grandTotal ?? 0}  #${shortId}`,
-          data:   { orderId, type: 'food', url: '/' },
-        });
+    // ── Food: notify admin + merchant concurrently ───────────────────────────
+    if (isFood) {
+      const db   = getFirestore();
+      const jobs = [];
+
+      // Admin notification
+      if (ADMIN_UID) {
+        jobs.push(
+          fetchTokens({ includeRiders: false, includeAdmin: true }).then(({ adminToken }) => {
+            if (!adminToken) return;
+            return sendMulticast({
+              tokens: [adminToken],
+              title:  '🛍️ ออเดอร์อาหารใหม่',
+              body:   `${order.customerName || 'ลูกค้า'} สั่งจาก ${order.restaurantName || ''} ฿${order.grandTotal ?? 0}  #${shortId}`,
+              data:   { orderId, type: 'food', url: '/' },
+            });
+          }),
+        );
       }
+
+      // Merchant notification — look up restaurant owner's FCM token
+      if (order.restaurantId) {
+        jobs.push(
+          (async () => {
+            try {
+              const restSnap = await db.doc(`restaurants/${order.restaurantId}`).get();
+              const ownerId  = restSnap.exists ? restSnap.data()?.ownerId : null;
+              if (!ownerId) return;
+              const ownerSnap = await db.doc(`users/${ownerId}`).get();
+              const token     = ownerSnap.exists ? ownerSnap.data()?.fcmToken : null;
+              if (!token) return;
+              await sendMulticast({
+                tokens: [token],
+                title:  '🔔 ออเดอร์ใหม่เข้าร้าน!',
+                body:   `${order.customerName || 'ลูกค้า'} สั่ง ฿${order.grandTotal ?? 0} — กรุณายืนยันออเดอร์ #${shortId}`,
+                data:   { orderId, type: 'food', url: '/', role: 'merchant' },
+              });
+            } catch (err) {
+              logger.warn(`[onOrderCreated] merchant notify err: ${err?.message}`);
+            }
+          })(),
+        );
+      }
+
+      await Promise.allSettled(jobs);
     }
   },
 );

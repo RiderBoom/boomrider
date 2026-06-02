@@ -7,6 +7,10 @@ import { generateId, getDistanceFromLatLonInKm, compressImage, playNotificationS
 import {
   loginWithEmail, registerWithEmail, loginWithGoogle, logout as firebaseLogout, onAuthChange,
 } from '../firebase/auth';
+import {
+  uploadProfilePhoto, uploadShopPhoto, uploadMenuPhoto, uploadTopUpSlip,
+  uploadIdCard, uploadDataUrl,
+} from '../firebase/storage';
 import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders,
@@ -111,6 +115,7 @@ export function AppProvider({ children }) {
   // --- TopUp Modal ---
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [topUpSlip, setTopUpSlip] = useState(null);
+  const [profileUploading, setProfileUploading] = useState(false);
 
   // --- Chat State ---
   const [activeChat, setActiveChat] = useState(null);
@@ -392,6 +397,15 @@ export function AppProvider({ children }) {
       grantRole(uid, 'rider');
     }
   }, [restaurants, riders, userProfile?.id, isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // เมื่อ userProfile.image เปลี่ยนเป็น Storage URL → sync ลง Firestore ทันที
+  useEffect(() => {
+    if (!isLoggedIn || !FIREBASE_ENABLED) return;
+    const uid = currentUser?.id || userProfile?.id;
+    const img = userProfile?.image;
+    if (!uid || !img || img.startsWith('data:')) return;
+    saveUserProfile(uid, { image: img }).catch(() => {});
+  }, [userProfile?.image]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync userRoles from globalUserRoles when it changes
   useEffect(() => {
@@ -1047,73 +1061,136 @@ export function AppProvider({ children }) {
   };
 
   // --- Photo handlers ---
-  const handleProfilePhotoChange = (event) => {
+  const handleProfilePhotoChange = async (event) => {
     const file = event.target.files[0];
-    if (file) {
+    if (!file) return;
+    const uid = currentUser?.id || userProfile?.id;
+    if (FIREBASE_ENABLED && uid) {
+      setProfileUploading(true);
+      try {
+        const url = await uploadProfilePhoto(uid, file);
+        setTempProfile(prev => ({ ...prev, image: url }));
+      } catch {
+        notifySystem('ผิดพลาด', 'อัปโหลดรูปโปรไฟล์ไม่สำเร็จ', 'error');
+      } finally {
+        setProfileUploading(false);
+      }
+    } else {
       const reader = new FileReader();
       reader.onloadend = () => setTempProfile(prev => ({ ...prev, image: reader.result }));
       reader.readAsDataURL(file);
     }
   };
 
-  const handleShopPhotoChange = (restaurantId, event) => {
+  const handleShopPhotoChange = async (restaurantId, event) => {
     const file = event.target.files[0];
     if (!file) return;
-    notifySystem('กำลังประมวลผล', 'กำลังบีบอัดรูปภาพ...', 'info');
-    compressImage(file, 800, 600, 0.75)
-      .then(compressed => {
-        setRestaurants(prev => prev.map(r => {
-          if (r.id === restaurantId) {
-            const updated = { ...r, image: compressed };
-            if (FIREBASE_ENABLED) saveRestaurant(updated).catch(() => {});
-            return updated;
-          }
-          return r;
-        }));
-        notifySystem('สำเร็จ', 'อัปเดตรูปหน้าร้านเรียบร้อย', 'success');
-      })
-      .catch(() => notifySystem('ผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error'));
+    const applyUpdate = (imageData) => {
+      setRestaurants(prev => prev.map(r => {
+        if (r.id !== restaurantId) return r;
+        const updated = { ...r, image: imageData };
+        if (FIREBASE_ENABLED) saveRestaurant(updated).catch(() => {});
+        return updated;
+      }));
+      notifySystem('สำเร็จ', 'อัปเดตรูปหน้าร้านเรียบร้อย', 'success');
+    };
+    if (FIREBASE_ENABLED) {
+      notifySystem('กำลังอัปโหลด', 'กำลังอัปโหลดรูปภาพ...', 'info');
+      try {
+        const url = await uploadShopPhoto(restaurantId, file);
+        applyUpdate(url);
+      } catch {
+        notifySystem('ผิดพลาด', 'อัปโหลดรูปร้านไม่สำเร็จ', 'error');
+      }
+    } else {
+      notifySystem('กำลังประมวลผล', 'กำลังบีบอัดรูปภาพ...', 'info');
+      compressImage(file, 800, 600, 0.75)
+        .then(compressed => applyUpdate(compressed))
+        .catch(() => notifySystem('ผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error'));
+    }
   };
 
   const handleRegistrationPhotoSelect = (event, setForm, field) => {
     const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setForm(prev => ({ ...prev, [field]: reader.result }));
-      reader.readAsDataURL(file);
+    if (!file) {
+      setForm(prev => ({ ...prev, [field]: null, [`_${field}File`]: null }));
+      return;
+    }
+    const reader = new FileReader();
+    // เก็บทั้ง base64 (preview) และ File object (สำหรับ upload ตอน submit)
+    reader.onloadend = () =>
+      setForm(prev => ({ ...prev, [field]: reader.result, [`_${field}File`]: file }));
+    reader.readAsDataURL(file);
+  };
+
+  const handleTopUpSlipSelect = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (FIREBASE_ENABLED) {
+      const uid = currentUser?.id || userProfile?.id;
+      notifySystem('กำลังอัปโหลด', 'กำลังอัปโหลดสลิป...', 'info');
+      try {
+        const url = await uploadTopUpSlip(uid, file);
+        setTopUpSlip(url);
+      } catch {
+        notifySystem('ผิดพลาด', 'อัปโหลดสลิปไม่สำเร็จ กรุณาลองใหม่', 'error');
+      }
+    } else {
+      compressImage(file, 1024, 1400, 0.8)
+        .then(compressed => setTopUpSlip(compressed))
+        .catch(() => {
+          const reader = new FileReader();
+          reader.onloadend = () => setTopUpSlip(reader.result);
+          reader.readAsDataURL(file);
+        });
     }
   };
 
-  const handleTopUpSlipSelect = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    compressImage(file, 1024, 1400, 0.8)
-      .then(compressed => setTopUpSlip(compressed))
-      .catch(() => {
-        const reader = new FileReader();
-        reader.onloadend = () => setTopUpSlip(reader.result);
-        reader.readAsDataURL(file);
-      });
-  };
-
-  const handleMenuPhotoSelect = (event) => {
+  const handleMenuPhotoSelect = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     setEditForm(prev => ({ ...prev, _imageUploading: true }));
-    compressImage(file, 400, 400, 0.65)
-      .then(compressed => {
-        setEditForm(prev => ({ ...prev, image: compressed, _imageUploading: false }));
-      })
-      .catch(() => {
+    if (FIREBASE_ENABLED) {
+      const uid    = currentUser?.id || userProfile?.id;
+      const shopId = restaurants.find(r => r.ownerId === uid)?.id || 'unknown';
+      const itemId = (isEditingMenu && isEditingMenu !== 'new') ? isEditingMenu : `item_${Date.now()}`;
+      try {
+        const url = await uploadMenuPhoto(shopId, itemId, file);
+        setEditForm(prev => ({ ...prev, image: url, _imageUploading: false }));
+      } catch {
         setEditForm(prev => ({ ...prev, _imageUploading: false }));
-        notifySystem('ผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error');
-      });
+        notifySystem('ผิดพลาด', 'อัปโหลดรูปเมนูไม่สำเร็จ', 'error');
+      }
+    } else {
+      compressImage(file, 400, 400, 0.65)
+        .then(compressed => setEditForm(prev => ({ ...prev, image: compressed, _imageUploading: false })))
+        .catch(() => {
+          setEditForm(prev => ({ ...prev, _imageUploading: false }));
+          notifySystem('ผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error');
+        });
+    }
   };
 
   const openImagePreview = (url) => {
     setPreviewImageUrl(url);
     setShowImageModal(true);
   };
+
+  const handleSaveProfile = useCallback(async () => {
+    const uid = currentUser?.id || userProfile?.id;
+    setUserProfile({ ...tempProfile });
+    setProfileSubView('main');
+    notifySystem('สำเร็จ', 'บันทึกข้อมูลโปรไฟล์เรียบร้อย', 'success');
+    if (FIREBASE_ENABLED && uid) {
+      saveUserProfile(uid, {
+        name:  tempProfile.name  || '',
+        phone: tempProfile.phone || '',
+        email: tempProfile.email || '',
+        ...(tempProfile.image && !tempProfile.image.startsWith('data:')
+          ? { image: tempProfile.image } : {}),
+      }).catch(() => {});
+    }
+  }, [tempProfile, currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Merchant Management ---
   const handleUpdateShopLocation = useCallback((restaurantId, location) => {
@@ -1188,23 +1265,42 @@ export function AppProvider({ children }) {
     }
     if (isPending('merchant_reg')) return notifySystem('รออนุมัติ', 'คำขอสมัครร้านค้ากำลังรอการอนุมัติ', 'info');
     const uid = userProfile.id || currentUser?.id || '';
-    const { idCardImage, shopImage, ...dataNoImages } = data;
+
+    // ── อัปโหลดรูป KYC ไป Firebase Storage ก่อน save pending request ─────────
+    let idCardUrl = null;
+    let shopImageUrl = null;
+    if (FIREBASE_ENABLED && uid) {
+      try {
+        idCardUrl = data._idCardImageFile
+          ? await uploadIdCard(uid, data._idCardImageFile)
+          : data.idCardImage?.startsWith('data:')
+            ? await uploadDataUrl(data.idCardImage, `kyc/${uid}/id_card_${Date.now()}.jpg`)
+            : null;
+      } catch { /* upload failed — Admin จะเห็น placeholder text แทน */ }
+      try {
+        shopImageUrl = data._shopImageFile
+          ? await uploadShopPhoto(`pending_${uid}`, data._shopImageFile)
+          : data.shopImage?.startsWith('data:')
+            ? await uploadDataUrl(data.shopImage, `shops/pending_${uid}/cover_${Date.now()}.jpg`)
+            : null;
+      } catch {}
+    }
+
+    const { idCardImage, shopImage, _idCardImageFile, _shopImageFile, ...dataNoImages } = data;
     const merchantLocation = data.location || userProfile.location || USER_LOCATION;
     const newReq = {
       id: generateId(), type: 'merchant_reg',
       data: {
         ...dataNoImages,
         location:    merchantLocation,
-        idCardImage: idCardImage ? '✓ อัปโหลดบัตรประชาชนแล้ว' : null,
-        shopImage:   shopImage   ? '✓ อัปโหลดรูปร้านแล้ว'       : null,
+        idCardImage: idCardUrl    || (idCardImage  ? '✓ อัปโหลดบัตรประชาชนแล้ว' : null),
+        shopImage:   shopImageUrl || (shopImage    ? '✓ อัปโหลดรูปร้านแล้ว'       : null),
       },
-      _hasImages: !!(idCardImage || shopImage),
+      _hasImages: !!(idCardUrl || shopImageUrl || idCardImage || shopImage),
       userId: uid, user: userProfile.name,
       timestamp: formatDateTime(),
     };
-    if (FIREBASE_ENABLED) {
-      savePendingRequest({ ...newReq, data: { ...data } }).catch(() => {});
-    }
+    if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});
     setPendingRequests(prev => [newReq, ...prev]);
     notifySystem('สำเร็จ', 'ส่งใบสมัครร้านค้าเรียบร้อย รอแอดมินอนุมัติ', 'success');
     notifyAdmin('🏪 สมัครร้านค้าใหม่', `${userProfile.name} ส่งใบสมัครร้าน ${data.shopName}`, 'warning');
@@ -1216,21 +1312,40 @@ export function AppProvider({ children }) {
     }
     if (isPending('rider_reg')) return notifySystem('รออนุมัติ', 'คำขอสมัครไรเดอร์กำลังรอการอนุมัติ', 'info');
     const uid = userProfile.id || currentUser?.id || '';
-    const { idCardImage, profileImage, ...dataNoImages } = data;
+
+    // ── อัปโหลดรูป KYC ไป Firebase Storage ก่อน save pending request ─────────
+    let idCardUrl = null;
+    let profileImageUrl = null;
+    if (FIREBASE_ENABLED && uid) {
+      try {
+        idCardUrl = data._idCardImageFile
+          ? await uploadIdCard(uid, data._idCardImageFile)
+          : data.idCardImage?.startsWith('data:')
+            ? await uploadDataUrl(data.idCardImage, `kyc/${uid}/id_card_${Date.now()}.jpg`)
+            : null;
+      } catch {}
+      try {
+        profileImageUrl = data._profileImageFile
+          ? await uploadProfilePhoto(uid, data._profileImageFile)
+          : data.profileImage?.startsWith('data:')
+            ? await uploadDataUrl(data.profileImage, `users/${uid}/kyc_profile_${Date.now()}.jpg`)
+            : null;
+      } catch {}
+    }
+
+    const { idCardImage, profileImage, _idCardImageFile, _profileImageFile, ...dataNoImages } = data;
     const newReq = {
       id: generateId(), type: 'rider_reg',
       data: {
         ...dataNoImages,
-        idCardImage:  idCardImage  ? '✓ อัปโหลดบัตรประชาชนแล้ว' : null,
-        profileImage: profileImage ? '✓ อัปโหลดรูปโปรไฟล์แล้ว'   : null,
+        idCardImage:  idCardUrl       || (idCardImage  ? '✓ อัปโหลดบัตรประชาชนแล้ว' : null),
+        profileImage: profileImageUrl || (profileImage ? '✓ อัปโหลดรูปโปรไฟล์แล้ว'   : null),
       },
-      _hasImages: !!(idCardImage || profileImage),
+      _hasImages: !!(idCardUrl || profileImageUrl || idCardImage || profileImage),
       userId: uid, user: userProfile.name,
       timestamp: formatDateTime(),
     };
-    if (FIREBASE_ENABLED) {
-      savePendingRequest({ ...newReq, data: { ...data } }).catch(() => {});
-    }
+    if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});
     setPendingRequests(prev => [newReq, ...prev]);
     notifySystem('สำเร็จ', 'ส่งใบสมัครไรเดอร์เรียบร้อย รอแอดมินอนุมัติ', 'success');
     notifyAdmin('🛵 สมัครไรเดอร์ใหม่', `${userProfile.name} ส่งใบสมัคร`, 'warning');
@@ -1616,6 +1731,8 @@ export function AppProvider({ children }) {
     handleTopUpSlipSelect,
     handleMenuPhotoSelect,
     openImagePreview,
+    handleSaveProfile,
+    profileUploading,
 
     // Merchant management
     handleUpdateShopLocation,

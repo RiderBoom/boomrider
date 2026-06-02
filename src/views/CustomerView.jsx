@@ -55,6 +55,7 @@ export default function CustomerView() {
     handleAddAddress, handleUpdateAddress, handleDeleteAddress,
     handleProfilePhotoChange, handleTopUpSlipSelect,
     handleRegistrationPhotoSelect,
+    handleSaveProfile, profileUploading,
     requestTopUp, requestWithdraw,
     requestRegisterMerchant, requestRegisterRider,
     openChatWindow, handleLogout,
@@ -963,15 +964,19 @@ export default function CustomerView() {
               <div className="flex justify-center mb-6">
                 <label className="w-24 h-24 bg-gray-200 rounded-full overflow-hidden relative cursor-pointer">
                   <img src={tempProfile.image || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(tempProfile.name || 'User') + '&background=fb923c&color=fff&size=96'} className="w-full h-full object-cover" alt="profile" />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white"><Camera /></div>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleProfilePhotoChange} />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white">
+                    {profileUploading ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Camera />}
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleProfilePhotoChange} disabled={profileUploading} />
                 </label>
               </div>
               <div className="space-y-4">
                 <div><label className="text-sm text-gray-500">ชื่อ-นามสกุล</label><input value={tempProfile.name} onChange={e => setTempProfile({ ...tempProfile, name: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" /></div>
                 <div><label className="text-sm text-gray-500">เบอร์โทรศัพท์</label><input value={tempProfile.phone} onChange={e => setTempProfile({ ...tempProfile, phone: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" /></div>
                 <div><label className="text-sm text-gray-500">อีเมล</label><input value={tempProfile.email} onChange={e => setTempProfile({ ...tempProfile, email: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" /></div>
-                <button onClick={() => { setUserProfile(tempProfile); notifySystem('สำเร็จ', 'บันทึกข้อมูลโปรไฟล์เรียบร้อย', 'success'); setProfileSubView('main'); }} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold mt-8">บันทึกการเปลี่ยนแปลง</button>
+                <button onClick={handleSaveProfile} disabled={profileUploading} className={`w-full bg-green-600 text-white py-3 rounded-lg font-bold mt-8 transition-opacity ${profileUploading ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                  {profileUploading ? 'กำลังอัปโหลดรูป...' : 'บันทึกการเปลี่ยนแปลง'}
+                </button>
               </div>
             </div>
           ) : profileSubView === 'reg_merchant' ? (
