@@ -24,7 +24,6 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
           if (id.includes('firebase'))    return 'vendor-firebase';
-          if (id.includes('leaflet') || id.includes('react-leaflet')) return 'vendor-maps';
           if (id.includes('lucide-react')) return 'vendor-icons';
           // React core must be in the same chunk as react-dom — checked AFTER leaflet
           // so react-leaflet is already captured above and won't land here

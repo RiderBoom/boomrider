@@ -1,130 +1,96 @@
-import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import React, { useState } from 'react';
+import { MapPin, Crosshair, Navigation } from 'lucide-react';
 
-// Fix leaflet default icon
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+// Drop-in replacement for react-leaflet InteractiveMap.
+// view mode  → OpenStreetMap iframe (zero JS deps, no crash)
+// select mode → GPS button + coordinates display (no map click needed)
 
-const userIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34],
-});
-const shopIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34],
-});
-const riderIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34],
-});
-
-const MapClickHandler = ({ onSelect }) => {
-  useMapEvents({ click: (e) => onSelect({ lat: e.latlng.lat, lng: e.latlng.lng }) });
-  return null;
+const OSM_EMBED = (lat, lng, zoom = 15) => {
+  const d = 0.009;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${lng - d},${lat - d},${lng + d},${lat + d}&layer=mapnik&marker=${lat},${lng}`;
 };
 
-const InteractiveMap = ({
+export default function InteractiveMap({
   mode = 'view',
   userLocation,
   shopLocation,
   riderLocation,
   onLocationSelect,
-  status,
   isParcel = false,
   centerOverride,
   className = '',
-}) => {
-  const center = centerOverride || userLocation || shopLocation || { lat: 13.7563, lng: 100.5018 };
+}) {
+  const [locating, setLocating] = useState(false);
 
-  // Extract height class from className; default h-64
   const heightClass = (() => {
-    if (!className) return 'h-64';
-    const match = className.match(/h-\d+/);
-    return match ? match[0] : 'h-64';
+    const m = (className || '').match(/h-\d+/);
+    return m ? m[0] : 'h-64';
   })();
 
-  const routeLine = [];
-  if (mode === 'view') {
-    if (riderLocation && shopLocation && !['delivering', 'delivered', 'completed'].includes(status)) {
-      routeLine.push([riderLocation.lat, riderLocation.lng], [shopLocation.lat, shopLocation.lng]);
-    } else if (riderLocation && userLocation && ['delivering', 'delivered', 'completed'].includes(status)) {
-      routeLine.push([riderLocation.lat, riderLocation.lng], [userLocation.lat, userLocation.lng]);
-    } else if (shopLocation && userLocation) {
-      routeLine.push([shopLocation.lat, shopLocation.lng], [userLocation.lat, userLocation.lng]);
-    }
-  } else if (mode === 'select' && isParcel && shopLocation && userLocation) {
-    // Show route line between pickup and dropoff in parcel select mode
-    routeLine.push([shopLocation.lat, shopLocation.lng], [userLocation.lat, userLocation.lng]);
+  const center = centerOverride || riderLocation || (mode === 'select' ? userLocation : null) || shopLocation || userLocation || { lat: 13.7563, lng: 100.5018 };
+
+  const useGPS = () => {
+    if (!navigator.geolocation || !onLocationSelect) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        onLocationSelect({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+
+  // ── SELECT MODE ────────────────────────────────────────────────────────────
+  if (mode === 'select') {
+    const pinned = isParcel ? shopLocation : userLocation;
+    return (
+      <div className={`relative rounded-xl border-2 border-green-500 w-full mb-4 ${heightClass} bg-green-50 flex flex-col items-center justify-center gap-3 p-4`}>
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow pointer-events-none whitespace-nowrap">
+          {isParcel ? 'เลือกตำแหน่งจุดรับ/ส่ง' : 'ปักหมุดตำแหน่งของคุณ'}
+        </div>
+
+        <MapPin size={36} className="text-green-500 mt-6" />
+
+        <button
+          onClick={useGPS}
+          disabled={locating}
+          className="flex items-center gap-2 bg-green-500 hover:bg-green-600 active:scale-95 text-white px-5 py-2.5 rounded-2xl font-bold text-sm shadow-md disabled:opacity-60 transition-all"
+        >
+          <Crosshair size={16} className={locating ? 'animate-spin' : ''} />
+          {locating ? 'กำลังหาตำแหน่ง GPS...' : 'ใช้ตำแหน่งปัจจุบัน (GPS)'}
+        </button>
+
+        {pinned && (
+          <p className="text-xs text-green-700 font-medium">
+            <Navigation size={12} className="inline mr-1" />
+            ปักหมุดแล้ว: {pinned.lat.toFixed(5)}, {pinned.lng.toFixed(5)}
+          </p>
+        )}
+
+        {!pinned && (
+          <p className="text-xs text-gray-500 text-center max-w-[200px]">
+            กดปุ่มด้านบนเพื่อใช้ GPS<br />หรือพิมพ์ที่อยู่ในช่องค้นหาด้านบน
+          </p>
+        )}
+      </div>
+    );
   }
 
+  // ── VIEW MODE ──────────────────────────────────────────────────────────────
   return (
-    /*
-     * isolation: isolate  — สร้าง stacking context ใหม่
-     * overflow-hidden     — clip Leaflet layers ไม่ให้หลุดออกนอก container
-     * position: relative  — ทำให้ Leaflet children ที่เป็น absolute อ้างอิง container นี้
-     * z-index ต่ำ (z-0)  — กันไม่ให้ Leaflet panes (z 200–1000) ซ้อนทับ UI ข้างนอก
-     */
     <div
-      className={`relative isolate overflow-hidden rounded-xl border-2 w-full mb-4 ${heightClass} ${
-        mode === 'select' ? 'border-green-500' : 'border-gray-300'
-      }`}
+      className={`relative overflow-hidden rounded-xl border-2 border-gray-300 w-full mb-4 ${heightClass} bg-gray-100`}
       style={{ zIndex: 0 }}
     >
-      {mode === 'select' && (
-        <div
-          className="absolute top-2 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs px-3 py-1 rounded-full shadow-lg pointer-events-none animate-bounce"
-          style={{ zIndex: 1000 }}
-        >
-          แตะแผนที่เพื่อปักหมุดตำแหน่ง
-        </div>
-      )}
-      <MapContainer
-        key={`${center.lat},${center.lng}`}
-        center={[center.lat, center.lng]}
-        zoom={14}
-        style={{ height: '100%', width: '100%' }}
-        scrollWheelZoom={false}
-        dragging={true}
-        tap={true}
-        touchZoom={true}
-        doubleClickZoom={true}
-        zoomControl={true}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        {mode === 'select' && <MapClickHandler onSelect={onLocationSelect} />}
-        {userLocation && (
-          <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
-            <Popup>{isParcel ? 'จุดส่ง' : 'ลูกค้า'}</Popup>
-          </Marker>
-        )}
-        {shopLocation && (
-          <Marker position={[shopLocation.lat, shopLocation.lng]} icon={shopIcon}>
-            <Popup>{isParcel ? 'จุดรับ' : 'ร้านค้า'}</Popup>
-          </Marker>
-        )}
-        {riderLocation && mode === 'view' && (
-          <Marker position={[riderLocation.lat, riderLocation.lng]} icon={riderIcon}>
-            <Popup>ไรเดอร์</Popup>
-          </Marker>
-        )}
-        {routeLine.length === 2 && (
-          <Polyline positions={routeLine} color="#3b82f6" dashArray="8,6" />
-        )}
-      </MapContainer>
+      <iframe
+        title="แผนที่"
+        src={OSM_EMBED(center.lat, center.lng)}
+        style={{ width: '100%', height: '100%', border: 0 }}
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+      />
     </div>
   );
-};
-
-export default InteractiveMap;
+}
