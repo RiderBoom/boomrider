@@ -1230,7 +1230,8 @@ export default function AdminView() {
               <div><label className="block text-sm font-medium mb-1">ชื่อธนาคาร</label><input type="text" value={editConfig.adminBankName} onChange={e => setEditConfig({ ...editConfig, adminBankName: e.target.value })} className="w-full border p-2 rounded" /></div>
               <div><label className="block text-sm font-medium mb-1">เลขที่บัญชี</label><input type="text" value={editConfig.adminBankAccount} onChange={e => setEditConfig({ ...editConfig, adminBankAccount: e.target.value })} className="w-full border p-2 rounded" /></div>
               <div><label className="block text-sm font-medium mb-1">ชื่อบัญชี</label><input type="text" value={editConfig.adminAccountName} onChange={e => setEditConfig({ ...editConfig, adminAccountName: e.target.value })} className="w-full border p-2 rounded" /></div>
-              <div><label className="block text-sm font-medium mb-1">QR Code URL</label><input type="text" value={editConfig.adminQrCode} onChange={e => setEditConfig({ ...editConfig, adminQrCode: e.target.value })} className="w-full border p-2 rounded" /></div>
+              <div><label className="block text-sm font-medium mb-1">เบอร์ / เลขบัตร PromptPay</label><input type="text" value={editConfig.adminPromptPayId || ''} onChange={e => setEditConfig({ ...editConfig, adminPromptPayId: e.target.value })} className="w-full border p-2 rounded" placeholder="0xx-xxx-xxxx หรือ 13 หลัก" /></div>
+              <div><label className="block text-sm font-medium mb-1">QR Code URL (สำรอง)</label><input type="text" value={editConfig.adminQrCode} onChange={e => setEditConfig({ ...editConfig, adminQrCode: e.target.value })} className="w-full border p-2 rounded" /></div>
             </div>
           </div>
 

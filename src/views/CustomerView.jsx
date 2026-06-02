@@ -13,6 +13,7 @@ import { getDistanceFromLatLonInKm, formatDateTimeFromMs } from '../utils';
 import RestaurantCard from '../components/RestaurantCard';
 import InteractiveMap from '../components/InteractiveMap';
 import ToastContainer from '../components/ToastContainer';
+import PromptPayQR from '../components/PromptPayQR';
 
 const CATEGORIES = ['ทั้งหมด', 'Street Food', 'Fast Food', 'Japanese', 'Italian', 'Dessert', 'Thai'];
 
@@ -1331,8 +1332,12 @@ export default function CustomerView() {
             </div>
             <div className="bg-gray-100 p-3 rounded-xl mb-4 border border-gray-100">
               <div className="flex items-center justify-between mb-3">
-                <div className="bg-white p-1.5 rounded-lg shadow-sm border">
-                  <img src={appConfig.adminQrCode} alt="QR Code" className="w-24 h-24 object-cover" />
+                <div className="bg-white p-1.5 rounded-lg shadow-sm border flex items-center justify-center">
+                  <PromptPayQR
+                    promptPayId={appConfig.adminPromptPayId}
+                    amount={parseFloat(withdrawAmount) || 0}
+                    size={96}
+                  />
                 </div>
                 <div className="text-right flex-1 pl-3">
                   <p className="font-bold text-gray-800 text-sm">{appConfig.adminBankName}</p>

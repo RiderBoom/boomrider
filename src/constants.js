@@ -12,7 +12,8 @@ export const INITIAL_CONFIG = {
   adminBankName: "กสิกรไทย (KBANK)",
   adminBankAccount: "123-4-56789-0",
   adminAccountName: "บริษัท บูมไรเดอร์ จำกัด",
-  adminQrCode: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg"
+  adminQrCode: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg",
+  adminPromptPayId: ""
 };
 
 export const GP_RATES = {
