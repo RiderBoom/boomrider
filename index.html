@@ -144,6 +144,15 @@
       @keyframes spin{to{transform:rotate(360deg)}}
     </style>
 
+    <!-- Kill any stale service workers immediately, before React loads -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { r.unregister(); });
+        }).catch(function(){});
+      }
+    </script>
+
     <!-- Splash Screen -->
     <div id="app-splash" class="app-splash">
       <div class="splash-logo">🛵 BoomRider</div>
