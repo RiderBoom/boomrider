@@ -171,17 +171,22 @@
         var keys = ['boomrider_orders','boomrider_pending_requests','boomrider_restaurants',
                     'boomrider_menu_items','boomrider_appconfig','boomrider_riders'];
         keys.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+        var doReload = function() {
+          // Add cache-busting query param to force bypass HTTP cache
+          var sep = window.location.href.indexOf('?') === -1 ? '?' : '&';
+          window.location.replace(window.location.pathname + sep + '_cb=' + Date.now());
+        };
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.getRegistrations().then(function(regs) {
             Promise.all(regs.map(function(r){ return r.unregister(); })).then(function() {
-              caches.keys().then(function(ks) {
-                Promise.all(ks.map(function(k){ return caches.delete(k); })).then(function() {
-                  window.location.reload(true);
-                });
-              });
+              if (typeof caches !== 'undefined') {
+                caches.keys().then(function(ks) {
+                  Promise.all(ks.map(function(k){ return caches.delete(k); })).then(doReload);
+                }).catch(doReload);
+              } else { doReload(); }
             });
-          });
-        } else { window.location.reload(true); }
+          }).catch(doReload);
+        } else { doReload(); }
       }
 
       var __boomLastErr = '';

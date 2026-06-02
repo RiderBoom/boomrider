@@ -918,9 +918,13 @@ export const saveAdminNotif = async (notif) => {
 
 /** Admin: subscribe real-time ต่อ admin_notifs — รับทุก notification ข้ามอุปกรณ์ */
 export const subscribeToAdminNotifs = (callback) => {
-  const q = query(collection(db, 'admin_notifs'), orderBy('id', 'desc'), limit(50));
+  const q = query(collection(db, 'admin_notifs'), orderBy('createdAt', 'desc'), limit(50));
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map(d => d.data()));
+    callback(snap.docs.map(d => {
+      const data = d.data();
+      const ts = data.createdAt;
+      return { ...data, id: data.id ?? (ts?.toMillis ? ts.toMillis() : Date.now()) };
+    }));
   }, () => {});
 };
 

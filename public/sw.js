@@ -1,5 +1,5 @@
-// BoomRider Service Worker v1.1
-const CACHE_NAME = 'boomrider-v2';
+// BoomRider Service Worker v1.2
+const CACHE_NAME = 'boomrider-v3';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',

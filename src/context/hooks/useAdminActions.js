@@ -28,8 +28,9 @@ export function useAdminActions(deps) {
       creditWallet(req.userId, amt, topupDesc);
       if (FIREBASE_ENABLED) {
         const _topupDate = formatDateTime();
+        const _topupMs   = Date.now();
         creditWalletInDB(req.userId, amt, topupDesc).catch(() => {});
-        addWalletEntry(req.userId, { type: 'deposit', amount: amt, desc: topupDesc, date: _topupDate }).catch(() => {});
+        addWalletEntry(req.userId, { type: 'deposit', amount: amt, desc: topupDesc, date: _topupDate, createdAtMs: _topupMs }).catch(() => {});
         saveTransaction({ type: 'topup_approved', userId: req.userId, userName: req.user, role: 'customer', amount: amt, desc: topupDesc, date: _topupDate }).catch(() => {});
       }
       notifySystem('Admin ✅', `อนุมัติเติมเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
@@ -53,8 +54,9 @@ export function useAdminActions(deps) {
       creditWallet(req.userId, -amt, withdrawDesc);
       if (FIREBASE_ENABLED) {
         const _wdDate = formatDateTime();
+        const _wdMs   = Date.now();
         creditWalletInDB(req.userId, -amt, withdrawDesc).catch(() => {});
-        addWalletEntry(req.userId, { type: 'withdraw', amount: -amt, desc: withdrawDesc, date: _wdDate }).catch(() => {});
+        addWalletEntry(req.userId, { type: 'withdraw', amount: -amt, desc: withdrawDesc, date: _wdDate, createdAtMs: _wdMs }).catch(() => {});
         saveTransaction({ type: 'withdraw_approved', userId: req.userId, userName: req.user, role: 'customer', amount: -amt, desc: withdrawDesc, date: _wdDate }).catch(() => {});
       }
       notifySystem('Admin ✅', `อนุมัติถอนเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
