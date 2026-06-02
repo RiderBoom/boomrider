@@ -19,12 +19,15 @@ export default defineConfig({
 
     rollupOptions: {
       output: {
-        // Manual chunks for better caching
-        manualChunks: {
-          // React core
-          'vendor-react': ['react', 'react-dom'],
-          // Icons (heavy)
-          'vendor-icons': ['lucide-react'],
+        // Split vendor libs into cacheable chunks
+        // Firebase (~800KB) and Maps (~200KB) change rarely → long cache hits
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('firebase'))    return 'vendor-firebase';
+          if (id.includes('leaflet') || id.includes('react-leaflet')) return 'vendor-maps';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+          if (id.includes('react-dom') || id.includes('react/jsx') || id.includes('scheduler')) return 'vendor-react';
+          return 'vendor-misc';
         },
         // Asset naming for long-term caching
         assetFileNames: 'assets/[name]-[hash][extname]',

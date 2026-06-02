@@ -1,14 +1,26 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
 import ChatModal from './components/ChatModal';
 import InstallBanner from './components/InstallBanner';
 import AuthView from './views/AuthView';
-import CustomerView from './views/CustomerView';
-import MerchantView from './views/MerchantView';
-import RiderView from './views/RiderView';
-import AdminView from './views/AdminView';
+
+// Lazy load — แต่ละ role โหลด chunk ของตัวเองเมื่อ login ครั้งแรก
+// ลด initial bundle จาก 1.1 MB → ~300 KB
+const CustomerView = lazy(() => import('./views/CustomerView'));
+const MerchantView = lazy(() => import('./views/MerchantView'));
+const RiderView    = lazy(() => import('./views/RiderView'));
+const AdminView    = lazy(() => import('./views/AdminView'));
+
+function ViewLoader() {
+  return (
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-orange-400 to-orange-600">
+      <div className="text-white text-2xl font-black tracking-tight mb-6">🛵 BoomRider</div>
+      <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function RoleSwitcher() {
   const { activeRole, setActiveRole, pendingRequests, isAdmin } = useApp();
@@ -49,10 +61,12 @@ function AppRouter() {
         <>
           <ToastContainer toasts={toasts} removeToast={removeToast} />
           <ChatModal />
-          {activeRole === 'customer' && <CustomerView />}
-          {activeRole === 'merchant' && <MerchantView />}
-          {activeRole === 'rider' && <RiderView />}
-          {activeRole === 'admin' && <AdminView />}
+          <Suspense fallback={<ViewLoader />}>
+            {activeRole === 'customer' && <CustomerView />}
+            {activeRole === 'merchant' && <MerchantView />}
+            {activeRole === 'rider'    && <RiderView />}
+            {activeRole === 'admin'    && <AdminView />}
+          </Suspense>
         </>
       )}
     </div>
