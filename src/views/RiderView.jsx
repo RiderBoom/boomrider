@@ -7,7 +7,8 @@ import {
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
 import { getDistanceFromLatLonInKm, formatDateTimeFromMs, formatDateTime } from '../utils';
-import { USER_LOCATION } from '../constants';
+import { USER_LOCATION, FIREBASE_ENABLED } from '../constants';
+import { updateRiderLocation, updateOrderRiderLocation } from '../firebase/firestore';
 
 export default function RiderView() {
   const {
@@ -69,24 +70,82 @@ export default function RiderView() {
     return localStorage.getItem(key) !== 'false';
   });
 
-  // ── GPS ตำแหน่งจริงของไรเดอร์ ────────────────────────────────────────────
-  const [riderGPS, setRiderGPS] = useState(null);
+  // ── GPS Real-time Tracking → Firestore ────────────────────────────────────
+  // 'idle' | 'tracking' | 'denied' | 'unavailable' | 'timeout'
+  const [riderGPS,   setRiderGPS]   = useState(null);
+  const [gpsStatus,  setGpsStatus]  = useState('idle');
 
+  // Refs: อัปเดตทุก render ผ่าน useEffect → callback ไม่มี stale closure
+  const riderIdRef    = React.useRef(null);
+  const activeJobRef  = React.useRef(null);   // { id, status } ของงานที่กำลังทำอยู่
+  const lastWriteRef  = React.useRef(0);      // throttle timestamp
+
+  // ── Sync refs ทุก render ──────────────────────────────────────────────────
+  const _uid = userProfile.id || currentUser?.id;
   React.useEffect(() => {
-    if (!navigator.geolocation) return;
-    let watchId;
-    navigator.geolocation.getCurrentPosition(
-      pos => setRiderGPS({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {},
-      { enableHighAccuracy: true, timeout: 10000 },
+    // riderId ดึงจาก riders collection (riders[n].userId === UID → riders[n].id)
+    const meRider = riders.find(r => r.userId === _uid);
+    riderIdRef.current = meRider?.id ?? null;
+  });
+  React.useEffect(() => {
+    const activeJob = orders.find(o =>
+      ['rider_accepted', 'picking_up', 'delivering'].includes(o.status) &&
+      riderIdRef.current && o.riderId === riderIdRef.current,
     );
-    watchId = navigator.geolocation.watchPosition(
-      pos => setRiderGPS({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 5000 },
-    );
-    return () => { if (watchId) navigator.geolocation.clearWatch(watchId); };
-  }, []);
+    activeJobRef.current = activeJob ? { id: activeJob.id, status: activeJob.status } : null;
+  });
+
+  // ── watchPosition — mount ครั้งเดียว, cleanup ตอน unmount ────────────────
+  React.useEffect(() => {
+    if (!navigator.geolocation) {
+      setGpsStatus('unavailable');
+      return;
+    }
+
+    const GEO_OPTS  = { enableHighAccuracy: true, maximumAge: 4000, timeout: 20000 };
+    const THROTTLE  = 5000; // ms — เขียน Firestore ได้ทุก 5 วินาทีสูงสุด
+
+    const onSuccess = (pos) => {
+      const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      setRiderGPS(loc);
+      setGpsStatus('tracking');
+
+      if (!FIREBASE_ENABLED) return;
+
+      const now = Date.now();
+      if (now - lastWriteRef.current < THROTTLE) return;
+      lastWriteRef.current = now;
+
+      const riderId  = riderIdRef.current;
+      const activeJob = activeJobRef.current;
+
+      // 1️⃣ อัปเดตตำแหน่งทั่วไปของไรเดอร์ใน riders collection
+      if (riderId) {
+        updateRiderLocation(riderId, loc);
+      }
+
+      // 2️⃣ อัปเดต riderLocation ใน orders document → ลูกค้าเห็น real-time บนแผนที่
+      if (activeJob?.id) {
+        updateOrderRiderLocation(activeJob.id, loc);
+      }
+    };
+
+    const onError = (err) => {
+      if (err.code === err.PERMISSION_DENIED)   setGpsStatus('denied');
+      else if (err.code === err.POSITION_UNAVAILABLE) setGpsStatus('unavailable');
+      else                                            setGpsStatus('timeout');
+    };
+
+    // ดึงตำแหน่งเร็วครั้งแรกก่อน (ไม่รอ watch)
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      ...GEO_OPTS, timeout: 10000,
+    });
+
+    // Watch แบบต่อเนื่อง — จะเรียก onSuccess ทุกครั้งที่ตำแหน่งเปลี่ยน
+    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, GEO_OPTS);
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleOnline = () => {
     setIsOnline(prev => {
@@ -193,6 +252,40 @@ export default function RiderView() {
             {isOnline ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
             {isOnline ? 'Online' : 'Offline'}
           </button>
+        </div>
+
+        {/* ── GPS Status Indicator ── */}
+        <div className="mt-2">
+          {gpsStatus === 'tracking' && (
+            <div className="flex items-center gap-1.5 text-xs text-green-400">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              GPS ติดตามตำแหน่งแบบ Real-time
+              {riderGPS && (
+                <span className="text-gray-500 ml-1">
+                  ({riderGPS.lat.toFixed(4)}, {riderGPS.lng.toFixed(4)})
+                </span>
+              )}
+            </div>
+          )}
+          {gpsStatus === 'denied' && (
+            <div className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-900/30 rounded-lg px-2 py-1">
+              <AlertCircle size={12} />
+              GPS ถูกปิดกั้น — เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์เพื่อให้ลูกค้าเห็นตำแหน่งของคุณ
+            </div>
+          )}
+          {gpsStatus === 'unavailable' && (
+            <div className="flex items-center gap-1.5 text-xs text-orange-400">
+              <AlertCircle size={12} /> GPS ไม่พร้อมใช้งาน
+            </div>
+          )}
+          {gpsStatus === 'timeout' && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <AlertCircle size={12} /> GPS หมดเวลา — กำลังลองใหม่...
+            </div>
+          )}
         </div>
 
         {/* Quick stats */}

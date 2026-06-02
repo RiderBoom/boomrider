@@ -904,8 +904,10 @@ export function AppProvider({ children }) {
     }
   }, [userProfile, userRoles, userWallet, walletHistory, userAddresses]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Real-time Rider Location Simulation ---
+  // --- Real-time Rider Location Simulation (fallback: Firebase ปิดเท่านั้น) ---
+  // เมื่อ FIREBASE_ENABLED = true ไรเดอร์จะส่ง GPS จริงผ่าน watchPosition → Firestore → onSnapshot
   useEffect(() => {
+    if (FIREBASE_ENABLED) return;
     const interval = setInterval(() => {
       setOrders(prevOrders => prevOrders.map(order => {
         if (['rider_accepted', 'picking_up', 'delivering'].includes(order.status) && order.riderId) {
@@ -916,13 +918,7 @@ export function AppProvider({ children }) {
           const step   = 0.05;
           const newLat = currentPos.lat + (targetPos.lat - currentPos.lat) * step;
           const newLng = currentPos.lng + (targetPos.lng - currentPos.lng) * step;
-          let newX = currentPos.x;
-          let newY = currentPos.y;
-          if (currentPos.x !== undefined && targetPos.x !== undefined) {
-            newX = currentPos.x + (targetPos.x - currentPos.x) * step;
-            newY = currentPos.y + (targetPos.y - currentPos.y) * step;
-          }
-          return { ...order, riderLocation: { lat: newLat, lng: newLng, x: newX, y: newY } };
+          return { ...order, riderLocation: { lat: newLat, lng: newLng } };
         }
         return order;
       }));

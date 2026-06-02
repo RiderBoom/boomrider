@@ -480,6 +480,16 @@ export const updateRiderLocation = async (riderId, location) => {
   } catch {}
 };
 
+// อัปเดตตำแหน่งไรเดอร์ใน orders document (ลูกค้าเห็น real-time บนแผนที่)
+export const updateOrderRiderLocation = async (orderId, loc) => {
+  if (!orderId || !loc) return;
+  try {
+    await updateDoc(doc(db, 'orders', String(orderId)), {
+      riderLocation: { lat: loc.lat, lng: loc.lng },
+    });
+  } catch {}
+};
+
 export const loadRiders = async () => {
   try {
     const snap = await getDocs(collection(db, 'riders'));
