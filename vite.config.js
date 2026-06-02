@@ -26,7 +26,9 @@ export default defineConfig({
           if (id.includes('firebase'))    return 'vendor-firebase';
           if (id.includes('leaflet') || id.includes('react-leaflet')) return 'vendor-maps';
           if (id.includes('lucide-react')) return 'vendor-icons';
-          if (id.includes('react-dom') || id.includes('react/jsx') || id.includes('scheduler')) return 'vendor-react';
+          // React core must be in the same chunk as react-dom — checked AFTER leaflet
+          // so react-leaflet is already captured above and won't land here
+          if (id.includes('node_modules/react/') || id.includes('react-dom') || id.includes('react/jsx') || id.includes('scheduler')) return 'vendor-react';
           // QR packages are dynamically imported only when top-up modal renders —
           // keep them out of the startup bundle so a load error can't white-screen the app
           if (id.includes('promptpay-qr') || id.includes('/qrcode/') || id.includes('/crc/') || id.includes('buffer-crc')) return undefined;
