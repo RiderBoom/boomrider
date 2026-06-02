@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import {
   initializeFirestore,
+  getFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
@@ -29,7 +30,8 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 // Firestore — persistent cache (IndexedDB) + multi-tab support
-// Fallback to basic Firestore if persistence fails (private browsing / storage quota)
+// getFirestore() is the safe fallback: returns an existing instance or creates
+// one with default settings, and never throws "already initialized".
 let db;
 try {
   db = initializeFirestore(app, {
@@ -39,11 +41,7 @@ try {
     }),
   });
 } catch {
-  try {
-    db = initializeFirestore(app, { ignoreUndefinedProperties: true });
-  } catch {
-    db = initializeFirestore(app, {});
-  }
+  db = getFirestore(app);
 }
 export { db };
 
