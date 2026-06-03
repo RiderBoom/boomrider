@@ -3,21 +3,17 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, FIREBASE_ENABLED, ADMIN_UID,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, compressImage, playNotificationSound, formatDateTime } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime } from '../utils';
 import {
   loginWithEmail, registerWithEmail, loginWithGoogle, logout as firebaseLogout, onAuthChange,
 } from '../firebase/auth';
-import {
-  uploadProfilePhoto, uploadShopPhoto, uploadMenuPhoto, uploadTopUpSlip,
-  uploadIdCard, uploadDataUrl,
-} from '../firebase/storage';
 import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders, loadOrdersByRole,
   saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew, subscribeToAllWallets,
   saveRestaurant, loadRestaurants, deleteRestaurantFromDB, subscribeToRestaurants,
   saveMenuItems, loadMenuItems, subscribeToMenuItems,
-  savePendingRequest, deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
+  deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
   saveRider, loadRiders, deleteRiderFromDB, updateRiderLocation, subscribeToRiders,
   saveChat, subscribeToChats, subscribeToSupportChat, deleteChatFromDB, appendChatMessage,
   saveUserProfile, loadUserProfile, subscribeToUserProfile, saveUserRoles, setBanUser,
@@ -26,14 +22,16 @@ import {
   atomicOrderCompletion, subscribeToConfig,
   saveTransaction,
   addWalletEntry, subscribeToWalletEntries, clearWalletHistory,
-  savePromoCodes, subscribeToPromoCodes,
   saveAdminNotif, subscribeToAdminNotifs,
   saveRating,
 } from '../firebase/firestore';
 
-import { useWalletActions } from './hooks/useWalletActions';
-import { useOrderActions }  from './hooks/useOrderActions';
-import { useAdminActions }  from './hooks/useAdminActions';
+import { useWalletActions }  from './hooks/useWalletActions';
+import { useOrderActions }   from './hooks/useOrderActions';
+import { useAdminActions }   from './hooks/useAdminActions';
+import { usePhotoHandlers }  from './hooks/usePhotoHandlers';
+import { useRegistration }   from './hooks/useRegistration';
+import { usePromoActions }   from './hooks/usePromoActions';
 
 const AppContext = createContext(null);
 
@@ -98,8 +96,6 @@ export function AppProvider({ children }) {
   const [withdrawAccount, setWithdrawAccount] = useState('');
   const [withdrawName, setWithdrawName] = useState('');
   const [tempProfile, setTempProfile] = useState({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
-  const [merchantRegForm, setMerchantRegForm] = useState({ shopName: '', category: 'Street Food', realName: '', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, shopImage: null, location: null });
-  const [riderRegForm, setRiderRegForm] = useState({ realName: '', vehicle: 'Motorcycle', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, profileImage: null });
   const [editConfig, setEditConfig] = useState(INITIAL_CONFIG);
   const [isEditingMenu, setIsEditingMenu] = useState(null);
   const [editingShop, setEditingShop] = useState(null);
@@ -116,7 +112,6 @@ export function AppProvider({ children }) {
   // --- TopUp Modal ---
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [topUpSlip, setTopUpSlip] = useState(null);
-  const [profileUploading, setProfileUploading] = useState(false);
 
   // --- Rating Modal ---
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -160,7 +155,6 @@ export function AppProvider({ children }) {
   const walletEntriesUnsubRef  = React.useRef(null);
   const allWalletsUnsubRef     = React.useRef(null);
   const userProfileUnsubRef    = React.useRef(null);
-  const promoUnsubRef          = React.useRef(null);
   const adminNotifsUnsubRef    = React.useRef(null);
   const gpsSessionRef          = React.useRef('');
 
@@ -280,6 +274,37 @@ export function AppProvider({ children }) {
     notifySystem,
   });
 
+  // ── Photo handlers hook ─────────────────────────────────────────────────
+  const {
+    profileUploading,
+    handleProfilePhotoChange, handleShopPhotoChange, handleRegistrationPhotoSelect,
+    handleTopUpSlipSelect, handleMenuPhotoSelect, openImagePreview,
+  } = usePhotoHandlers({
+    currentUser, userProfile, restaurants, isEditingMenu,
+    setTempProfile, setRestaurants, setEditForm, setTopUpSlip,
+    setShowImageModal, setPreviewImageUrl,
+    notifySystem,
+  });
+
+  // ── Registration hook ───────────────────────────────────────────────────
+  const {
+    merchantRegForm, setMerchantRegForm,
+    riderRegForm, setRiderRegForm,
+    requestRegisterMerchant, requestRegisterRider,
+  } = useRegistration({
+    currentUser, userProfile, userRoles,
+    restaurants, isPending,
+    setPendingRequests,
+    grantRole,
+    notifySystem, notifyAdmin,
+  });
+
+  // ── Promo actions hook ──────────────────────────────────────────────────
+  const {
+    promoCodes, setPromoCodes,
+    validatePromoCode, usePromoCode, createPromoCode, togglePromoCode, deletePromoCode,
+  } = usePromoActions({ notifySystem });
+
   // --- Load from localStorage on mount ---
   useEffect(() => {
     const savedRestaurants = localStorage.getItem('boomrider_restaurants');
@@ -342,23 +367,6 @@ export function AppProvider({ children }) {
     const interval = setInterval(check, 5000);
     return () => clearInterval(interval);
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Promo Codes: subscribe from Firestore ────────────────────────────────
-  useEffect(() => {
-    if (!FIREBASE_ENABLED) return;
-    const unsub = subscribeToPromoCodes((codes) => {
-      if (codes.length > 0) {
-        setPromoCodes(codes);
-      } else {
-        try {
-          const local = JSON.parse(localStorage.getItem('boomrider_promo_codes') || '[]');
-          if (local.length > 0) savePromoCodes(local).catch(() => {});
-        } catch {}
-      }
-    });
-    promoUnsubRef.current = unsub;
-    return () => { unsub(); promoUnsubRef.current = null; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Auto-save to localStorage ---
   useEffect(() => { safeLocalSet('boomrider_restaurants', restaurants); }, [restaurants]);
@@ -1084,126 +1092,6 @@ export function AppProvider({ children }) {
     }, { enableHighAccuracy: true, timeout: 10000 });
   };
 
-  // --- Photo handlers ---
-  const handleProfilePhotoChange = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const uid = currentUser?.id || userProfile?.id;
-    if (FIREBASE_ENABLED && uid) {
-      setProfileUploading(true);
-      try {
-        const compressed = await compressImage(file, 400, 400, 0.8).catch(() => file);
-        const url = await uploadProfilePhoto(uid, compressed);
-        setTempProfile(prev => ({ ...prev, image: url }));
-      } catch {
-        notifySystem('ผิดพลาด', 'อัปโหลดรูปโปรไฟล์ไม่สำเร็จ', 'error');
-      } finally {
-        setProfileUploading(false);
-      }
-    } else {
-      const reader = new FileReader();
-      reader.onloadend = () => setTempProfile(prev => ({ ...prev, image: reader.result }));
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleShopPhotoChange = async (restaurantId, event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const applyUpdate = (imageData) => {
-      setRestaurants(prev => prev.map(r => {
-        if (r.id !== restaurantId) return r;
-        const updated = { ...r, image: imageData };
-        if (FIREBASE_ENABLED) saveRestaurant(updated).catch(() => {});
-        return updated;
-      }));
-      notifySystem('สำเร็จ', 'อัปเดตรูปหน้าร้านเรียบร้อย', 'success');
-    };
-    if (FIREBASE_ENABLED) {
-      notifySystem('กำลังอัปโหลด', 'กำลังอัปโหลดรูปภาพ...', 'info');
-      try {
-        const compressed = await compressImage(file, 800, 600, 0.75).catch(() => file);
-        const url = await uploadShopPhoto(restaurantId, compressed);
-        applyUpdate(url);
-      } catch {
-        notifySystem('ผิดพลาด', 'อัปโหลดรูปร้านไม่สำเร็จ', 'error');
-      }
-    } else {
-      notifySystem('กำลังประมวลผล', 'กำลังบีบอัดรูปภาพ...', 'info');
-      compressImage(file, 800, 600, 0.75)
-        .then(compressed => applyUpdate(compressed))
-        .catch(() => notifySystem('ผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error'));
-    }
-  };
-
-  const handleRegistrationPhotoSelect = (event, setForm, field) => {
-    const file = event.target.files[0];
-    if (!file) {
-      setForm(prev => ({ ...prev, [field]: null, [`_${field}File`]: null }));
-      return;
-    }
-    const reader = new FileReader();
-    // เก็บทั้ง base64 (preview) และ File object (สำหรับ upload ตอน submit)
-    reader.onloadend = () =>
-      setForm(prev => ({ ...prev, [field]: reader.result, [`_${field}File`]: file }));
-    reader.readAsDataURL(file);
-  };
-
-  const handleTopUpSlipSelect = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    if (FIREBASE_ENABLED) {
-      const uid = currentUser?.id || userProfile?.id;
-      notifySystem('กำลังอัปโหลด', 'กำลังอัปโหลดสลิป...', 'info');
-      try {
-        const compressed = await compressImage(file, 1024, 1400, 0.85).catch(() => file);
-        const url = await uploadTopUpSlip(uid, compressed);
-        setTopUpSlip(url);
-      } catch {
-        notifySystem('ผิดพลาด', 'อัปโหลดสลิปไม่สำเร็จ กรุณาลองใหม่', 'error');
-      }
-    } else {
-      compressImage(file, 1024, 1400, 0.8)
-        .then(compressed => setTopUpSlip(compressed))
-        .catch(() => {
-          const reader = new FileReader();
-          reader.onloadend = () => setTopUpSlip(reader.result);
-          reader.readAsDataURL(file);
-        });
-    }
-  };
-
-  const handleMenuPhotoSelect = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    setEditForm(prev => ({ ...prev, _imageUploading: true }));
-    if (FIREBASE_ENABLED) {
-      const uid    = currentUser?.id || userProfile?.id;
-      const shopId = restaurants.find(r => r.ownerId === uid)?.id || 'unknown';
-      const itemId = (isEditingMenu && isEditingMenu !== 'new') ? isEditingMenu : `item_${Date.now()}`;
-      try {
-        const compressed = await compressImage(file, 400, 400, 0.65).catch(() => file);
-        const url = await uploadMenuPhoto(shopId, itemId, compressed);
-        setEditForm(prev => ({ ...prev, image: url, _imageUploading: false }));
-      } catch {
-        setEditForm(prev => ({ ...prev, _imageUploading: false }));
-        notifySystem('ผิดพลาด', 'อัปโหลดรูปเมนูไม่สำเร็จ', 'error');
-      }
-    } else {
-      compressImage(file, 400, 400, 0.65)
-        .then(compressed => setEditForm(prev => ({ ...prev, image: compressed, _imageUploading: false })))
-        .catch(() => {
-          setEditForm(prev => ({ ...prev, _imageUploading: false }));
-          notifySystem('ผิดพลาด', 'ไม่สามารถประมวลผลรูปภาพได้', 'error');
-        });
-    }
-  };
-
-  const openImagePreview = (url) => {
-    setPreviewImageUrl(url);
-    setShowImageModal(true);
-  };
-
   const handleSaveProfile = useCallback(async () => {
     const uid = currentUser?.id || userProfile?.id;
     setUserProfile({ ...tempProfile });
@@ -1278,107 +1166,6 @@ export function AppProvider({ children }) {
     if (FIREBASE_ENABLED) saveMenuItems(restaurantId, updated).catch(() => {});
   };
 
-  const requestRegisterMerchant = async (data) => {
-    if (!data.shopName || !data.realName || !data.idCard || !data.phone || !data.bankAccount || !data.idCardImage) {
-      return notifySystem('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลให้ครบถ้วนและอัปโหลดรูปบัตรประชาชน', 'error');
-    }
-    if (restaurants.some(r => r.ownerId === userProfile.id || r.ownerId === currentUser?.id)) {
-      if (!userRoles.includes('merchant')) {
-        grantRole(userProfile.id || currentUser?.id, 'merchant');
-        notifySystem('อัปเดต', 'พบร้านค้าในระบบ กำลังเปิดสิทธิ์ร้านค้าให้', 'success');
-      } else {
-        notifySystem('ซ้ำซ้อน', 'คุณมีร้านค้าอยู่แล้ว', 'error');
-      }
-      return;
-    }
-    if (isPending('merchant_reg')) return notifySystem('รออนุมัติ', 'คำขอสมัครร้านค้ากำลังรอการอนุมัติ', 'info');
-    const uid = userProfile.id || currentUser?.id || '';
-
-    // ── อัปโหลดรูป KYC ไป Firebase Storage ก่อน save pending request ─────────
-    let idCardUrl = null;
-    let shopImageUrl = null;
-    if (FIREBASE_ENABLED && uid) {
-      try {
-        idCardUrl = data._idCardImageFile
-          ? await uploadIdCard(uid, await compressImage(data._idCardImageFile, 1200, 900, 0.88).catch(() => data._idCardImageFile))
-          : data.idCardImage?.startsWith('data:')
-            ? await uploadDataUrl(data.idCardImage, `kyc/${uid}/id_card_${Date.now()}.jpg`)
-            : null;
-      } catch { /* upload failed — Admin จะเห็น placeholder text แทน */ }
-      try {
-        shopImageUrl = data._shopImageFile
-          ? await uploadShopPhoto(`pending_${uid}`, await compressImage(data._shopImageFile, 800, 600, 0.75).catch(() => data._shopImageFile))
-          : data.shopImage?.startsWith('data:')
-            ? await uploadDataUrl(data.shopImage, `shops/pending_${uid}/cover_${Date.now()}.jpg`)
-            : null;
-      } catch {}
-    }
-
-    const { idCardImage, shopImage, _idCardImageFile, _shopImageFile, ...dataNoImages } = data;
-    const merchantLocation = data.location || userProfile.location || USER_LOCATION;
-    const newReq = {
-      id: generateId(), type: 'merchant_reg',
-      data: {
-        ...dataNoImages,
-        location:    merchantLocation,
-        idCardImage: idCardUrl    || (idCardImage  ? '✓ อัปโหลดบัตรประชาชนแล้ว' : null),
-        shopImage:   shopImageUrl || (shopImage    ? '✓ อัปโหลดรูปร้านแล้ว'       : null),
-      },
-      _hasImages: !!(idCardUrl || shopImageUrl || idCardImage || shopImage),
-      userId: uid, user: userProfile.name,
-      timestamp: formatDateTime(),
-    };
-    if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});
-    setPendingRequests(prev => [newReq, ...prev]);
-    notifySystem('สำเร็จ', 'ส่งใบสมัครร้านค้าเรียบร้อย รอแอดมินอนุมัติ', 'success');
-    notifyAdmin('🏪 สมัครร้านค้าใหม่', `${userProfile.name} ส่งใบสมัครร้าน ${data.shopName}`, 'warning');
-  };
-
-  const requestRegisterRider = async (data) => {
-    if (!data.realName || !data.idCard || !data.phone || !data.bankAccount || !data.idCardImage) {
-      return notifySystem('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลให้ครบถ้วนและอัปโหลดรูปบัตรประชาชน', 'error');
-    }
-    if (isPending('rider_reg')) return notifySystem('รออนุมัติ', 'คำขอสมัครไรเดอร์กำลังรอการอนุมัติ', 'info');
-    const uid = userProfile.id || currentUser?.id || '';
-
-    // ── อัปโหลดรูป KYC ไป Firebase Storage ก่อน save pending request ─────────
-    let idCardUrl = null;
-    let profileImageUrl = null;
-    if (FIREBASE_ENABLED && uid) {
-      try {
-        idCardUrl = data._idCardImageFile
-          ? await uploadIdCard(uid, await compressImage(data._idCardImageFile, 1200, 900, 0.88).catch(() => data._idCardImageFile))
-          : data.idCardImage?.startsWith('data:')
-            ? await uploadDataUrl(data.idCardImage, `kyc/${uid}/id_card_${Date.now()}.jpg`)
-            : null;
-      } catch {}
-      try {
-        profileImageUrl = data._profileImageFile
-          ? await uploadProfilePhoto(uid, await compressImage(data._profileImageFile, 400, 400, 0.8).catch(() => data._profileImageFile))
-          : data.profileImage?.startsWith('data:')
-            ? await uploadDataUrl(data.profileImage, `users/${uid}/kyc_profile_${Date.now()}.jpg`)
-            : null;
-      } catch {}
-    }
-
-    const { idCardImage, profileImage, _idCardImageFile, _profileImageFile, ...dataNoImages } = data;
-    const newReq = {
-      id: generateId(), type: 'rider_reg',
-      data: {
-        ...dataNoImages,
-        idCardImage:  idCardUrl       || (idCardImage  ? '✓ อัปโหลดบัตรประชาชนแล้ว' : null),
-        profileImage: profileImageUrl || (profileImage ? '✓ อัปโหลดรูปโปรไฟล์แล้ว'   : null),
-      },
-      _hasImages: !!(idCardUrl || profileImageUrl || idCardImage || profileImage),
-      userId: uid, user: userProfile.name,
-      timestamp: formatDateTime(),
-    };
-    if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});
-    setPendingRequests(prev => [newReq, ...prev]);
-    notifySystem('สำเร็จ', 'ส่งใบสมัครไรเดอร์เรียบร้อย รอแอดมินอนุมัติ', 'success');
-    notifyAdmin('🛵 สมัครไรเดอร์ใหม่', `${userProfile.name} ส่งใบสมัคร`, 'warning');
-  };
-
   // --- Address management ---
   const handleUpdateUserLocation = useCallback(async (location) => {
     if (!location) return;
@@ -1413,64 +1200,6 @@ export function AppProvider({ children }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDeleteAddress = (id) => setUserAddresses(userAddresses.filter(a => a.id !== id));
-
-  // --- Promo Codes ---
-  const [promoCodes, setPromoCodes] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('boomrider_promo_codes') || '[]'); } catch { return []; }
-  });
-  useEffect(() => {
-    localStorage.setItem('boomrider_promo_codes', JSON.stringify(promoCodes));
-  }, [promoCodes]);
-
-  const validatePromoCode = useCallback((code, orderTotal) => {
-    const promo = promoCodes.find(p => p.code.toUpperCase() === code.toUpperCase() && p.active);
-    if (!promo) return { valid: false, message: 'ไม่พบโค้ดส่วนลด' };
-    if ((promo.usedCount || 0) >= promo.maxUses) return { valid: false, message: 'โค้ดนี้ถูกใช้ครบแล้ว' };
-    if (promo.expiry && new Date(promo.expiry) < new Date()) return { valid: false, message: 'โค้ดหมดอายุแล้ว' };
-    if (promo.minOrder && orderTotal < promo.minOrder) return { valid: false, message: `ยอดขั้นต่ำ ฿${promo.minOrder}` };
-    const rawDiscount = promo.type === 'percent' ? (orderTotal * promo.value / 100) : promo.value;
-    const discount    = Math.min(rawDiscount, promo.maxDiscount || 9999);
-    return { valid: true, discount: Math.round(discount), promo };
-  }, [promoCodes]);
-
-  const usePromoCode = useCallback((code) => {
-    setPromoCodes(prev => {
-      const next = prev.map(p => p.code.toUpperCase() === code.toUpperCase() ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
-      if (FIREBASE_ENABLED) savePromoCodes(next).catch(() => {});
-      return next;
-    });
-  }, []);
-
-  const createPromoCode = useCallback((data) => {
-    const newCode = {
-      id: generateId(), ...data,
-      code: data.code.toUpperCase(),
-      usedCount: 0, active: true,
-      createdAt: new Date().toISOString(),
-    };
-    setPromoCodes(prev => {
-      const next = [newCode, ...prev];
-      if (FIREBASE_ENABLED) savePromoCodes(next).catch(() => {});
-      return next;
-    });
-    notifySystem('สำเร็จ', `สร้างโค้ด "${data.code.toUpperCase()}" เรียบร้อย`, 'success');
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const togglePromoCode = useCallback((id) => {
-    setPromoCodes(prev => {
-      const next = prev.map(p => p.id === id ? { ...p, active: !p.active } : p);
-      if (FIREBASE_ENABLED) savePromoCodes(next).catch(() => {});
-      return next;
-    });
-  }, []);
-
-  const deletePromoCode = useCallback((id) => {
-    setPromoCodes(prev => {
-      const next = prev.filter(p => p.id !== id);
-      if (FIREBASE_ENABLED) savePromoCodes(next).catch(() => {});
-      return next;
-    });
-  }, []);
 
   // --- Rider location update ---
   const updateRiderWorkingLocation = useCallback(async (riderId, location) => {
