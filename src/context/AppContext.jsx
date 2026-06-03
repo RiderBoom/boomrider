@@ -574,18 +574,20 @@ export function AppProvider({ children }) {
         subInitializedRef.current = false;
         pendingLocalOrderIdsRef.current = new Set();
 
-        // Declare restData outside the try block so it's accessible below for orderScope.
+        // Declare restData/ridersData outside the try block so they're accessible below for orderScope.
         // (const inside try {} is block-scoped and not visible after the closing brace.)
-        let restData = null;
+        let restData   = null;
+        let ridersData = null;
         try {
-          const [initialOrders, _restLoaded, ridersData, menuData, cfgData] = await Promise.all([
+          const [initialOrders, _restLoaded, _ridersLoaded, menuData, cfgData] = await Promise.all([
             loadAllOrders(),
             loadRestaurants(),
             loadRiders(),
             loadMenuItems(),
             loadAppConfig(),
           ]);
-          restData = _restLoaded;
+          restData   = _restLoaded;
+          ridersData = _ridersLoaded;
 
           if (initialOrders && initialOrders.length > 0) {
             const STATUS_RANK = {
@@ -638,13 +640,17 @@ export function AppProvider({ children }) {
         setIsDataLoading(false);
 
         // ── Role scope: คำนวณ query scope ครั้งเดียว ใช้ทั้ง subscription + fallback ──
-        const _uid        = firebaseUser.uid;
-        const _isAdmin    = !!(ADMIN_UID && _uid === ADMIN_UID);
-        const _isRider    = !_isAdmin && baseRoles.includes('rider');
-        const _isMerchant = !_isAdmin && !_isRider && baseRoles.includes('merchant');
-        const _myShop     = _isMerchant
-          ? (Array.isArray(restData) ? restData.find(r => r.ownerId === _uid) : null)
-          : null;
+        // Use Firestore ownership data (restData/ridersData) as authoritative source so
+        // fresh-device logins without localStorage roles still get the correct scope.
+        const _uid             = firebaseUser.uid;
+        const _isAdmin         = !!(ADMIN_UID && _uid === ADMIN_UID);
+        const ownedRestaurant  = !_isAdmin && Array.isArray(restData)
+          ? (restData.find(r => r.ownerId === _uid) ?? null) : null;
+        const ownedRider       = !_isAdmin && Array.isArray(ridersData)
+          ? (ridersData.find(r => r.userId === _uid) ?? null) : null;
+        const _isRider    = !_isAdmin && (baseRoles.includes('rider')    || !!ownedRider);
+        const _isMerchant = !_isAdmin && !_isRider && (baseRoles.includes('merchant') || !!ownedRestaurant);
+        const _myShop     = _isMerchant ? (ownedRestaurant ?? null) : null;
         const orderScope = {
           role:   _isAdmin    ? 'admin'
                 : _isRider    ? 'rider'
