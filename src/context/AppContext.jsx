@@ -199,13 +199,17 @@ export function AppProvider({ children }) {
   // --- Admin notification ---
   const notifyAdmin = useCallback((title, message, type = 'warning') => {
     const notif = { id: Date.now(), title, message, type, at: formatDateTime() };
-    if (FIREBASE_ENABLED) saveAdminNotif(notif).catch(() => {});
-    if (!FIREBASE_ENABLED) {
+    if (FIREBASE_ENABLED) {
+      // Firebase mode: subscribeToAdminNotifs is the sole toast source.
+      // Do NOT call notifySystem here — the subscription fires ~100ms later
+      // and would produce a duplicate if we also called it directly.
+      saveAdminNotif(notif).catch(() => {});
+    } else {
       const queue = JSON.parse(localStorage.getItem('boomrider_admin_notifs') || '[]');
       queue.unshift(notif);
       localStorage.setItem('boomrider_admin_notifs', JSON.stringify(queue.slice(0, 50)));
+      if (isAdmin) notifySystem(title, message, type);
     }
-    if (isAdmin) notifySystem(title, message, type);
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Role grant ---
@@ -254,6 +258,7 @@ export function AppProvider({ children }) {
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
     creditWallet, processTransaction, setUserWallet,
+    seenOrderIdsRef,
     notifySystem, notifyAdmin,
   });
 
@@ -933,6 +938,9 @@ export function AppProvider({ children }) {
       let unsubForeground = () => {};
       onForegroundMessage((msg) => {
         notifySystem(msg.title, msg.body, 'info');
+        // Mark the FCM order as seen so the Firestore subscription callback
+        // won't fire a second toast for the same event.
+        if (msg.data?.orderId) seenOrderIdsRef.current.add(String(msg.data.orderId));
       }).then((unsub) => { unsubForeground = unsub || (() => {}); }).catch(() => {});
 
       return () => {

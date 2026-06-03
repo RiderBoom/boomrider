@@ -23,6 +23,7 @@ export function useOrderActions(deps) {
     setSelectedRestaurant, setActiveTab,
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
+    seenOrderIdsRef,
     creditWallet, processTransaction, setUserWallet,
     notifySystem, notifyAdmin,
   } = deps;
@@ -351,8 +352,19 @@ export function useOrderActions(deps) {
       if (newStatus === 'picking_up')      notifySystem('ถึงร้านแล้ว 🛵', `กำลังรับสินค้า #${sid}`, 'info');
       if (newStatus === 'delivering')      notifySystem('รับสินค้าแล้ว 🛵', `กำลังนำส่ง #${sid}`, 'info');
       if (newStatus === 'delivered')       notifySystem('ส่งถึงแล้ว! 📦', `รอลูกค้ายืนยันรับสินค้า #${sid}`, 'success');
-      if (newStatus === 'completed')       notifySystem('ยืนยันรับแล้ว ✅', `ออเดอร์ #${sid} เสร็จสิ้น 🎉`, 'success');
-      if (newStatus === 'cancelled')       notifySystem('ยกเลิกแล้ว', `#${sid} ถูกยกเลิก`, 'error');
+      if (newStatus === 'completed') {
+        // Pre-mark before Firestore write so the subscription's justCompleted
+        // filter skips it — prevents double toast on the actor's device.
+        seenOrderIdsRef?.current?.add(`${orderId}_completed`);
+        notifySystem('ยืนยันรับแล้ว ✅', `ออเดอร์ #${sid} เสร็จสิ้น 🎉`, 'success');
+      }
+      if (newStatus === 'cancelled') {
+        // Pre-mark so subscription's justCancelled skips it on the actor's device.
+        // When a DIFFERENT party (merchant/admin) cancels, seenOrderIdsRef won't
+        // have this key → customer's device still shows the notification.
+        seenOrderIdsRef?.current?.add(`${orderId}_cancelled`);
+        notifySystem('ยกเลิกแล้ว', `#${sid} ถูกยกเลิก`, 'error');
+      }
     }
 
     // ── Cash settlement: handled by Cloud Function processCashSettlement ──
