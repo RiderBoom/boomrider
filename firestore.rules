@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── Helper functions ──────────────────────────────────────────────────────
+    // ─── Global auth helpers ───────────────────────────────────────────────────
 
     function isAuth() {
       return request.auth != null;
@@ -15,6 +15,85 @@ service cloud.firestore {
 
     function isOwner(uid) {
       return request.auth != null && request.auth.uid == uid;
+    }
+
+    // ─── Order field-level security helpers ───────────────────────────────────
+
+    // Fields set at creation time — must never change after create.
+    function orderCoreUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['grandTotal', 'deliveryFee', 'customerId', 'restaurantId',
+                       'items', 'createdAt', 'orderType', 'paymentMethod']);
+    }
+
+    // Routes update permission to the correct role handler.
+    function authorizedOrderUpdate() {
+      return orderCoreUnchanged() && (
+          customerOrderUpdate()
+          || merchantOrderUpdate()
+          || riderOwnOrderUpdate()
+          || riderAcceptingJob()
+      );
+    }
+
+    // Customer: may only cancel a pending/confirmed order; cannot touch
+    // financial or rider-assignment fields.
+    function customerOrderUpdate() {
+      return resource.data.customerId == request.auth.uid
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['riderUid', 'riderId', 'merchantUid',
+                       'grandTotal', 'deliveryFee'])
+          && (request.resource.data.status == resource.data.status
+              || (resource.data.status in ['pending', 'confirmed']
+                  && request.resource.data.status == 'cancelled'));
+    }
+
+    // Merchant: may advance order status and write merchant metadata; cannot
+    // touch financial totals, customer identity, or rider assignment.
+    function merchantOrderUpdate() {
+      return resource.data.merchantUid == request.auth.uid
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['riderUid', 'riderId', 'customerId',
+                       'grandTotal', 'deliveryFee', 'items'])
+          && (request.resource.data.status == resource.data.status
+              || validMerchantStatusTransition());
+    }
+
+    function validMerchantStatusTransition() {
+      let s = resource.data.status;
+      let t = request.resource.data.status;
+      return (s == 'pending'   && t in ['confirmed', 'cancelled'])
+          || (s == 'confirmed' && t in ['preparing', 'ready_to_pickup', 'cancelled'])
+          || (s == 'preparing' && t == 'ready_to_pickup');
+    }
+
+    // Rider: may update delivery progress on their own assigned order; cannot
+    // touch financial fields or customer/merchant identity.
+    function riderOwnOrderUpdate() {
+      return (resource.data.riderUid == request.auth.uid
+              || resource.data.riderId == request.auth.uid)
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['customerId', 'merchantUid', 'restaurantId',
+                       'grandTotal', 'deliveryFee', 'items'])
+          && (request.resource.data.status == resource.data.status
+              || validRiderStatusTransition());
+    }
+
+    function validRiderStatusTransition() {
+      let s = resource.data.status;
+      let t = request.resource.data.status;
+      return (s == 'ready_to_pickup' && t == 'delivering')
+          || (s == 'delivering'      && t == 'delivered');
+    }
+
+    // Rider: accepting an unassigned available job (sets riderUid / riderId);
+    // cannot modify financial fields or customer/merchant identity.
+    function riderAcceptingJob() {
+      return resource.data.status == 'ready_to_pickup'
+          && resource.data.get('riderUid', null) == null
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['customerId', 'merchantUid', 'restaurantId',
+                       'grandTotal', 'deliveryFee', 'items']);
     }
 
     // ─── Restaurants — ทุกคนอ่านได้, Admin/เจ้าของร้านแก้ไขได้ ──────────────
@@ -36,28 +115,24 @@ service cloud.firestore {
 
     // ─── Orders ───────────────────────────────────────────────────────────────
     match /orders/{orderId} {
-      allow read:   if isAuth();
-      allow create: if isAuth();
-      allow update: if isAdmin()
-                    || (isAuth() && (
-                          resource.data.customerId    == request.auth.uid
-                          || resource.data.riderId    == request.auth.uid
-                          || resource.data.riderUid   == request.auth.uid
-                          || resource.data.merchantUid == request.auth.uid
-                          || (resource.data.riderId == null
-                              && resource.data.status == 'ready_to_pickup')
-                       ));
+      allow read: if isAuth();
+
+      // Create: caller must own the order (customerId = uid), initial status
+      // must be 'pending', rider-assignment fields must not be pre-populated.
+      allow create: if isAdmin()
+                    || (isAuth()
+                        && request.resource.data.customerId == request.auth.uid
+                        && request.resource.data.status == 'pending'
+                        && !('riderUid' in request.resource.data)
+                        && !('riderId' in request.resource.data));
+
+      allow update: if isAdmin() || authorizedOrderUpdate();
       allow delete: if isAdmin();
     }
 
     // ─── Pending Requests — User สร้างได้, Admin จัดการได้ ──────────────────
     match /pending_requests/{reqId} {
-      // list (collection query): เปิดให้ logged-in ทุกคน
-      //   client ใช้ where('userId','==',uid) กรองเองอยู่แล้ว
-      //   ถ้า rule ตรวจ resource.data ต่อ doc → Firestore reject query ทั้งหมด
-      //   เพราะ doc ของ user อื่นจะ fail rule → subscription ตายเงียบ
       allow list:   if isAuth();
-      // get (single doc): Admin หรือเจ้าของ doc เท่านั้น
       allow get:    if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid);
       allow create: if isAuth();
       allow update: if isAdmin();
