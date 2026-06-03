@@ -5,5 +5,6 @@ dist
 functions/.env
 
 .vercel/
+.firebase/
 # android/ ← เปิดให้ track เพื่อ GitHub Actions build APK
 seed.html
