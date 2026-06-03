@@ -116,14 +116,15 @@ service cloud.firestore {
       allow read: if isAuth();
 
       // Food orders start at 'pending'; parcel orders start at 'ready_to_pickup'.
+      // riderUid/riderId may be present with null value (client sets them explicitly) — allow that.
       allow create: if isAdmin()
                     || (isAuth()
                         && request.resource.data.customerId == request.auth.uid
                         && (request.resource.data.status == 'pending'
                             || (request.resource.data.status == 'ready_to_pickup'
                                 && request.resource.data.get('type', '') == 'parcel'))
-                        && !('riderUid' in request.resource.data)
-                        && !('riderId' in request.resource.data));
+                        && request.resource.data.get('riderUid', null) == null
+                        && request.resource.data.get('riderId', null) == null);
 
       allow update: if isAdmin() || authorizedOrderUpdate();
       allow delete: if isAdmin();
