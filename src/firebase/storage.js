@@ -32,35 +32,33 @@ export const uploadFileWithProgress = (file, path, onProgress) =>
 
 // ===== Profile Photo =====
 
-export const uploadProfilePhoto = (userId, file) =>
-  uploadFile(file, `users/${userId}/profile.${file.name.split('.').pop()}`);
+export const uploadProfilePhoto = (userId, fileOrDataUrl) =>
+  uploadImageAuto(fileOrDataUrl, `users/${userId}/profile.jpg`);
 
 // ===== Shop Photo =====
 
-export const uploadShopPhoto = (shopId, file) =>
-  uploadFile(file, `shops/${shopId}/cover.${file.name.split('.').pop()}`);
+export const uploadShopPhoto = (shopId, fileOrDataUrl) =>
+  uploadImageAuto(fileOrDataUrl, `shops/${shopId}/cover.jpg`);
 
 // ===== ID Card (KYC) =====
 
-export const uploadIdCard = (userId, file) =>
-  uploadFile(file, `kyc/${userId}/id_card.${file.name.split('.').pop()}`);
+export const uploadIdCard = (userId, fileOrDataUrl) =>
+  uploadImageAuto(fileOrDataUrl, `kyc/${userId}/id_card.jpg`);
 
 // ===== Top-up Slip =====
 
-export const uploadTopUpSlip = (userId, file) => {
-  const ts = Date.now();
-  return uploadFile(file, `slips/${userId}/topup_${ts}.${file.name.split('.').pop()}`);
-};
+export const uploadTopUpSlip = (userId, fileOrDataUrl) =>
+  uploadImageAuto(fileOrDataUrl, `slips/${userId}/topup_${Date.now()}.jpg`);
 
 // ===== Delivery Proof Photo =====
 
-export const uploadDeliveryProof = (orderId, type, file) =>
-  uploadFile(file, `orders/${orderId}/${type}_proof.${file.name.split('.').pop()}`);
+export const uploadDeliveryProof = (orderId, type, fileOrDataUrl) =>
+  uploadImageAuto(fileOrDataUrl, `orders/${orderId}/${type}_proof.jpg`);
 
 // ===== Menu Item Photo =====
 
-export const uploadMenuPhoto = (shopId, itemId, file) =>
-  uploadFile(file, `menus/${shopId}/${itemId}.${file.name.split('.').pop()}`);
+export const uploadMenuPhoto = (shopId, itemId, fileOrDataUrl) =>
+  uploadImageAuto(fileOrDataUrl, `menus/${shopId}/${itemId}.jpg`);
 
 // ===== Upload from base64 Data URL =====
 

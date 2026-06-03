@@ -1092,7 +1092,8 @@ export function AppProvider({ children }) {
     if (FIREBASE_ENABLED && uid) {
       setProfileUploading(true);
       try {
-        const url = await uploadProfilePhoto(uid, file);
+        const compressed = await compressImage(file, 400, 400, 0.8).catch(() => file);
+        const url = await uploadProfilePhoto(uid, compressed);
         setTempProfile(prev => ({ ...prev, image: url }));
       } catch {
         notifySystem('ผิดพลาด', 'อัปโหลดรูปโปรไฟล์ไม่สำเร็จ', 'error');
@@ -1121,7 +1122,8 @@ export function AppProvider({ children }) {
     if (FIREBASE_ENABLED) {
       notifySystem('กำลังอัปโหลด', 'กำลังอัปโหลดรูปภาพ...', 'info');
       try {
-        const url = await uploadShopPhoto(restaurantId, file);
+        const compressed = await compressImage(file, 800, 600, 0.75).catch(() => file);
+        const url = await uploadShopPhoto(restaurantId, compressed);
         applyUpdate(url);
       } catch {
         notifySystem('ผิดพลาด', 'อัปโหลดรูปร้านไม่สำเร็จ', 'error');
@@ -1154,7 +1156,8 @@ export function AppProvider({ children }) {
       const uid = currentUser?.id || userProfile?.id;
       notifySystem('กำลังอัปโหลด', 'กำลังอัปโหลดสลิป...', 'info');
       try {
-        const url = await uploadTopUpSlip(uid, file);
+        const compressed = await compressImage(file, 1024, 1400, 0.85).catch(() => file);
+        const url = await uploadTopUpSlip(uid, compressed);
         setTopUpSlip(url);
       } catch {
         notifySystem('ผิดพลาด', 'อัปโหลดสลิปไม่สำเร็จ กรุณาลองใหม่', 'error');
@@ -1179,7 +1182,8 @@ export function AppProvider({ children }) {
       const shopId = restaurants.find(r => r.ownerId === uid)?.id || 'unknown';
       const itemId = (isEditingMenu && isEditingMenu !== 'new') ? isEditingMenu : `item_${Date.now()}`;
       try {
-        const url = await uploadMenuPhoto(shopId, itemId, file);
+        const compressed = await compressImage(file, 400, 400, 0.65).catch(() => file);
+        const url = await uploadMenuPhoto(shopId, itemId, compressed);
         setEditForm(prev => ({ ...prev, image: url, _imageUploading: false }));
       } catch {
         setEditForm(prev => ({ ...prev, _imageUploading: false }));
@@ -1296,14 +1300,14 @@ export function AppProvider({ children }) {
     if (FIREBASE_ENABLED && uid) {
       try {
         idCardUrl = data._idCardImageFile
-          ? await uploadIdCard(uid, data._idCardImageFile)
+          ? await uploadIdCard(uid, await compressImage(data._idCardImageFile, 1200, 900, 0.88).catch(() => data._idCardImageFile))
           : data.idCardImage?.startsWith('data:')
             ? await uploadDataUrl(data.idCardImage, `kyc/${uid}/id_card_${Date.now()}.jpg`)
             : null;
       } catch { /* upload failed — Admin จะเห็น placeholder text แทน */ }
       try {
         shopImageUrl = data._shopImageFile
-          ? await uploadShopPhoto(`pending_${uid}`, data._shopImageFile)
+          ? await uploadShopPhoto(`pending_${uid}`, await compressImage(data._shopImageFile, 800, 600, 0.75).catch(() => data._shopImageFile))
           : data.shopImage?.startsWith('data:')
             ? await uploadDataUrl(data.shopImage, `shops/pending_${uid}/cover_${Date.now()}.jpg`)
             : null;
@@ -1343,14 +1347,14 @@ export function AppProvider({ children }) {
     if (FIREBASE_ENABLED && uid) {
       try {
         idCardUrl = data._idCardImageFile
-          ? await uploadIdCard(uid, data._idCardImageFile)
+          ? await uploadIdCard(uid, await compressImage(data._idCardImageFile, 1200, 900, 0.88).catch(() => data._idCardImageFile))
           : data.idCardImage?.startsWith('data:')
             ? await uploadDataUrl(data.idCardImage, `kyc/${uid}/id_card_${Date.now()}.jpg`)
             : null;
       } catch {}
       try {
         profileImageUrl = data._profileImageFile
-          ? await uploadProfilePhoto(uid, data._profileImageFile)
+          ? await uploadProfilePhoto(uid, await compressImage(data._profileImageFile, 400, 400, 0.8).catch(() => data._profileImageFile))
           : data.profileImage?.startsWith('data:')
             ? await uploadDataUrl(data.profileImage, `users/${uid}/kyc_profile_${Date.now()}.jpg`)
             : null;
