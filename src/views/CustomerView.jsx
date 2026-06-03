@@ -92,6 +92,17 @@ export default function CustomerView() {
   const [ratingRiderStars,      setRatingRiderStars]      = useState(5);
   const [ratingComment,         setRatingComment]         = useState('');
 
+  // ── Live tracking fullscreen state ───────────────────────────────────
+  const [trackingOrderId, setTrackingOrderId] = useState(null);
+
+  // ETA helper: distance km ÷ avg rider speed 30 km/h
+  const calcETA = (fromLoc, toLoc) => {
+    if (!fromLoc || !toLoc) return null;
+    const km = getDistanceFromLatLonInKm(fromLoc.lat, fromLoc.lng, toLoc.lat, toLoc.lng);
+    const mins = Math.max(1, Math.ceil((km / 30) * 60));
+    return { km: km.toFixed(1), mins };
+  };
+
   // ── Refresh button spinning state ────────────────────────────────────
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = async () => {
@@ -1148,12 +1159,58 @@ export default function CustomerView() {
                           </div>
                         )}
                       </div>
-                      {/* แผนที่: แสดงเฉพาะระหว่างเดินทาง — ซ่อนเมื่อ delivered เพื่อไม่บังปุ่มยืนยัน */}
-                      {['rider_accepted', 'picking_up', 'delivering'].includes(order.status) && (
-                        <div className="h-36">
-                          <InteractiveMap mode="view" userLocation={order.location} shopLocation={order.pickupLocation} riderLocation={order.riderLocation} status={order.status} />
-                        </div>
-                      )}
+                      {/* ── Live Tracking Panel ── */}
+                      {['rider_accepted', 'picking_up', 'delivering'].includes(order.status) && (() => {
+                        const rLoc = order.riderLocation;
+                        const dest = order.status === 'picking_up'
+                          ? order.pickupLocation
+                          : order.location;
+                        const eta  = calcETA(rLoc, dest);
+                        const isDelivering = order.status === 'delivering';
+                        return (
+                          <div className="border-t border-blue-50">
+                            {/* ETA Info Bar */}
+                            <div className={`px-4 py-2.5 flex items-center justify-between ${isDelivering ? 'bg-blue-600' : 'bg-indigo-50'}`}>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-lg ${isDelivering ? '' : ''}`}>🛵</span>
+                                <div>
+                                  <p className={`text-xs font-bold ${isDelivering ? 'text-white' : 'text-indigo-700'}`}>
+                                    {order.riderName || 'ไรเดอร์'}
+                                  </p>
+                                  <p className={`text-[10px] ${isDelivering ? 'text-blue-100' : 'text-indigo-400'}`}>
+                                    {isDelivering ? 'กำลังมาส่งให้คุณ!' : order.status === 'picking_up' ? 'กำลังรับของ' : 'รับงานแล้ว'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {eta && (
+                                  <div className={`text-right ${isDelivering ? 'text-white' : 'text-indigo-700'}`}>
+                                    <p className="text-xs font-black">~{eta.mins} นาที</p>
+                                    <p className={`text-[10px] ${isDelivering ? 'text-blue-100' : 'text-indigo-400'}`}>{eta.km} กม.</p>
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => setTrackingOrderId(order.id)}
+                                  className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 ${isDelivering ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'} active:scale-95 transition-all`}
+                                >
+                                  <MapPin size={11} /> เต็มจอ
+                                </button>
+                              </div>
+                            </div>
+                            {/* Mini Map */}
+                            <div className="h-44">
+                              <InteractiveMap
+                                mode="view"
+                                userLocation={order.location}
+                                shopLocation={order.pickupLocation}
+                                riderLocation={rLoc}
+                                trackingMode
+                                className="h-44"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {/* ── ยอดชำระ / สถานะการจ่ายเงิน ── */}
                       {order.status === 'delivered' ? (
                         /* ไรเดอร์ถึงที่หมายแล้ว: แสดงข้อมูลการชำระเงินให้ชัดเจน */
@@ -1532,6 +1589,82 @@ export default function CustomerView() {
           </div>
         </div>
       )}
+
+      {/* Full-screen Live Tracking Overlay */}
+      {trackingOrderId && (() => {
+        const o = orders.find(ord => ord.id === trackingOrderId);
+        if (!o) { setTrackingOrderId(null); return null; }
+        const rLoc = o.riderLocation;
+        const dest = o.status === 'picking_up' ? o.pickupLocation : o.location;
+        const eta  = calcETA(rLoc, dest);
+        const isDelivering = o.status === 'delivering';
+        return (
+          <div className="fixed inset-0 z-[200] bg-white flex flex-col">
+            {/* Header */}
+            <div className={`flex items-center justify-between px-4 py-3 shadow-sm flex-shrink-0 ${isDelivering ? 'bg-blue-600' : 'bg-indigo-600'}`}>
+              <button
+                onClick={() => setTrackingOrderId(null)}
+                className="p-2 rounded-full bg-white/20 text-white hover:bg-white/30 active:scale-90 transition-all"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div className="text-center flex-1 mx-3">
+                <p className="text-white font-black text-sm">
+                  {isDelivering ? '🛵 กำลังส่งให้คุณ!' : o.status === 'picking_up' ? '🏪 ไรเดอร์ถึงร้านแล้ว' : '✅ ไรเดอร์รับงานแล้ว'}
+                </p>
+                <p className="text-blue-100 text-xs mt-0.5">{o.riderName || 'ไรเดอร์'}</p>
+              </div>
+              {eta ? (
+                <div className="text-right bg-white/20 rounded-xl px-3 py-1.5">
+                  <p className="text-white font-black text-sm leading-tight">~{eta.mins} นาที</p>
+                  <p className="text-blue-100 text-[10px]">{eta.km} กม.</p>
+                </div>
+              ) : <div className="w-16" />}
+            </div>
+
+            {/* Map full remaining height */}
+            <div className="flex-1 relative">
+              <InteractiveMap
+                mode="view"
+                userLocation={o.location}
+                shopLocation={o.pickupLocation}
+                riderLocation={rLoc}
+                trackingMode
+                autoFollow={isDelivering}
+                className="h-full"
+              />
+
+              {/* Floating legend */}
+              <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl p-3 z-[1000]">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-[10px]">🛵</span>
+                    <span className="text-gray-600 font-medium">ไรเดอร์</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center text-white text-[10px]">🏪</span>
+                    <span className="text-gray-600 font-medium">{o.type === 'parcel' ? 'จุดรับ' : 'ร้าน'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-[10px]">🏠</span>
+                    <span className="text-gray-600 font-medium">ที่ส่ง</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <div className="w-3 h-3 bg-blue-400 rounded-full animate-pulse" />
+                    <span className="text-blue-600 font-bold">Live</span>
+                  </div>
+                </div>
+                {o.type === 'parcel' && o.dropoff && (
+                  <p className="text-[10px] text-gray-400 mt-1.5 truncate">📦 ส่งถึง: {o.dropoff}</p>
+                )}
+                {o.type === 'food' && (
+                  <p className="text-[10px] text-gray-400 mt-1.5 truncate">🍽️ {o.restaurantName}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Rating Modal */}
       {showRatingModal && ratingOrderData && (() => {

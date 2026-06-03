@@ -24,6 +24,35 @@ function makeIcon(L, color, emoji) {
   });
 }
 
+function makeRiderTrackingIcon(L) {
+  return L.divIcon({
+    className: '',
+    html: `
+      <style>
+        @keyframes br-pulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.8);opacity:0}}
+        @keyframes br-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+      </style>
+      <div style="position:relative;width:48px;height:48px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;width:48px;height:48px;border-radius:50%;background:rgba(59,130,246,0.3);animation:br-pulse 1.6s ease-out infinite"></div>
+        <div style="position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(59,130,246,0.15);animation:br-pulse 1.6s ease-out .4s infinite"></div>
+        <div style="
+          position:relative;z-index:1;
+          background:#3b82f6;color:#fff;
+          width:36px;height:36px;
+          border-radius:50%;
+          border:3px solid #fff;
+          box-shadow:0 3px 12px rgba(59,130,246,.6);
+          display:flex;align-items:center;justify-content:center;
+          font-size:18px;line-height:1;
+          animation:br-bob 1.2s ease-in-out infinite;
+        ">🛵</div>
+      </div>`,
+    iconSize:    [48, 48],
+    iconAnchor:  [24, 24],
+    popupAnchor: [0, -28],
+  });
+}
+
 export default function InteractiveMap({
   mode = 'view',
   userLocation,
@@ -34,6 +63,8 @@ export default function InteractiveMap({
   activeParcelTarget = null,  // 'pickup' | 'dropoff'
   centerOverride,
   className = '',
+  trackingMode = false,       // ใช้ animated rider icon + auto-follow
+  autoFollow = false,         // pan map ตามไรเดอร์ real-time
 }) {
   const containerRef  = useRef(null);
   const mapRef        = useRef(null);
@@ -141,15 +172,19 @@ export default function InteractiveMap({
           latlngs.push([shopLocation.lat, shopLocation.lng]);
         }
         if (riderLocation) {
-          const m = L.marker([riderLocation.lat, riderLocation.lng], {
-            icon: makeIcon(L, '#3b82f6', '🛵'),
-          }).addTo(map).bindPopup('ไรเดอร์');
+          const icon = trackingMode
+            ? makeRiderTrackingIcon(L)
+            : makeIcon(L, '#3b82f6', '🛵');
+          const m = L.marker([riderLocation.lat, riderLocation.lng], { icon })
+            .addTo(map).bindPopup('ไรเดอร์');
           markersRef.current.rider = m;
           latlngs.push([riderLocation.lat, riderLocation.lng]);
         }
 
         if (latlngs.length > 1) {
           map.fitBounds(latlngs, { padding: [40, 40], maxZoom: 16 });
+        } else if (riderLocation && trackingMode) {
+          map.setView([riderLocation.lat, riderLocation.lng], 16);
         }
       }
     });
@@ -170,12 +205,18 @@ export default function InteractiveMap({
     if (!mapRef.current || !leafletRef.current || mode !== 'view') return;
     const L = leafletRef.current;
     if (riderLocation) {
+      const icon = trackingMode
+        ? makeRiderTrackingIcon(L)
+        : makeIcon(L, '#3b82f6', '🛵');
       if (markersRef.current.rider) {
         markersRef.current.rider.setLatLng([riderLocation.lat, riderLocation.lng]);
+        if (trackingMode) markersRef.current.rider.setIcon(icon);
       } else {
-        markersRef.current.rider = L.marker([riderLocation.lat, riderLocation.lng], {
-          icon: makeIcon(L, '#3b82f6', '🛵'),
-        }).addTo(mapRef.current).bindPopup('ไรเดอร์');
+        markersRef.current.rider = L.marker([riderLocation.lat, riderLocation.lng], { icon })
+          .addTo(mapRef.current).bindPopup('ไรเดอร์');
+      }
+      if (autoFollow) {
+        mapRef.current.panTo([riderLocation.lat, riderLocation.lng], { animate: true, duration: 0.8 });
       }
     }
     if (centerOverride) {
