@@ -4,6 +4,7 @@ import {
   Plus, Edit, Trash2, Save,
   Image as ImageIcon, Check, MapPin, Loader, Bell,
   Clock, CheckCircle, History, X, XCircle, Wallet,
+  TrendingUp, BarChart2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS } from '../constants';
@@ -37,6 +38,7 @@ export default function MerchantView() {
     selectedOrderToCancel,
     cancelReasonInput, setCancelReasonInput,
     userWallet, walletHistory,
+    isDataLoading,
   } = useApp();
 
   const [pendingShopLocation, setPendingShopLocation] = useState(null);
@@ -175,6 +177,13 @@ export default function MerchantView() {
             <Wallet size={13} />
             กระเป๋า
           </button>
+          <button
+            onClick={() => setMerchantTab('analytics')}
+            className={`flex-1 py-2 rounded-md font-bold text-xs flex items-center justify-center gap-1 ${merchantTab === 'analytics' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}`}
+          >
+            <TrendingUp size={13} />
+            สถิติ
+          </button>
         </div>
       </header>
 
@@ -182,11 +191,32 @@ export default function MerchantView() {
       {merchantTab === 'orders' && (
         <div className="px-4">
           {newOrders.length === 0 ? (
-            <div className="text-center text-gray-400 mt-16 py-8">
-              <Bell size={44} className="mx-auto mb-3 opacity-20" />
-              <p className="font-bold text-gray-500">ไม่มีออเดอร์ใหม่</p>
-              <p className="text-xs text-gray-400 mt-1">ออเดอร์ใหม่จะแสดงที่นี่พร้อมเสียงแจ้งเตือน</p>
-            </div>
+            isDataLoading ? (
+              <div className="space-y-3 mt-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-white rounded-2xl p-4 shadow-sm animate-pulse">
+                    <div className="flex justify-between mb-3">
+                      <div className="h-4 bg-gray-200 rounded w-1/3" />
+                      <div className="h-4 bg-gray-200 rounded w-1/4" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-gray-200 rounded w-2/3" />
+                      <div className="h-3 bg-gray-200 rounded w-1/2" />
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <div className="h-9 bg-gray-200 rounded-xl flex-1" />
+                      <div className="h-9 bg-gray-200 rounded-xl flex-1" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-gray-400 mt-16 py-8">
+                <Bell size={44} className="mx-auto mb-3 opacity-20" />
+                <p className="font-bold text-gray-500">ไม่มีออเดอร์ใหม่</p>
+                <p className="text-xs text-gray-400 mt-1">ออเดอร์ใหม่จะแสดงที่นี่พร้อมเสียงแจ้งเตือน</p>
+              </div>
+            )
           ) : (
             <div className="space-y-4">
               {newOrders.map(order => (
@@ -464,6 +494,129 @@ export default function MerchantView() {
           )}
         </div>
       )}
+
+      {/* ── สถิติร้านค้า ───────────────────────────────────────────────── */}
+      {merchantTab === 'analytics' && (() => {
+        const done = myOrders.filter(o => ['delivered', 'completed'].includes(o.status));
+        const cancelled = myOrders.filter(o => o.status === 'cancelled');
+        const todayStr = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`; })();
+        const todayDone = done.filter(o => o.timestamp && o.timestamp.startsWith(todayStr));
+        const todayRevenue = todayDone.reduce((s, o) => s + (o.merchantIncome || 0), 0);
+        const allRevenue = done.reduce((s, o) => s + (o.merchantIncome || 0), 0);
+        const avgOrder = done.length > 0 ? allRevenue / done.length : 0;
+
+        // Top เมนูขายดี
+        const itemCounts = {};
+        done.forEach(o => (o.items || []).forEach(item => {
+          itemCounts[item.name] = (itemCounts[item.name] || 0) + item.qty;
+        }));
+        const topItems = Object.entries(itemCounts)
+          .map(([name, qty]) => ({ name, qty }))
+          .sort((a, b) => b.qty - a.qty)
+          .slice(0, 5);
+        const maxQty = topItems[0]?.qty || 1;
+
+        // Order count by hour
+        const hourCounts = Array(24).fill(0);
+        myOrders.forEach(o => {
+          if (!o.timestamp) return;
+          const parts = o.timestamp.split(' ');
+          if (parts[1]) { const h = parseInt(parts[1].split(':')[0]); if (!isNaN(h)) hourCounts[h]++; }
+        });
+        const peakHours = hourCounts.map((cnt, h) => ({ h, cnt })).filter(x => x.cnt > 0);
+        const maxHour = Math.max(...hourCounts, 1);
+
+        return (
+          <div className="px-4 space-y-4 pb-6">
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <p className="text-xs text-gray-400 mb-1">วันนี้</p>
+                <p className="text-xl font-black text-green-600">฿{todayRevenue.toFixed(0)}</p>
+                <p className="text-xs text-gray-400">{todayDone.length} ออเดอร์</p>
+              </div>
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <p className="text-xs text-gray-400 mb-1">รวมทั้งหมด</p>
+                <p className="text-xl font-black text-purple-600">฿{allRevenue.toLocaleString()}</p>
+                <p className="text-xs text-gray-400">{done.length} ออเดอร์สำเร็จ</p>
+              </div>
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <p className="text-xs text-gray-400 mb-1">ออเดอร์เฉลี่ย</p>
+                <p className="text-xl font-black text-blue-600">฿{avgOrder.toFixed(0)}</p>
+                <p className="text-xs text-gray-400">ต่อออเดอร์</p>
+              </div>
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <p className="text-xs text-gray-400 mb-1">ยกเลิก</p>
+                <p className="text-xl font-black text-red-500">{cancelled.length}</p>
+                <p className="text-xs text-gray-400">
+                  {myOrders.length > 0 ? `${((cancelled.length / myOrders.length) * 100).toFixed(0)}%` : '0%'} ของทั้งหมด
+                </p>
+              </div>
+            </div>
+
+            {/* Top items */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <h3 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-1.5">
+                <BarChart2 size={15} className="text-orange-500" /> เมนูขายดี
+              </h3>
+              {topItems.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">ยังไม่มีข้อมูล</p>
+              ) : topItems.map(item => (
+                <div key={item.name} className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-gray-500 w-24 shrink-0 truncate">{item.name}</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-3.5 overflow-hidden">
+                    <div className="h-full rounded-full bg-orange-400 transition-all duration-500" style={{ width: `${(item.qty / maxQty) * 100}%` }} />
+                  </div>
+                  <span className="text-xs font-bold text-gray-700 w-8 text-right">{item.qty}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Peak hours */}
+            {peakHours.length > 0 && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <h3 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-1.5">
+                  <Clock size={15} className="text-blue-500" /> ชั่วโมงยอดนิยม
+                </h3>
+                <div className="flex items-end gap-1 h-16">
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <div key={h} className="flex-1 flex flex-col items-center gap-0.5">
+                      <div
+                        className="w-full rounded-t bg-blue-400 transition-all duration-500"
+                        style={{ height: `${(hourCounts[h] / maxHour) * 52}px`, minHeight: hourCounts[h] > 0 ? 4 : 0 }}
+                      />
+                      {h % 6 === 0 && <span className="text-[8px] text-gray-400">{h}</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between text-[9px] text-gray-400 mt-1 px-0.5">
+                  <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+                </div>
+              </div>
+            )}
+
+            {/* Order status breakdown */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <h3 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-1.5">
+                <CheckCircle size={15} className="text-green-500" /> สัดส่วนออเดอร์
+              </h3>
+              {[
+                { label: 'สำเร็จ', count: done.length, color: '#22c55e' },
+                { label: 'ยกเลิก', count: cancelled.length, color: '#ef4444' },
+                { label: 'กำลังดำเนินการ', count: myOrders.length - done.length - cancelled.length, color: '#3b82f6' },
+              ].map(row => (
+                <div key={row.label} className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-gray-500 w-28 shrink-0">{row.label}</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-3.5 overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: myOrders.length > 0 ? `${(row.count / myOrders.length) * 100}%` : '0%', backgroundColor: row.color }} />
+                  </div>
+                  <span className="text-xs font-bold text-gray-700 w-8 text-right">{row.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Cancel Order Modal ─────────────────────────────────────────── */}
       {showCancelModal && (

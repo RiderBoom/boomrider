@@ -30,6 +30,7 @@ export default function RiderView() {
     pendingRequests,
     requestTopUp,
     requestWithdraw,
+    isDataLoading,
   } = useApp();
 
   // ── state สำหรับปุ่ม "รับงาน" ──────────────────────────────────────────────
@@ -483,23 +484,42 @@ export default function RiderView() {
           </div>
         ))}
         {riderTab === 'jobs' && availableJobs.length === 0 && (
-          <div className="text-center text-gray-500 mt-10">
-            {!isOnline ? (
-              <div>
-                <ToggleLeft size={40} className="mx-auto mb-2 opacity-30" />
-                <p className="font-bold text-gray-400">คุณอยู่ใน Offline mode</p>
-                <button onClick={toggleOnline} className="mt-3 bg-green-500 text-white px-6 py-2 rounded-full font-bold text-sm hover:bg-green-600">
-                  เปิดรับงาน
-                </button>
-              </div>
-            ) : (
-              <div>
-                <Clock size={40} className="mx-auto mb-2 opacity-30" />
-                <p>ไม่พบงานในรัศมี {appConfig.riderRadius} กม.</p>
-                <p className="text-xs mt-1">รอสักครู่...</p>
-              </div>
-            )}
-          </div>
+          isDataLoading && isOnline ? (
+            <div className="space-y-3 mt-4 px-4">
+              {[1, 2].map(i => (
+                <div key={i} className="bg-white rounded-2xl p-4 shadow-sm animate-pulse">
+                  <div className="flex justify-between mb-2">
+                    <div className="h-4 bg-gray-200 rounded w-1/4" />
+                    <div className="h-4 bg-gray-200 rounded w-1/5" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 bg-gray-200 rounded w-3/4" />
+                    <div className="h-3 bg-gray-200 rounded w-1/2" />
+                    <div className="h-3 bg-gray-200 rounded w-2/3" />
+                  </div>
+                  <div className="h-10 bg-gray-200 rounded-xl mt-3" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-gray-500 mt-10">
+              {!isOnline ? (
+                <div>
+                  <ToggleLeft size={40} className="mx-auto mb-2 opacity-30" />
+                  <p className="font-bold text-gray-400">คุณอยู่ใน Offline mode</p>
+                  <button onClick={toggleOnline} className="mt-3 bg-green-500 text-white px-6 py-2 rounded-full font-bold text-sm hover:bg-green-600">
+                    เปิดรับงาน
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <Clock size={40} className="mx-auto mb-2 opacity-30" />
+                  <p>ไม่พบงานในรัศมี {appConfig.riderRadius} กม.</p>
+                  <p className="text-xs mt-1">รอสักครู่...</p>
+                </div>
+              )}
+            </div>
+          )
         )}
 
         {/* ── Map tab — ปักหมุดจุดรับงาน ─── */}

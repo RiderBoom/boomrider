@@ -8,6 +8,7 @@ import {
   loginWithEmail, registerWithEmail, loginWithGoogle, logout as firebaseLogout, onAuthChange,
 } from '../firebase/auth';
 import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
+import { deleteFile } from '../firebase/storage';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders, loadOrdersByRole,
   saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew, subscribeToAllWallets,
@@ -1157,7 +1158,10 @@ export function AppProvider({ children }) {
     const currentItems = menuItems[restaurantId] || [];
     const updated      = currentItems.filter(item => item.id !== itemId);
     setMenuItems(prev => ({ ...prev, [restaurantId]: updated }));
-    if (FIREBASE_ENABLED) saveMenuItems(restaurantId, updated).catch(() => {});
+    if (FIREBASE_ENABLED) {
+      saveMenuItems(restaurantId, updated).catch(() => {});
+      deleteFile(`menus/${restaurantId}/${itemId}.jpg`);
+    }
     notifySystem('สำเร็จ', 'ลบเมนูเรียบร้อย', 'success');
   };
 

@@ -24,14 +24,20 @@ function makeIcon(L, color, emoji) {
   });
 }
 
+let _riderStylesInjected = false;
+function ensureRiderTrackingStyles() {
+  if (_riderStylesInjected || typeof document === 'undefined') return;
+  const s = document.createElement('style');
+  s.textContent = '@keyframes br-pulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.8);opacity:0}}@keyframes br-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}';
+  document.head.appendChild(s);
+  _riderStylesInjected = true;
+}
+
 function makeRiderTrackingIcon(L) {
+  ensureRiderTrackingStyles();
   return L.divIcon({
     className: '',
     html: `
-      <style>
-        @keyframes br-pulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.8);opacity:0}}
-        @keyframes br-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
-      </style>
       <div style="position:relative;width:48px;height:48px;display:flex;align-items:center;justify-content:center">
         <div style="position:absolute;width:48px;height:48px;border-radius:50%;background:rgba(59,130,246,0.3);animation:br-pulse 1.6s ease-out infinite"></div>
         <div style="position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(59,130,246,0.15);animation:br-pulse 1.6s ease-out .4s infinite"></div>

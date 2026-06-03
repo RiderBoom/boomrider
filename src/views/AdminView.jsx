@@ -85,6 +85,7 @@ export default function AdminView() {
     adminAdjustWallet, adminBanUser,
     creditWallet,
     clearWalletHistory,
+    isDataLoading,
   } = useApp();
 
   // ── Local state ──────────────────────────────────────────────────────────
@@ -497,7 +498,23 @@ export default function AdminView() {
                   })}
                 </tbody>
               </table>
-              {orders.length === 0 && <div className="p-10 text-center text-gray-400">ยังไม่มีออเดอร์</div>}
+              {orders.length === 0 && (
+                isDataLoading ? (
+                  <div className="p-6 space-y-2">
+                    {[1,2,3,4].map(i => (
+                      <div key={i} className="flex gap-3 animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-1/6" />
+                        <div className="h-4 bg-gray-200 rounded w-1/4" />
+                        <div className="h-4 bg-gray-200 rounded w-1/5" />
+                        <div className="h-4 bg-gray-200 rounded w-1/6" />
+                        <div className="h-4 bg-gray-200 rounded w-1/8" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-10 text-center text-gray-400">ยังไม่มีออเดอร์</div>
+                )
+              )}
             </div>
           </div>
         </>
@@ -631,7 +648,27 @@ export default function AdminView() {
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="p-6 border-b"><h2 className="font-bold text-xl flex items-center gap-2"><Bell className="text-green-600" /> รายการรออนุมัติ ({pendingRequests.length})</h2></div>
           {pendingRequests.length === 0 ? (
-            <div className="p-10 text-center text-gray-400"><Check size={40} className="mx-auto mb-2 text-green-400 opacity-40" />ไม่มีรายการรออนุมัติ</div>
+            isDataLoading ? (
+              <div className="divide-y">
+                {[1, 2].map(i => (
+                  <div key={i} className="p-6 animate-pulse">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-200 rounded w-1/3" />
+                        <div className="h-3 bg-gray-200 rounded w-1/2" />
+                        <div className="h-3 bg-gray-200 rounded w-2/5" />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="h-9 w-20 bg-gray-200 rounded-lg" />
+                        <div className="h-9 w-20 bg-gray-200 rounded-lg" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-10 text-center text-gray-400"><Check size={40} className="mx-auto mb-2 text-green-400 opacity-40" />ไม่มีรายการรออนุมัติ</div>
+            )
           ) : (
             <div className="divide-y">
               {pendingRequests.map(req => (
