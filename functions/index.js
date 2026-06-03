@@ -8,6 +8,7 @@ const { processCashSettlement }                 = require('./src/processCashSett
 const { onOrderCreated, onOrderReadyForPickup } = require('./src/onOrderCreated');
 const { onOrderStatusChanged }                  = require('./src/onOrderStatusChanged');
 const { autoTimeoutPendingOrders }              = require('./src/autoTimeoutPendingOrders');
+const { onStatusValidation }                    = require('./src/onStatusValidation');
 
 module.exports = {
   processOrderPayment,
@@ -16,4 +17,5 @@ module.exports = {
   onOrderReadyForPickup,
   onOrderStatusChanged,
   autoTimeoutPendingOrders,
+  onStatusValidation,
 };
