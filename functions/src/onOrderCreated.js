@@ -4,8 +4,8 @@
  * Push notifications to riders (and admin) via Firebase Cloud Messaging.
  *
  *  onOrderCreated       — fires on any new order document
- *    • Parcel order   → notify all active riders immediately (already ready_to_pickup)
- *    • Food order     → notify admin only (riders get notified when shop marks ready)
+ *    • Parcel order   → notify active riders via FCM (admin notified via admin_notifs in app)
+ *    • Food order     → notify merchant via FCM only (admin notified via admin_notifs in app)
  *
  *  onOrderReadyForPickup — fires when order.status changes to 'ready_to_pickup'
  *    • Food order ready → notify all active riders
@@ -138,13 +138,11 @@ const onOrderCreated = onDocumentCreated(
 
     logger.info(`[onOrderCreated] orderId=${orderId} type=${order.type} status=${order.status}`);
 
-    // ── Parcel: notify riders immediately (already ready_to_pickup) ──────────
+    // ── Parcel: notify active riders only (admin sees it via admin_notifs) ────
     if (isParcel) {
-      const { riderTokens, adminToken } = await fetchTokens({ includeRiders: true, includeAdmin: true });
-      const allTokens = [...new Set([...riderTokens, ...(adminToken ? [adminToken] : [])])];
-
+      const { riderTokens } = await fetchTokens({ includeRiders: true, includeAdmin: false });
       await sendMulticast({
-        tokens: allTokens,
+        tokens: riderTokens,
         title:  '📦 งานส่งพัสดุใหม่!',
         body:   `${order.pickup || 'จุดรับ'} → ${order.dropoff || 'จุดส่ง'}  ค่าส่ง ฿${order.deliveryFee ?? order.grandTotal ?? 0}`,
         data:   { orderId, type: 'parcel', url: '/' },
@@ -152,51 +150,25 @@ const onOrderCreated = onDocumentCreated(
       return;
     }
 
-    // ── Food: notify admin + merchant concurrently ───────────────────────────
-    if (isFood) {
-      const db   = getFirestore();
-      const jobs = [];
-
-      // Admin notification
-      if (ADMIN_UID) {
-        jobs.push(
-          fetchTokens({ includeRiders: false, includeAdmin: true }).then(({ adminToken }) => {
-            if (!adminToken) return;
-            return sendMulticast({
-              tokens: [adminToken],
-              title:  '🛍️ ออเดอร์อาหารใหม่',
-              body:   `${order.customerName || 'ลูกค้า'} สั่งจาก ${order.restaurantName || ''} ฿${order.grandTotal ?? 0}  #${shortId}`,
-              data:   { orderId, type: 'food', url: '/' },
-            });
-          }),
-        );
+    // ── Food: notify merchant only (admin sees it via admin_notifs) ───────────
+    if (isFood && order.restaurantId) {
+      const db = getFirestore();
+      try {
+        const restSnap  = await db.doc(`restaurants/${order.restaurantId}`).get();
+        const ownerId   = restSnap.exists ? restSnap.data()?.ownerId : null;
+        if (!ownerId) return;
+        const ownerSnap = await db.doc(`users/${ownerId}`).get();
+        const token     = ownerSnap.exists ? ownerSnap.data()?.fcmToken : null;
+        if (!token) return;
+        await sendMulticast({
+          tokens: [token],
+          title:  '🔔 ออเดอร์ใหม่เข้าร้าน!',
+          body:   `${order.customerName || 'ลูกค้า'} สั่ง ฿${order.grandTotal ?? 0} — กรุณายืนยันออเดอร์ #${shortId}`,
+          data:   { orderId, type: 'food', url: '/', role: 'merchant' },
+        });
+      } catch (err) {
+        logger.warn(`[onOrderCreated] merchant notify err: ${err?.message}`);
       }
-
-      // Merchant notification — look up restaurant owner's FCM token
-      if (order.restaurantId) {
-        jobs.push(
-          (async () => {
-            try {
-              const restSnap = await db.doc(`restaurants/${order.restaurantId}`).get();
-              const ownerId  = restSnap.exists ? restSnap.data()?.ownerId : null;
-              if (!ownerId) return;
-              const ownerSnap = await db.doc(`users/${ownerId}`).get();
-              const token     = ownerSnap.exists ? ownerSnap.data()?.fcmToken : null;
-              if (!token) return;
-              await sendMulticast({
-                tokens: [token],
-                title:  '🔔 ออเดอร์ใหม่เข้าร้าน!',
-                body:   `${order.customerName || 'ลูกค้า'} สั่ง ฿${order.grandTotal ?? 0} — กรุณายืนยันออเดอร์ #${shortId}`,
-                data:   { orderId, type: 'food', url: '/', role: 'merchant' },
-              });
-            } catch (err) {
-              logger.warn(`[onOrderCreated] merchant notify err: ${err?.message}`);
-            }
-          })(),
-        );
-      }
-
-      await Promise.allSettled(jobs);
     }
   },
 );

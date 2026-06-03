@@ -209,7 +209,7 @@ export function useOrderActions(deps) {
     }
 
     notifySystem('เรียกรถสำเร็จ', `ค่าส่ง ฿${grandTotal} — กำลังค้นหาไรเดอร์...`, 'success');
-    setTimeout(() => notifySystem('ไรเดอร์', 'มีงานส่งพัสดุใหม่เข้ามา!', 'warning'), 1000);
+    notifyAdmin('📦 งานพัสดุใหม่', `${userProfile.name || 'ลูกค้า'} ส่งพัสดุ ${newOrder.pickup || ''} → ${newOrder.dropoff || ''} ฿${grandTotal}`, 'info');
 
     setParcelDetails({ pickup: '', dropoff: '', weight: '1', distance: 0, pickupLocation: null, dropoffLocation: null, receiverName: '', receiverPhone: '' });
     setParcelMapTarget(null);
