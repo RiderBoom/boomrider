@@ -166,32 +166,6 @@ const onOrderStatusChanged = onDocumentUpdated(
       );
     }
 
-    // ── 3. Merchant: notify when customer order moves to 'preparing' ─────────
-    // (shop has just accepted the order and started preparing)
-    // riderUid is not relevant here — we look up the restaurant owner
-    if (newStatus === 'preparing' && oldStatus === 'pending' && newData.restaurantId) {
-      jobs.push(
-        (async () => {
-          try {
-            const restSnap = await getFirestore()
-              .doc(`restaurants/${newData.restaurantId}`)
-              .get();
-            const ownerId = restSnap.exists ? restSnap.data()?.ownerId : null;
-            if (!ownerId) return;
-            const token = await getFcmToken(ownerId);
-            await sendToToken({
-              token,
-              title: '🍳 เริ่มปรุงอาหาร',
-              body:  `${orderLabel} — ลูกค้ารอ กรุณาทำอาหารให้รวดเร็ว`,
-              data:  { orderId, type: orderType, url: '/', role: 'merchant' },
-            });
-          } catch (err) {
-            logger.warn(`[onOrderStatusChanged] merchant notify err: ${err?.message}`);
-          }
-        })(),
-      );
-    }
-
     await Promise.allSettled(jobs);
   },
 );

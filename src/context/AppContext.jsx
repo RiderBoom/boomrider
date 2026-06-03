@@ -655,8 +655,10 @@ export function AppProvider({ children }) {
               });
               subInitializedRef.current = true;
             } else {
-              const uid    = currentUserRef.current?.id;
-              const myShop = uid ? restaurantsRef.current.find(r => r.ownerId === uid) : null;
+              const uid      = currentUserRef.current?.id;
+              const shopId   = (uid && restaurantsRef.current.find(r => r.ownerId === uid)?.id)
+                             || (orderScope.role === 'merchant' ? orderScope.shopId : null);
+              const myShop   = shopId ? { id: shopId } : null;
 
               if (myShop) {
                 const newMerchantOrders = cloudOrders.filter(co =>
