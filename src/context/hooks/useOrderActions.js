@@ -50,7 +50,7 @@ export function useOrderActions(deps) {
     }
   };
 
-  const placeOrder = (promoDiscount = 0) => {
+  const placeOrder = (promoDiscount = 0, notes = '') => {
     if (placingOrderRef.current || cart.length === 0) return;
     placingOrderRef.current = true;
     setTimeout(() => { placingOrderRef.current = false; }, 3000);
@@ -87,6 +87,7 @@ export function useOrderActions(deps) {
       restaurantName: cart[0].restaurantName,
       restaurantPhone: restaurants.find(r => r.id === cart[0].restaurantId)?.phone || '',
       merchantUid: restaurants.find(r => r.id === cart[0].restaurantId)?.ownerId || null,
+      notes: notes ? notes.trim().substring(0, 200) : '',
       status: 'pending',
       customerName: userProfile.name,
       customerPhone: userProfile.phone,

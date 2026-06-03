@@ -401,6 +401,30 @@ export default function RiderView() {
               )}
             </div>
 
+            {/* นำทาง */}
+            <div className="flex gap-2 mb-3">
+              {job.pickupLocation && (
+                <a
+                  href={`https://maps.google.com/maps?daddr=${job.pickupLocation.lat},${job.pickupLocation.lng}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex-1 bg-blue-900/50 text-blue-300 border border-blue-700/50 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1"
+                >
+                  🗺️ นำทางไป{job.type === 'parcel' ? 'จุดรับ' : 'ร้าน'}
+                </a>
+              )}
+              {(job.location || job.address) && (
+                <a
+                  href={job.location
+                    ? `https://maps.google.com/maps?daddr=${job.location.lat},${job.location.lng}`
+                    : `https://maps.google.com/maps?q=${encodeURIComponent(job.address || '')}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex-1 bg-green-900/50 text-green-300 border border-green-700/50 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1"
+                >
+                  🗺️ นำทางไปส่ง
+                </a>
+              )}
+            </div>
+
             {/* น้ำหนักพัสดุ */}
             {job.type === 'parcel' && job.weight && (
               <div className="bg-gray-700/40 rounded-lg px-3 py-1.5 mb-2 flex items-center gap-2">
@@ -672,6 +696,38 @@ export default function RiderView() {
                       <div>👤 ผู้ส่ง: {job.customerName} {job.customerPhone ? `· ${job.customerPhone}` : ''}</div>
                       {job.type === 'parcel' && job.receiverName && (
                         <div>📬 ผู้รับ: {job.receiverName} {job.receiverPhone ? `· ${job.receiverPhone}` : ''}</div>
+                      )}
+                    </div>
+
+                    {/* หมายเหตุจากลูกค้า */}
+                    {job.notes && (
+                      <div className="bg-yellow-900/30 border border-yellow-700/40 rounded-lg px-3 py-1.5 mb-3 flex items-start gap-2">
+                        <span className="text-yellow-400 text-xs">📝</span>
+                        <span className="text-xs text-yellow-200">{job.notes}</span>
+                      </div>
+                    )}
+
+                    {/* นำทาง */}
+                    <div className="flex gap-2 mb-3">
+                      {job.pickupLocation && (
+                        <a
+                          href={`https://maps.google.com/maps?daddr=${job.pickupLocation.lat},${job.pickupLocation.lng}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex-1 bg-blue-900/50 text-blue-300 border border-blue-700/50 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1"
+                        >
+                          🗺️ นำทางไป{job.type === 'parcel' ? 'จุดรับ' : 'ร้าน'}
+                        </a>
+                      )}
+                      {(job.location || job.address) && (
+                        <a
+                          href={job.location
+                            ? `https://maps.google.com/maps?daddr=${job.location.lat},${job.location.lng}`
+                            : `https://maps.google.com/maps?q=${encodeURIComponent(job.address || '')}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex-1 bg-green-900/50 text-green-300 border border-green-700/50 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1"
+                        >
+                          🗺️ นำทางไปส่ง
+                        </a>
                       )}
                     </div>
 

@@ -9,8 +9,6 @@ import { getDistanceFromLatLonInKm } from '../../utils';
 import RestaurantCard from '../RestaurantCard';
 import InteractiveMap from '../InteractiveMap';
 
-const CATEGORIES = ['ทั้งหมด', 'Street Food', 'Fast Food', 'Japanese', 'Italian', 'Dessert', 'Thai'];
-
 export default function HomeTab({ searchQuery, setSearchQuery }) {
   const {
     serviceType, setServiceType,
@@ -32,6 +30,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState('ทั้งหมด');
+  const [orderNotes, setOrderNotes]   = useState('');
   const [promoInput, setPromoInput]   = useState('');
   const [promoResult, setPromoResult] = useState(null);
   const [showPromoField, setShowPromoField] = useState(false);
@@ -57,6 +56,11 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
 
   const promoDiscount = promoResult?.valid ? (promoResult.discount || 0) : 0;
 
+  const categories = useMemo(() => {
+    const cats = [...new Set(restaurants.filter(r => r.category).map(r => r.category))].sort();
+    return ['ทั้งหมด', ...cats];
+  }, [restaurants]);
+
   const restaurantsWithDistance = useMemo(() => restaurants.map(r => ({
     ...r,
     distance: getDistanceFromLatLonInKm(
@@ -66,7 +70,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   })), [restaurants, userProfile.location]);
 
   const visibleRestaurants = useMemo(() => {
-    let list = restaurantsWithDistance.filter(r => r.status !== 'banned');
+    let list = restaurantsWithDistance.filter(r => r.status === 'open');
     if (selectedCategory !== 'ทั้งหมด') list = list.filter(r => r.category === selectedCategory);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -185,6 +189,14 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               </div>
             )}
 
+            <textarea
+              value={orderNotes}
+              onChange={e => setOrderNotes(e.target.value)}
+              placeholder="หมายเหตุถึงร้าน (ไม่ใส่น้ำตาล, ไม่ใส่ผัก...)"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none h-16 mb-2 focus:outline-none focus:border-orange-300"
+              maxLength={200}
+            />
+
             <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
               <span>ค่าอาหาร</span><span>฿{calculateFoodTotal().toLocaleString()}</span>
             </div>
@@ -207,7 +219,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-2 text-sm rounded-xl border font-bold transition-all ${paymentMethod === 'cash' ? 'bg-blue-500 text-white border-blue-500 shadow-md' : 'bg-white text-gray-600 border-gray-200'}`}>เงินสด</button>
             </div>
             <button
-              onClick={() => { if (promoResult?.valid) usePromoCode(promoInput); placeOrder(promoDiscount); }}
+              onClick={() => { if (promoResult?.valid) usePromoCode(promoInput); placeOrder(promoDiscount, orderNotes); setOrderNotes(''); }}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-xl shadow-orange-200 active:scale-95 transition-transform"
             >
               สั่งอาหาร ฿{Math.max(0, calculateFoodTotal() + calculateDeliveryFee(cart[0].distance) - promoDiscount).toLocaleString()}
@@ -236,7 +248,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
         <>
           {!searchQuery && (
             <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-1 px-1 scrollbar-hide">
-              {CATEGORIES.map(cat => (
+              {categories.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}

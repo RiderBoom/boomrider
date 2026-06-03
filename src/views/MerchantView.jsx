@@ -742,6 +742,13 @@ function OrderCard({ order, updateOrderStatus, onCancel, highlight }) {
         </div>
       </div>
 
+      {order.notes && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1.5 mb-2 flex items-start gap-2">
+          <span className="text-yellow-500 text-xs">📝</span>
+          <span className="text-xs text-yellow-800 font-medium">{order.notes}</span>
+        </div>
+      )}
+
       {/* ── เบอร์ติดต่อ ── */}
       {(order.customerPhone || order.riderId) && (
         <div className="flex flex-wrap gap-2 mb-2">
