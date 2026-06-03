@@ -2,47 +2,86 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null
+          && request.auth.uid == 'aYYsXGKYRmObbUGYPP3lyheln9Q2';
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function maxSize(mb) {
+      return request.resource.size < mb * 1024 * 1024;
+    }
+
+    // Checks Firestore to verify the caller owns the restaurant doc.
+    // Costs 1 Firestore read per upload — acceptable for shop/menu writes.
+    function isShopOwner(shopId) {
+      return firestore.exists(/databases/(default)/documents/restaurants/$(shopId))
+          && firestore.get(/databases/(default)/documents/restaurants/$(shopId)).data.ownerId
+             == request.auth.uid;
+    }
+
     // ── Delivery proof photos ──────────────────────────────────────────────
-    // ไรเดอร์ที่ login แล้วอัปโหลดได้, ทุกคนที่ login อ่านได้ (Admin ดูได้)
     match /orders/{orderId}/{fileName} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null
-                   && request.resource.size < 5 * 1024 * 1024; // max 5 MB
+      allow read:  if isAuth();
+      allow write: if isAuth()
+                   && isImage()
+                   && maxSize(5);
     }
 
-    // ── User / KYC / Registration photos ──────────────────────────────────
+    // ── User profile / registration photos ───────────────────────────────
     match /users/{userId}/{allPaths=**} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId
-                   && request.resource.size < 5 * 1024 * 1024;
+      allow read:  if isAuth();
+      allow write: if isAuth()
+                   && request.auth.uid == userId
+                   && isImage()
+                   && maxSize(5);
     }
 
-    // ── Shop cover photos ──────────────────────────────────────────────────
+    // ── Shop cover photos ─────────────────────────────────────────────────
     match /shops/{shopId}/{allPaths=**} {
       allow read:  if true;
-      allow write: if request.auth != null
-                   && request.resource.size < 5 * 1024 * 1024;
+      allow write: if isAuth()
+                   && isImage()
+                   && maxSize(5)
+                   && (isAdmin() || isShopOwner(shopId));
     }
 
-    // ── KYC (id cards for registration) ───────────────────────────────────
+    // ── KYC (ID card photos for registration) ─────────────────────────────
+    // Read restricted to owner + admin — ID cards must not be world-readable.
     match /kyc/{userId}/{allPaths=**} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null
-                   && request.resource.size < 5 * 1024 * 1024;
+      allow read:  if isAdmin() || (isAuth() && request.auth.uid == userId);
+      allow write: if isAuth()
+                   && request.auth.uid == userId
+                   && isImage()
+                   && maxSize(5);
     }
 
-    // ── Top-up slips ───────────────────────────────────────────────────────
+    // ── Top-up slips ──────────────────────────────────────────────────────
+    // Read restricted to owner + admin — bank receipts are private.
     match /slips/{userId}/{allPaths=**} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null
-                   && request.resource.size < 5 * 1024 * 1024;
+      allow read:  if isAdmin() || (isAuth() && request.auth.uid == userId);
+      allow write: if isAuth()
+                   && request.auth.uid == userId
+                   && isImage()
+                   && maxSize(5);
     }
 
-    // ── Menu photos ────────────────────────────────────────────────────────
+    // ── Menu photos ───────────────────────────────────────────────────────
     match /menus/{shopId}/{allPaths=**} {
       allow read:  if true;
-      allow write: if request.auth != null
-                   && request.resource.size < 5 * 1024 * 1024;
+      allow write: if isAuth()
+                   && isImage()
+                   && maxSize(5)
+                   && (isAdmin() || isShopOwner(shopId));
     }
   }
 }
