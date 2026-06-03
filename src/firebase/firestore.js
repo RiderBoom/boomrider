@@ -362,7 +362,7 @@ export const loadRestaurants = async () => {
     return snap.docs.map(d => {
       const data = d.data();
       if (data.updatedAt?.toDate) delete data.updatedAt;
-      return data;
+      return { ...data, id: d.id };
     });
   } catch { return null; }
 };
@@ -372,7 +372,7 @@ export const subscribeToRestaurants = (callback) => {
     const list = snap.docs.map(d => {
       const data = d.data();
       if (data.updatedAt?.toDate) delete data.updatedAt;
-      return data;
+      return { ...data, id: d.id };
     });
     callback(list);
   }, () => {});
@@ -664,7 +664,7 @@ export const loadRiders = async () => {
     return snap.docs.map(d => {
       const data = d.data();
       if (data.updatedAt?.toDate) delete data.updatedAt;
-      return data;
+      return { ...data, id: d.id };
     });
   } catch { return null; }
 };
@@ -674,7 +674,7 @@ export const subscribeToRiders = (callback) => {
     const list = snap.docs.map(d => {
       const data = d.data();
       if (data.updatedAt?.toDate) delete data.updatedAt;
-      return data;
+      return { ...data, id: d.id };
     });
     callback(list);
   }, () => {});
