@@ -1197,17 +1197,16 @@ export default function CustomerView() {
                                 </button>
                               </div>
                             </div>
-                            {/* Mini Map */}
-                            <div className="h-44">
-                              <InteractiveMap
-                                mode="view"
-                                userLocation={order.location}
-                                shopLocation={order.pickupLocation}
-                                riderLocation={rLoc}
-                                trackingMode
-                                className="h-44"
-                              />
-                            </div>
+                            {/* Mini Map — h-72 + autoFollow เมื่อกำลังส่ง, h-44 ระหว่างรับของ */}
+                            <InteractiveMap
+                              mode="view"
+                              userLocation={order.location}
+                              shopLocation={order.pickupLocation}
+                              riderLocation={rLoc}
+                              trackingMode
+                              autoFollow={isDelivering}
+                              className={isDelivering ? 'h-72' : 'h-44'}
+                            />
                           </div>
                         );
                       })()}
