@@ -184,6 +184,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── Rider Live Locations (GPS fan-out fix — separate from orders) ────────
+    match /rider_locations/{riderUid} {
+      allow read:   if isAuth();
+      allow write:  if isAdmin() || isOwner(riderUid);
+    }
+
     // ─── Chats ────────────────────────────────────────────────────────────────
     match /chats/{chatId} {
       allow read:  if isAuth();

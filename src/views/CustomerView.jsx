@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Home, ShoppingBag, User, MapPin, Clock,
   Search, ArrowLeft, Star, Package,
@@ -9,6 +9,7 @@ import {
   Bike, ChefHat, X, Edit, Tag, CheckCircle, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { subscribeToRiderLocation } from '../firebase/firestore';
 import { getDistanceFromLatLonInKm, formatDateTimeFromMs } from '../utils';
 import RestaurantCard from '../components/RestaurantCard';
 import InteractiveMap from '../components/InteractiveMap';
@@ -121,6 +122,40 @@ export default function CustomerView() {
   // ── User main location pin state ──────────────────────────────────────
   const [userPinLoc, setUserPinLoc] = useState(null);   // เลือกแล้วแต่ยังไม่ save
   const [userPinSaving, setUserPinSaving] = useState(false);
+
+  // ── Rider live location — subscribed from rider_locations/{riderUid} ──────
+  const [riderLocations, setRiderLocations] = useState({}); // { [orderId]: {lat,lng} }
+  const riderLocUnsubs = useRef({});  // { [orderId]: unsubscribe fn }
+
+  useEffect(() => {
+    const trackingStatuses = ['rider_accepted', 'picking_up', 'delivering'];
+    const activeOrders = orders.filter(
+      o => trackingStatuses.includes(o.status) && o.riderUid,
+    );
+    const activeIds = new Set(activeOrders.map(o => o.id));
+
+    // Unsubscribe orders that are no longer active
+    Object.keys(riderLocUnsubs.current).forEach(id => {
+      if (!activeIds.has(id)) {
+        riderLocUnsubs.current[id]();
+        delete riderLocUnsubs.current[id];
+        setRiderLocations(prev => { const n = { ...prev }; delete n[id]; return n; });
+      }
+    });
+
+    // Subscribe to new active orders
+    activeOrders.forEach(o => {
+      if (riderLocUnsubs.current[o.id]) return; // already subscribed
+      riderLocUnsubs.current[o.id] = subscribeToRiderLocation(o.riderUid, (loc) => {
+        setRiderLocations(prev => ({ ...prev, [o.id]: loc }));
+      });
+    });
+
+    return () => {
+      Object.values(riderLocUnsubs.current).forEach(unsub => unsub());
+      riderLocUnsubs.current = {};
+    };
+  }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const restaurantsWithDistance = useMemo(() => restaurants.map(r => {
     const dist = getDistanceFromLatLonInKm(
@@ -1161,7 +1196,7 @@ export default function CustomerView() {
                       </div>
                       {/* ── Live Tracking Panel ── */}
                       {['rider_accepted', 'picking_up', 'delivering'].includes(order.status) && (() => {
-                        const rLoc = order.riderLocation;
+                        const rLoc = riderLocations[order.id] ?? order.riderLocation;
                         const dest = order.status === 'picking_up'
                           ? order.pickupLocation
                           : order.location;
@@ -1593,7 +1628,7 @@ export default function CustomerView() {
       {trackingOrderId && (() => {
         const o = orders.find(ord => ord.id === trackingOrderId);
         if (!o) { setTrackingOrderId(null); return null; }
-        const rLoc = o.riderLocation;
+        const rLoc = riderLocations[o.id] ?? o.riderLocation;
         const dest = o.status === 'picking_up' ? o.pickupLocation : o.location;
         const eta  = calcETA(rLoc, dest);
         const isDelivering = o.status === 'delivering';

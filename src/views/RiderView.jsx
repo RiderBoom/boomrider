@@ -8,7 +8,7 @@ import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
 import { getDistanceFromLatLonInKm, formatDateTimeFromMs, formatDateTime, compressImage } from '../utils';
 import { USER_LOCATION, FIREBASE_ENABLED } from '../constants';
-import { updateRiderLocation, updateOrderRiderLocation } from '../firebase/firestore';
+import { updateRiderLocation, upsertRiderLocation } from '../firebase/firestore';
 import { uploadDeliveryProof } from '../firebase/storage';
 
 export default function RiderView() {
@@ -82,6 +82,7 @@ export default function RiderView() {
 
   // Refs: อัปเดตทุก render ผ่าน useEffect → callback ไม่มี stale closure
   const riderIdRef    = React.useRef(null);
+  const riderUidRef   = React.useRef(null);   // Firebase Auth UID (ใช้เป็น key ใน rider_locations)
   const activeJobRef  = React.useRef(null);   // { id, status } ของงานที่กำลังทำอยู่
   const lastWriteRef  = React.useRef(0);      // throttle timestamp
 
@@ -90,7 +91,8 @@ export default function RiderView() {
   React.useEffect(() => {
     // riderId ดึงจาก riders collection (riders[n].userId === UID → riders[n].id)
     const meRider = riders.find(r => r.userId === _uid);
-    riderIdRef.current = meRider?.id ?? null;
+    riderIdRef.current  = meRider?.id ?? null;
+    riderUidRef.current = _uid ?? null;
   });
   React.useEffect(() => {
     const activeJob = orders.find(o =>
@@ -129,9 +131,9 @@ export default function RiderView() {
         updateRiderLocation(riderId, loc);
       }
 
-      // 2️⃣ อัปเดต riderLocation ใน orders document → ลูกค้าเห็น real-time บนแผนที่
-      if (activeJob?.id) {
-        updateOrderRiderLocation(activeJob.id, loc);
+      // 2️⃣ อัปเดตตำแหน่งใน rider_locations/{riderUid} (แยกจาก orders ป้องกัน fan-out)
+      if (riderUidRef.current) {
+        upsertRiderLocation(riderUidRef.current, loc, activeJob?.id ?? null);
       }
     };
 

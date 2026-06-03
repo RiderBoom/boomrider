@@ -636,14 +636,26 @@ export const updateRiderLocation = async (riderId, location) => {
   } catch {}
 };
 
-// อัปเดตตำแหน่งไรเดอร์ใน orders document (ลูกค้าเห็น real-time บนแผนที่)
-export const updateOrderRiderLocation = async (orderId, loc) => {
-  if (!orderId || !loc) return;
+// อัปเดตตำแหน่งไรเดอร์ใน rider_locations/{riderUid} (แยกออกจาก orders เพื่อป้องกัน GPS fan-out)
+export const upsertRiderLocation = async (riderUid, loc, orderId = null) => {
+  if (!riderUid || !loc) return;
   try {
-    await updateDoc(doc(db, 'orders', String(orderId)), {
-      riderLocation: { lat: loc.lat, lng: loc.lng },
-    });
+    await setDoc(doc(db, 'rider_locations', String(riderUid)), {
+      lat: loc.lat,
+      lng: loc.lng,
+      orderId: orderId || null,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
   } catch {}
+};
+
+export const subscribeToRiderLocation = (riderUid, callback) => {
+  if (!riderUid) return () => {};
+  return onSnapshot(
+    doc(db, 'rider_locations', String(riderUid)),
+    (snap) => callback(snap.exists() ? { lat: snap.data().lat, lng: snap.data().lng } : null),
+    () => callback(null),
+  );
 };
 
 export const loadRiders = async () => {
