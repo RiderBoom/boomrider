@@ -13,7 +13,7 @@ import {
 } from '../firebase/storage';
 import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
 import {
-  saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders,
+  saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders, loadOrdersByRole,
   saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew, subscribeToAllWallets,
   saveRestaurant, loadRestaurants, deleteRestaurantFromDB, subscribeToRestaurants,
   saveMenuItems, loadMenuItems, subscribeToMenuItems,
@@ -620,7 +620,25 @@ export function AppProvider({ children }) {
         } catch (_) {}
         setIsDataLoading(false);
 
+        // ── Role scope: คำนวณ query scope ครั้งเดียว ใช้ทั้ง subscription + fallback ──
+        const _uid        = firebaseUser.uid;
+        const _isAdmin    = !!(ADMIN_UID && _uid === ADMIN_UID);
+        const _isRider    = !_isAdmin && baseRoles.includes('rider');
+        const _isMerchant = !_isAdmin && !_isRider && baseRoles.includes('merchant');
+        const _myShop     = _isMerchant
+          ? (Array.isArray(restData) ? restData.find(r => r.ownerId === _uid) : null)
+          : null;
+        const orderScope = {
+          role:   _isAdmin    ? 'admin'
+                : _isRider    ? 'rider'
+                : _isMerchant ? 'merchant'
+                : 'customer',
+          userId: _uid,
+          shopId: _myShop?.id || null,
+        };
+
         const unsubOrders = subscribeToOrders(
+          orderScope,
           (cloudOrders) => {
             if (!subInitializedRef.current) {
               cloudOrders.forEach(co => {
@@ -704,7 +722,8 @@ export function AppProvider({ children }) {
           },
           async () => {
             try {
-              const fallback = await loadAllOrders();
+              // ใช้ role-scoped fallback แทน loadAllOrders() — ลด reads เมื่อ sub reconnect
+              const fallback = await loadOrdersByRole(orderScope);
               if (fallback && fallback.length > 0) {
                 const STATUS_RANK = {
                   pending: 1, preparing: 2, ready_to_pickup: 3,
@@ -725,10 +744,10 @@ export function AppProvider({ children }) {
                   });
                   const deduped = merged.filter((o, i, arr) => arr.findIndex(x => x.id === o.id) === i);
                   deduped.sort((a, b) => {
-                const tsA = parseInt((a.id || '').split('-')[0], 10) || 0;
-                const tsB = parseInt((b.id || '').split('-')[0], 10) || 0;
-                return tsB - tsA;
-              });
+                    const tsA = parseInt((a.id || '').split('-')[0], 10) || 0;
+                    const tsB = parseInt((b.id || '').split('-')[0], 10) || 0;
+                    return tsB - tsA;
+                  });
                   safeLocalSet('boomrider_orders', deduped);
                   return deduped;
                 });

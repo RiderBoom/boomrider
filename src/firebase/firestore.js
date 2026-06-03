@@ -77,9 +77,21 @@ export const updateOrderStatusInDB = async (orderId, fields) => {
   }
 };
 
-// ดึงเฉพาะ orders ใน 30 วันล่าสุด — ลด Firestore reads เมื่อ collection ขยายใหญ่
-const thirtyDaysAgo = () => Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+// ── Time boundary helpers ────────────────────────────────────────────────────
+const tsAgo = (ms) => Timestamp.fromDate(new Date(Date.now() - ms));
+const thirtyDaysAgo  = () => tsAgo(30 * 24 * 60 * 60 * 1000);
+const sevenDaysAgo   = () => tsAgo( 7 * 24 * 60 * 60 * 1000);
+const twentyFourHAgo = () => tsAgo(     24 * 60 * 60 * 1000);
 
+// ── Shared doc mapper (strips Firestore Timestamp from output) ───────────────
+const mapOrderDocs = (docs) => docs.map(d => {
+  const data = d.data();
+  if (data.updatedAt?.toDate) delete data.updatedAt;
+  return data;
+});
+
+// ── Legacy full-scan loader — ยังคงไว้สำหรับ Admin forceRefresh และ fallback ─
+// ⚠️  Admin-only: ดึง 500 docs ทั้งหมด — อย่าเรียกจาก customer/rider/merchant
 export const loadAllOrders = async () => {
   try {
     const q = query(
@@ -89,11 +101,64 @@ export const loadAllOrders = async () => {
       limit(500),
     );
     const snap = await getDocs(q);
-    return snap.docs.map(d => {
-      const data = d.data();
-      if (data.updatedAt?.toDate) delete data.updatedAt;
-      return data;
-    });
+    return mapOrderDocs(snap.docs);
+  } catch { return []; }
+};
+
+/**
+ * ── Role-scoped One-time Orders Loader ─────────────────────────────────────
+ * ใช้แทน loadAllOrders() สำหรับ non-admin — ลด reads >90%
+ *
+ * @param {{ role: 'customer'|'rider'|'merchant'|'admin', userId: string, shopId?: string }} scope
+ * @returns {Promise<object[]>}
+ */
+export const loadOrdersByRole = async ({ role, userId, shopId = null }) => {
+  const col = collection(db, 'orders');
+  try {
+    if (role === 'customer') {
+      const snap = await getDocs(query(col,
+        where('customerId', '==', userId),
+        orderBy('updatedAt', 'desc'),
+        limit(50),
+      ));
+      return mapOrderDocs(snap.docs);
+    }
+
+    if (role === 'merchant' && shopId) {
+      const snap = await getDocs(query(col,
+        where('restaurantId', '==', shopId),
+        orderBy('updatedAt', 'desc'),
+        limit(100),
+      ));
+      return mapOrderDocs(snap.docs);
+    }
+
+    if (role === 'rider') {
+      const [snap1, snap2] = await Promise.all([
+        getDocs(query(col,
+          where('riderUid', '==', userId),
+          where('updatedAt', '>=', sevenDaysAgo()),
+          orderBy('updatedAt', 'desc'),
+          limit(50),
+        )),
+        getDocs(query(col,
+          where('status', '==', 'ready_to_pickup'),
+          orderBy('updatedAt', 'desc'),
+          limit(30),
+        )),
+      ]);
+      const map = new Map();
+      [...mapOrderDocs(snap1.docs), ...mapOrderDocs(snap2.docs)].forEach(o => map.set(o.id, o));
+      return [...map.values()];
+    }
+
+    // admin — last 24 h, limit 200
+    const snap = await getDocs(query(col,
+      where('updatedAt', '>=', twentyFourHAgo()),
+      orderBy('updatedAt', 'desc'),
+      limit(200),
+    ));
+    return mapOrderDocs(snap.docs);
   } catch { return []; }
 };
 
@@ -133,31 +198,122 @@ export const acceptOrderTransaction = async (orderId, riderId, riderLocation, ri
 };
 
 /**
- * ── Real-time Orders Subscription ──────────────────────────────────────────
- * Subscribe to Firestore orders ด้วย onSnapshot — ทุก device อัปเดต real-time
- * ต้องการ Firestore Rules: allow read: if isAuth();
- * @param {function} callback — รับ array ของ orders ทุกครั้งที่มีการเปลี่ยนแปลง
- * @param {function} [onError] — optional error handler
- * @returns {function} unsubscribe — เรียกเพื่อยกเลิก subscription
+ * ── Role-based Real-time Orders Subscription ───────────────────────────────
+ * Query scope แคบลงตาม role — ลด Firestore reads >90% เทียบกับ all-orders query
+ *
+ * ┌──────────────┬──────────────────────────────────────────────┬────────┐
+ * │ role         │ query scope                                  │ limit  │
+ * ├──────────────┼──────────────────────────────────────────────┼────────┤
+ * │ customer     │ customerId == userId                         │ 50     │
+ * │ merchant     │ restaurantId == shopId                       │ 100    │
+ * │ rider        │ riderUid == userId (7d) ∪ status==ready (30) │ 50+30  │
+ * │ admin        │ updatedAt >= 24h ago                         │ 200    │
+ * └──────────────┴──────────────────────────────────────────────┴────────┘
+ *
+ * Required composite indexes (firestore.indexes.json):
+ *   (customerId   ASC, updatedAt DESC)
+ *   (restaurantId ASC, updatedAt DESC)
+ *   (riderUid     ASC, updatedAt DESC)
+ *   (status       ASC, updatedAt DESC)
+ *
+ * @param {{ role: 'customer'|'rider'|'merchant'|'admin', userId: string, shopId?: string }} scope
+ * @param {function} callback  — (orders: object[]) => void
+ * @param {function} [onError] — fallback เมื่อ subscription fail
+ * @returns {function} unsubscribe — ยกเลิก subscription ทั้งหมด
  */
-export const subscribeToOrders = (callback, onError) => {
-  const q = query(
-    collection(db, 'orders'),
-    where('updatedAt', '>=', thirtyDaysAgo()),
-    orderBy('updatedAt', 'desc'),
-    limit(500),
+export const subscribeToOrders = ({ role, userId, shopId = null }, callback, onError) => {
+  const col = collection(db, 'orders');
+  const tag = `[subscribeToOrders:${role}]`;
+
+  const errHandler = (err) => {
+    if (import.meta.env.DEV) console.error(tag, err.code, err.message);
+    onError?.(err);
+  };
+
+  // ── CUSTOMER ────────────────────────────────────────────────────────────────
+  // Index: customerId ASC + updatedAt DESC
+  if (role === 'customer') {
+    return onSnapshot(
+      query(col,
+        where('customerId', '==', userId),
+        orderBy('updatedAt', 'desc'),
+        limit(50),
+      ),
+      (snap) => callback(mapOrderDocs(snap.docs)),
+      errHandler,
+    );
+  }
+
+  // ── MERCHANT ────────────────────────────────────────────────────────────────
+  // Index: restaurantId ASC + updatedAt DESC
+  if (role === 'merchant') {
+    if (!shopId) {
+      if (import.meta.env.DEV) console.warn(tag, 'shopId missing — falling back to customer scope');
+      return subscribeToOrders({ role: 'customer', userId }, callback, onError);
+    }
+    return onSnapshot(
+      query(col,
+        where('restaurantId', '==', shopId),
+        orderBy('updatedAt', 'desc'),
+        limit(100),
+      ),
+      (snap) => callback(mapOrderDocs(snap.docs)),
+      errHandler,
+    );
+  }
+
+  // ── RIDER ────────────────────────────────────────────────────────────────────
+  // 2 subscriptions merged:
+  //   q1 — rider's own assigned orders (last 7 days)   Index: riderUid + updatedAt
+  //   q2 — unassigned available jobs (ready_to_pickup)  Index: status  + updatedAt
+  if (role === 'rider') {
+    let ownOrders     = [];
+    let availableJobs = [];
+    let initialized   = false;
+
+    const emit = () => {
+      // merge + deduplicate by id; own orders win on conflict (have more fields)
+      const map = new Map();
+      availableJobs.forEach(o => map.set(o.id, o));
+      ownOrders.forEach(o => map.set(o.id, o));
+      callback([...map.values()]);
+    };
+
+    const unsub1 = onSnapshot(
+      query(col,
+        where('riderUid', '==', userId),
+        where('updatedAt', '>=', sevenDaysAgo()),
+        orderBy('updatedAt', 'desc'),
+        limit(50),
+      ),
+      (snap) => { ownOrders = mapOrderDocs(snap.docs); if (initialized) emit(); },
+      errHandler,
+    );
+
+    const unsub2 = onSnapshot(
+      query(col,
+        where('status', '==', 'ready_to_pickup'),
+        orderBy('updatedAt', 'desc'),
+        limit(30),
+      ),
+      (snap) => { availableJobs = mapOrderDocs(snap.docs); initialized = true; emit(); },
+      errHandler,
+    );
+
+    return () => { unsub1(); unsub2(); };
+  }
+
+  // ── ADMIN (default) ─────────────────────────────────────────────────────────
+  // Single-field range query — ไม่ต้องการ composite index (updatedAt มี auto index)
+  return onSnapshot(
+    query(col,
+      where('updatedAt', '>=', twentyFourHAgo()),
+      orderBy('updatedAt', 'desc'),
+      limit(200),
+    ),
+    (snap) => callback(mapOrderDocs(snap.docs)),
+    errHandler,
   );
-  return onSnapshot(q, (snap) => {
-    const orders = snap.docs.map(d => {
-      const data = d.data();
-      if (data.updatedAt?.toDate) delete data.updatedAt;
-      return data;
-    });
-    callback(orders);
-  }, (err) => {
-    if (import.meta.env.DEV) console.error('[subscribeToOrders] Firestore error:', err.code, err.message);
-    if (onError) onError(err);
-  });
 };
 
 // ===== App Config =============================================================
