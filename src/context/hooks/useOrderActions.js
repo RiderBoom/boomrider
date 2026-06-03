@@ -312,8 +312,9 @@ export function useOrderActions(deps) {
       const dbFields = { status: finalOrder.status };
       if (finalOrder.riderId  != null) dbFields.riderId  = finalOrder.riderId;
       if (finalOrder.riderUid != null) dbFields.riderUid = finalOrder.riderUid;
-      if (finalOrder.completedAt)      dbFields.completedAt = finalOrder.completedAt;
-      if (finalOrder.cancelReason)     dbFields.cancelReason = finalOrder.cancelReason;
+      if (finalOrder.completedAt)         dbFields.completedAt      = finalOrder.completedAt;
+      if (finalOrder.cancelReason)        dbFields.cancelReason     = finalOrder.cancelReason;
+      if (finalOrder.deliveryProofUrl)    dbFields.deliveryProofUrl = finalOrder.deliveryProofUrl;
       updateOrderStatusInDB(orderId, dbFields).catch(() => {});
     }
 

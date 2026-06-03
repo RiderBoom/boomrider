@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import {
   Bike, User, MessageSquare, AlertCircle,
   ToggleLeft, ToggleRight, TrendingUp, Clock, DollarSign, Star, Loader, MapPin,
-  XCircle, X, Wallet, CreditCard, ArrowUpCircle, ArrowDownCircle,
+  XCircle, X, Wallet, CreditCard, ArrowUpCircle, ArrowDownCircle, Camera,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
-import { getDistanceFromLatLonInKm, formatDateTimeFromMs, formatDateTime } from '../utils';
+import { getDistanceFromLatLonInKm, formatDateTimeFromMs, formatDateTime, compressImage } from '../utils';
 import { USER_LOCATION, FIREBASE_ENABLED } from '../constants';
 import { updateRiderLocation, updateOrderRiderLocation } from '../firebase/firestore';
+import { uploadDeliveryProof } from '../firebase/storage';
 
 export default function RiderView() {
   const {
@@ -35,6 +36,10 @@ export default function RiderView() {
   const [acceptingId, setAcceptingId] = useState(null);
   const [savingLocation, setSavingLocation] = useState(false);
   const [pendingLocation, setPendingLocation] = useState(null);
+
+  // ── state สำหรับรูปหลักฐานการส่ง (keyed by orderId) ──────────────────────
+  const [proofPhotos,   setProofPhotos]   = useState({}); // { [orderId]: url }
+  const [proofUploading, setProofUploading] = useState({}); // { [orderId]: bool }
 
   // ── state สำหรับ Wallet tab ──────────────────────────────────────────────
   const [walletAction, setWalletAction] = useState(null); // null | 'topup' | 'withdraw'
@@ -735,11 +740,81 @@ export default function RiderView() {
                             )}
                           </div>
                         )}
+
+                        {/* ── รูปหลักฐานการส่ง ── */}
+                        <div className="bg-gray-700/40 border border-gray-600/50 rounded-xl p-3 mb-3">
+                          <p className="text-xs text-gray-400 font-bold mb-2">
+                            📷 ถ่ายรูปหลักฐานการส่ง
+                            {!proofPhotos[job.id] && <span className="text-gray-500 font-normal ml-1">(แนะนำ)</span>}
+                          </p>
+
+                          {proofPhotos[job.id] ? (
+                            <div className="relative">
+                              <img
+                                src={proofPhotos[job.id]}
+                                alt="delivery proof"
+                                className="w-full h-36 object-cover rounded-lg"
+                              />
+                              <button
+                                onClick={() => setProofPhotos(prev => ({ ...prev, [job.id]: null }))}
+                                className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+                              >
+                                <X size={14} />
+                              </button>
+                              <span className="absolute bottom-1.5 left-1.5 bg-green-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                ✓ อัปโหลดสำเร็จ
+                              </span>
+                            </div>
+                          ) : proofUploading[job.id] ? (
+                            <div className="flex items-center justify-center h-20 bg-gray-800/60 rounded-xl">
+                              <Loader size={18} className="animate-spin text-green-400 mr-2" />
+                              <span className="text-xs text-gray-400">กำลังอัปโหลด...</span>
+                            </div>
+                          ) : (
+                            <label className="flex flex-col items-center justify-center h-20 border-2 border-dashed border-gray-600 rounded-xl cursor-pointer hover:border-green-500/50 transition-all active:scale-95">
+                              <Camera size={22} className="text-gray-500 mb-1" />
+                              <span className="text-xs text-gray-500">แตะเพื่อถ่ายรูป / เลือกรูป</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files[0];
+                                  if (!file || proofUploading[job.id]) return;
+                                  e.target.value = '';
+                                  setProofUploading(prev => ({ ...prev, [job.id]: true }));
+                                  try {
+                                    const compressed = await compressImage(file, 800, 600, 0.8).catch(() => file);
+                                    if (FIREBASE_ENABLED) {
+                                      const url = await uploadDeliveryProof(job.id, 'delivery', compressed);
+                                      setProofPhotos(prev => ({ ...prev, [job.id]: url }));
+                                    } else {
+                                      setProofPhotos(prev => ({ ...prev, [job.id]: typeof compressed === 'string' ? compressed : URL.createObjectURL(file) }));
+                                    }
+                                  } catch { /* proof is optional — never block delivery */ }
+                                  finally { setProofUploading(prev => ({ ...prev, [job.id]: false })); }
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+
                         <button
-                          onClick={() => updateOrderStatus(job.id, 'delivered')}
-                          className="w-full bg-green-500 py-3 rounded-xl font-bold text-sm hover:bg-green-400 active:scale-95 transition-all shadow-lg shadow-green-900/50"
+                          disabled={!!proofUploading[job.id]}
+                          onClick={() => updateOrderStatus(
+                            job.id, 'delivered', null,
+                            proofPhotos[job.id] ? { deliveryProofUrl: proofPhotos[job.id] } : {},
+                          )}
+                          className={`w-full py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-green-900/50 ${
+                            proofUploading[job.id]
+                              ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                              : 'bg-green-500 hover:bg-green-400 active:scale-95 text-white'
+                          }`}
                         >
-                          🎉 ยืนยันส่งสำเร็จ!
+                          {proofUploading[job.id]
+                            ? <><Loader size={16} className="animate-spin inline mr-1" /> กำลังอัปโหลดรูป...</>
+                            : '🎉 ยืนยันส่งสำเร็จ!'}
                         </button>
                       </>
                     )}
