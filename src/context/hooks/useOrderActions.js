@@ -234,6 +234,10 @@ export function useOrderActions(deps) {
     if (FIREBASE_ENABLED) {
       try {
         await acceptOrderTransaction(orderId, riderId, riderLocation, riderUid);
+        // Guard against the brief window where q2 drops the order before q1 picks it up.
+        // Without this, the accepted order disappears from myJobs until q1 fires,
+        // causing the rider to see an empty active-tab and potentially re-accepting.
+        pendingLocalOrderIdsRef.current.add(orderId);
         setOrders(prev => prev.map(o => {
           if (o.id !== orderId) return o;
           return { ...o, status: 'rider_accepted', riderId, riderUid, riderPhone, riderName, riderLocation: riderLocation || o.pickupLocation };
@@ -245,6 +249,20 @@ export function useOrderActions(deps) {
         console.error('[acceptOrder] err:', err?.code, err?.message);
 
         if (err.message === 'ORDER_ALREADY_TAKEN') {
+          // The transaction may have committed but the ack was lost (bad network).
+          // Do a fresh read: if THIS rider already owns the order, treat as success.
+          try {
+            const fresh = await loadOrder(orderId);
+            if (fresh && fresh.status === 'rider_accepted' && fresh.riderId === riderId) {
+              setOrders(prev => prev.map(o => {
+                if (o.id !== orderId) return o;
+                return { ...o, status: 'rider_accepted', riderId, riderUid, riderPhone, riderName, riderLocation: riderLocation || o.pickupLocation };
+              }));
+              updateOrderStatusInDB(orderId, { riderPhone, riderName }).catch(() => {});
+              notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย — ไปรับงานได้เลย', 'success');
+              return true;
+            }
+          } catch (_) {}
           setOrders(prev => prev.filter(o => o.id !== orderId || o.status !== 'ready_to_pickup'));
           notifySystem('เสียใจด้วย', 'งานนี้ถูกไรเดอร์คนอื่นรับไปก่อน 😔', 'error');
         } else if (err.message === 'ORDER_NOT_FOUND') {
@@ -326,14 +344,15 @@ export function useOrderActions(deps) {
     }
 
     if (prevStatus !== newStatus) {
-      if (newStatus === 'preparing')       notifySystem('อัปเดตสถานะ', `ร้านค้ารับออเดอร์ #${orderId} แล้ว`, 'info');
-      if (newStatus === 'ready_to_pickup') notifySystem('ไรเดอร์', `ออเดอร์ #${orderId} พร้อมส่งแล้ว`, 'warning');
-      if (newStatus === 'rider_accepted')  notifySystem('อัปเดตสถานะ', `ไรเดอร์รับงาน #${orderId} แล้ว`, 'success');
-      if (newStatus === 'picking_up')      notifySystem('อัปเดตสถานะ', 'ไรเดอร์ถึงร้านค้า/จุดรับแล้ว', 'info');
-      if (newStatus === 'delivering')      notifySystem('อัปเดตสถานะ', 'ไรเดอร์รับของแล้ว กำลังไปส่ง', 'info');
-      if (newStatus === 'delivered')       notifySystem('ไรเดอร์ถึงที่หมาย! 📦', `กรุณายืนยันรับสินค้า #${orderId}`, 'success');
-      if (newStatus === 'completed')       notifySystem('รับสินค้าแล้ว! 🎉', `ออเดอร์ #${orderId} เสร็จสิ้น`, 'success');
-      if (newStatus === 'cancelled')       notifySystem('ยกเลิกออเดอร์', `ออเดอร์ #${orderId} ถูกยกเลิก`, 'error');
+      const sid = orderId.slice(-6);
+      if (newStatus === 'preparing')       notifySystem('รับออเดอร์แล้ว ✅', `กำลังเตรียม #${sid}`, 'info');
+      if (newStatus === 'ready_to_pickup') notifySystem('พร้อมส่งแล้ว ✅', `ส่งออเดอร์ #${sid} ให้ไรเดอร์แล้ว`, 'success');
+      if (newStatus === 'rider_accepted')  notifySystem('รับงานแล้ว ✅', `กำลังออกเดินทาง #${sid}`, 'success');
+      if (newStatus === 'picking_up')      notifySystem('ถึงร้านแล้ว 🛵', `กำลังรับสินค้า #${sid}`, 'info');
+      if (newStatus === 'delivering')      notifySystem('รับสินค้าแล้ว 🛵', `กำลังนำส่ง #${sid}`, 'info');
+      if (newStatus === 'delivered')       notifySystem('ส่งถึงแล้ว! 📦', `รอลูกค้ายืนยันรับสินค้า #${sid}`, 'success');
+      if (newStatus === 'completed')       notifySystem('ยืนยันรับแล้ว ✅', `ออเดอร์ #${sid} เสร็จสิ้น 🎉`, 'success');
+      if (newStatus === 'cancelled')       notifySystem('ยกเลิกแล้ว', `#${sid} ถูกยกเลิก`, 'error');
     }
 
     // ── Cash settlement: handled by Cloud Function processCashSettlement ──

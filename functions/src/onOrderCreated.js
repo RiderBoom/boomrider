@@ -35,10 +35,11 @@ const fetchTokens = async ({ includeRiders = true, includeAdmin = false } = {}) 
   if (includeRiders) {
     jobs.push(
       db.collection('riders').where('status', '==', 'active').get().then(async (snap) => {
-        // For each active rider, look up their FCM token in users/{userId}
-        const userReads = snap.docs
-          .filter(d => d.data().userId)
-          .map(d => db.doc(`users/${d.data().userId}`).get());
+        // For each active rider, look up their FCM token in users/{userId}.
+        // Exclude ADMIN_UID — admin should not receive rider-targeted push notifications
+        // even if an admin account is also registered as a rider (common in test setups).
+        const filteredDocs = snap.docs.filter(d => d.data().userId && d.data().userId !== ADMIN_UID);
+        const userReads    = filteredDocs.map(d => db.doc(`users/${d.data().userId}`).get());
 
         const userSnaps = await Promise.all(userReads);
         userSnaps.forEach((us, idx) => {
@@ -46,7 +47,7 @@ const fetchTokens = async ({ includeRiders = true, includeAdmin = false } = {}) 
           if (token) {
             riderTokens.push(token);
           } else {
-            logger.debug(`[fetchTokens] no fcmToken for rider userId=${snap.docs[idx]?.data()?.userId}`);
+            logger.debug(`[fetchTokens] no fcmToken for rider userId=${filteredDocs[idx]?.data()?.userId}`);
           }
         });
       }),
@@ -151,15 +152,22 @@ const onOrderCreated = onDocumentCreated(
     }
 
     // ── Food: notify merchant only (admin sees it via admin_notifs) ───────────
-    if (isFood && order.restaurantId) {
+    // Use order.merchantUid directly — it was stored at order-placement time and is
+    // more reliable than a restaurant doc lookup (which fails if ownerId is missing).
+    if (isFood) {
+      const ownerId = order.merchantUid || null;
+      if (!ownerId) {
+        logger.warn(`[onOrderCreated] food order ${orderId} has no merchantUid — skipping merchant notify`);
+        return;
+      }
       const db = getFirestore();
       try {
-        const restSnap  = await db.doc(`restaurants/${order.restaurantId}`).get();
-        const ownerId   = restSnap.exists ? restSnap.data()?.ownerId : null;
-        if (!ownerId) return;
         const ownerSnap = await db.doc(`users/${ownerId}`).get();
         const token     = ownerSnap.exists ? ownerSnap.data()?.fcmToken : null;
-        if (!token) return;
+        if (!token) {
+          logger.info(`[onOrderCreated] merchant ${ownerId} has no FCM token — skipping`);
+          return;
+        }
         await sendMulticast({
           tokens: [token],
           title:  '🔔 ออเดอร์ใหม่เข้าร้าน!',

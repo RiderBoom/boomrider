@@ -513,6 +513,15 @@ export function AppProvider({ children }) {
         const saved = savedRaw ? JSON.parse(savedRaw) : null;
         const isExistingSession = saved?.id === firebaseUser.uid;
 
+        // Compute baseRoles BEFORE the if/else so it's accessible throughout this callback.
+        // BUG-FIX: was block-scoped inside if(!isExistingSession), causing ReferenceError on
+        // page reload (existing session) → subscriptions never started, no real-time updates.
+        const allRolesMap  = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
+        const storedRoles  = allRolesMap[firebaseUser.uid] || saved?.roles || ['customer'];
+        const baseRoles    = ADMIN_UID && firebaseUser.uid === ADMIN_UID
+          ? [...new Set([...storedRoles, 'admin'])]
+          : storedRoles;
+
         if (!isExistingSession) {
           const savedLocation = saved?.profile?.location
             || (() => {
@@ -528,11 +537,6 @@ export function AppProvider({ children }) {
             image:    firebaseUser.photoURL     || saved?.profile?.image || null,
             location: savedLocation,
           };
-          const allRolesMap  = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-          const storedRoles  = allRolesMap[firebaseUser.uid] || saved?.roles || ['customer'];
-          const baseRoles    = ADMIN_UID && firebaseUser.uid === ADMIN_UID
-            ? [...new Set([...storedRoles, 'admin'])]
-            : storedRoles;
           const newUser = {
             id: firebaseUser.uid,
             phone: firebaseUser.phoneNumber || '',
@@ -570,14 +574,18 @@ export function AppProvider({ children }) {
         subInitializedRef.current = false;
         pendingLocalOrderIdsRef.current = new Set();
 
+        // Declare restData outside the try block so it's accessible below for orderScope.
+        // (const inside try {} is block-scoped and not visible after the closing brace.)
+        let restData = null;
         try {
-          const [initialOrders, restData, ridersData, menuData, cfgData] = await Promise.all([
+          const [initialOrders, _restLoaded, ridersData, menuData, cfgData] = await Promise.all([
             loadAllOrders(),
             loadRestaurants(),
             loadRiders(),
             loadMenuItems(),
             loadAppConfig(),
           ]);
+          restData = _restLoaded;
 
           if (initialOrders && initialOrders.length > 0) {
             const STATUS_RANK = {
@@ -671,15 +679,8 @@ export function AppProvider({ children }) {
                 }
               }
 
-              if (orderScope.role === 'rider') {
-                const newJobs = cloudOrders.filter(co =>
-                  co.status === 'ready_to_pickup' && !co.riderId && !seenOrderIdsRef.current.has(co.id),
-                );
-                if (newJobs.length > 0) {
-                  playNotificationSound('rider');
-                  setTimeout(() => notifySystem('🔔 มีงานใหม่เข้า!', `${newJobs.length} งานรอรับในบริเวณใกล้เคียง`, 'warning'), 0);
-                }
-              }
+              // Rider new-job notifications are handled exclusively via FCM (onOrderCreated /
+              // onOrderReadyForPickup CFs). No in-app subscription toast here to avoid duplicates.
 
               if (uid) {
                 const justCompleted = cloudOrders.filter(co =>
