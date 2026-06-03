@@ -671,12 +671,14 @@ export function AppProvider({ children }) {
                 }
               }
 
-              const newJobs = cloudOrders.filter(co =>
-                co.status === 'ready_to_pickup' && !co.riderId && !seenOrderIdsRef.current.has(co.id),
-              );
-              if (newJobs.length > 0) {
-                playNotificationSound('rider');
-                setTimeout(() => notifySystem('🔔 มีงานใหม่เข้า!', `${newJobs.length} งานรอรับในบริเวณใกล้เคียง`, 'warning'), 0);
+              if (orderScope.role === 'rider') {
+                const newJobs = cloudOrders.filter(co =>
+                  co.status === 'ready_to_pickup' && !co.riderId && !seenOrderIdsRef.current.has(co.id),
+                );
+                if (newJobs.length > 0) {
+                  playNotificationSound('rider');
+                  setTimeout(() => notifySystem('🔔 มีงานใหม่เข้า!', `${newJobs.length} งานรอรับในบริเวณใกล้เคียง`, 'warning'), 0);
+                }
               }
 
               if (uid) {

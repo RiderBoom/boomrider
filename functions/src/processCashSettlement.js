@@ -62,9 +62,11 @@ const processCashSettlement = onDocumentWritten(
 
     const expectedAdminGP     = parseFloat((totalRawGP - effectivePromo).toFixed(2));
     const expectedMerchantInc = parseFloat((foodTotal  - rawFoodGP).toFixed(2));
+    const expectedRiderInc    = parseFloat((deliveryFee - rawDeliveryGP).toFixed(2));
 
     let merchantIncome = typeof order.merchantIncome === 'number' ? order.merchantIncome : expectedMerchantInc;
     let adminGP        = typeof order.adminGP        === 'number' ? order.adminGP        : expectedAdminGP;
+    let riderIncome    = typeof order.riderIncome    === 'number' ? order.riderIncome    : expectedRiderInc;
 
     if (Math.abs(merchantIncome - expectedMerchantInc) > TOLERANCE) {
       logger.warn(`[processCashSettlement] merchantIncome mismatch on ${orderId}: stored=${merchantIncome} expected=${expectedMerchantInc} — using server value`);
@@ -74,12 +76,16 @@ const processCashSettlement = onDocumentWritten(
       logger.warn(`[processCashSettlement] adminGP mismatch on ${orderId}: stored=${adminGP} expected=${expectedAdminGP} — using server value`);
       adminGP = expectedAdminGP;
     }
+    if (Math.abs(riderIncome - expectedRiderInc) > TOLERANCE) {
+      logger.warn(`[processCashSettlement] riderIncome mismatch on ${orderId}: stored=${riderIncome} expected=${expectedRiderInc} — using server value`);
+      riderIncome = expectedRiderInc;
+    }
 
     const riderUid     = order.riderUid    || null;
     const shopOwnerUid = order.merchantUid || null;
     const restName     = order.restaurantName || (order.type === 'parcel' ? 'พัสดุ' : '');
 
-    logger.info(`[processCashSettlement] ${orderId} — rider=${riderUid} merchant=${shopOwnerUid} | merchantIncome=${merchantIncome} adminGP=${adminGP}`);
+    logger.info(`[processCashSettlement] ${orderId} — rider=${riderUid} merchant=${shopOwnerUid} | riderIncome=${riderIncome} merchantIncome=${merchantIncome} adminGP=${adminGP}`);
 
     // ── Mark as settled atomically ────────────────────────────────────────
     try {
@@ -107,6 +113,10 @@ const processCashSettlement = onDocumentWritten(
     const jobs = [];
 
     if (riderUid) {
+      if (riderIncome > 0) {
+        jobs.push(creditWallet(riderUid, riderIncome, `ค่าส่ง(สด) ${restName} ${shortId}`));
+        jobs.push(addEntry(riderUid, 'income', riderIncome, `ค่าส่ง(สด) ${restName} ${shortId}`));
+      }
       if (merchantIncome > 0) {
         jobs.push(creditWallet(riderUid, -merchantIncome, `โอนยอดอาหาร(สด) ${restName} ${shortId}`));
         jobs.push(addEntry(riderUid, 'expense', -merchantIncome, `โอนยอดอาหาร(สด) ${restName} ${shortId}`));
@@ -129,8 +139,9 @@ const processCashSettlement = onDocumentWritten(
 
     // ── Audit log ─────────────────────────────────────────────────────────
     const txJobs = [];
-    if (merchantIncome > 0 && shopOwnerUid) txJobs.push(saveTransaction({ type: 'merchant_income', orderId, userId: shopOwnerUid, userName: restName || 'ร้านค้า', role: 'merchant', amount: merchantIncome, desc: `รายได้ร้าน(สด) ${shortId}`, date: now }));
-    if (adminGP        > 0)                 txJobs.push(saveTransaction({ type: 'admin_gp',         orderId, userId: ADMIN_UID,   userName: 'Admin',              role: 'admin',    amount: adminGP,        desc: `GP(สด) ${shortId}`,          date: now }));
+    if (riderUid      && riderIncome    > 0) txJobs.push(saveTransaction({ type: 'rider_income',    orderId, userId: riderUid,     userName: order.riderName    || 'ไรเดอร์', role: 'rider',    amount: riderIncome,    desc: `ค่าส่ง(สด) ${shortId}`,         date: now }));
+    if (merchantIncome > 0 && shopOwnerUid) txJobs.push(saveTransaction({ type: 'merchant_income', orderId, userId: shopOwnerUid, userName: restName            || 'ร้านค้า', role: 'merchant', amount: merchantIncome, desc: `รายได้ร้าน(สด) ${shortId}`,      date: now }));
+    if (adminGP        > 0)                 txJobs.push(saveTransaction({ type: 'admin_gp',         orderId, userId: ADMIN_UID,   userName: 'Admin',                          role: 'admin',    amount: adminGP,        desc: `GP(สด) ${shortId}`,              date: now }));
     await Promise.allSettled(txJobs);
 
     logger.info(`[processCashSettlement] ${orderId} cash settled ✓`);

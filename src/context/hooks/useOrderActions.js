@@ -126,7 +126,6 @@ export function useOrderActions(deps) {
     setPaymentMethod('wallet');
     notifySystem('สั่งซื้อสำเร็จ', 'ออเดอร์ถูกส่งไปยังร้านค้าแล้ว', 'success');
     notifyAdmin('🛍️ ออเดอร์ใหม่', `${userProfile.name} สั่งจาก ${restaurantName} ฿${grandTotal}`, 'info');
-    setTimeout(() => notifySystem('ร้านค้า', 'มีออเดอร์ใหม่เข้ามา!', 'warning'), 1000);
     setActiveTab('activity');
     setSelectedRestaurant(null);
   };

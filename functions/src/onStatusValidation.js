@@ -27,8 +27,8 @@
  *                                                                          ▼
  *                                                                       completed  (terminal)
  *
- * → cancelled  is always a valid transition from any non-terminal state.
- * completed / cancelled  are terminal — no further transitions allowed.
+ * → cancelled / cancelled_timeout  are always valid from any non-terminal state.
+ * completed / cancelled / cancelled_timeout  are terminal — no further transitions allowed.
  *
  * Notes:
  *  - confirmed → ready_to_pickup  is valid (merchant skips separate preparing step).
@@ -61,7 +61,7 @@ const NEXT = {
 };
 
 const KNOWN = new Set(Object.keys(NEXT));
-const TERMINAL = new Set(['completed', 'cancelled']);
+const TERMINAL = new Set(['completed', 'cancelled', 'cancelled_timeout']);
 
 /**
  * Returns true when the old→new transition is permitted by business rules.
@@ -70,7 +70,7 @@ const TERMINAL = new Set(['completed', 'cancelled']);
 function isAllowed(from, to) {
   if (!KNOWN.has(from)) return true;      // unknown status — don't block
   if (TERMINAL.has(from)) return false;   // nothing can leave a terminal state
-  if (to === 'cancelled') return true;    // cancellation is a universal exit
+  if (to === 'cancelled' || to === 'cancelled_timeout') return true; // cancellations are universal exits
   return NEXT[from]?.has(to) ?? false;
 }
 
