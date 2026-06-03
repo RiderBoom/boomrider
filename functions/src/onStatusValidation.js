@@ -48,7 +48,7 @@ const { logger } = require('firebase-functions');
 // Keys = current status, values = Set of statuses this can transition TO.
 // 'cancelled' is NOT listed here but is handled as a universal escape below.
 const NEXT = {
-  pending:         new Set(['confirmed']),
+  pending:         new Set(['confirmed', 'preparing']),  // merchant "รับออเดอร์" jumps directly to preparing
   confirmed:       new Set(['preparing', 'ready_to_pickup']),
   preparing:       new Set(['ready_to_pickup']),
   ready_to_pickup: new Set(['rider_accepted', 'delivering']),  // delivering = parcel shortcut

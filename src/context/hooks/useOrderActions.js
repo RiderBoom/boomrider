@@ -126,7 +126,6 @@ export function useOrderActions(deps) {
     }
     setPaymentMethod('wallet');
     notifySystem('สั่งซื้อสำเร็จ', 'ออเดอร์ถูกส่งไปยังร้านค้าแล้ว', 'success');
-    notifyAdmin('🛍️ ออเดอร์ใหม่', `${userProfile.name} สั่งจาก ${restaurantName} ฿${grandTotal}`, 'info');
     setActiveTab('activity');
     setSelectedRestaurant(null);
   };
@@ -210,7 +209,6 @@ export function useOrderActions(deps) {
     }
 
     notifySystem('เรียกรถสำเร็จ', `ค่าส่ง ฿${grandTotal} — กำลังค้นหาไรเดอร์...`, 'success');
-    notifyAdmin('📦 งานพัสดุใหม่', `${userProfile.name || 'ลูกค้า'} ส่งพัสดุ ${newOrder.pickup || ''} → ${newOrder.dropoff || ''} ฿${grandTotal}`, 'info');
 
     setParcelDetails({ pickup: '', dropoff: '', weight: '1', distance: 0, pickupLocation: null, dropoffLocation: null, receiverName: '', receiverPhone: '' });
     setParcelMapTarget(null);
