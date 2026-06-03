@@ -2,6 +2,7 @@ import {
   saveOrder, updateOrderStatusInDB, saveTransaction,
   creditWalletInDB, addWalletEntry, acceptOrderTransaction,
   loadAllOrders, loadPendingRequests, savePendingRequest, safeLocalSet,
+  cancelOrderBatch, loadOrder,
 } from '../../firebase/firestore';
 import { generateId, formatDateTime } from '../../utils';
 import { FIREBASE_ENABLED, ADMIN_UID, USER_LOCATION } from '../../constants';
@@ -255,7 +256,14 @@ export function useOrderActions(deps) {
           notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย (offline mode)', 'success');
           return true;
         } else if (err.code === 'resource-exhausted') {
+          // Quota exceeded — verify availability via a single getDoc before
+          // falling back to non-transactional update (reduces double-accept risk).
           try {
+            const fresh = await loadOrder(orderId);
+            if (!fresh || fresh.status !== 'ready_to_pickup' || fresh.riderId) {
+              notifySystem('เสียใจด้วย', 'งานนี้ถูกรับไปแล้ว 😔', 'error');
+              return false;
+            }
             await updateOrderStatusInDB(orderId, {
               status: 'rider_accepted', riderId, riderUid, riderPhone, riderName,
               riderLocation: riderLocation || order.pickupLocation || null,
@@ -402,28 +410,39 @@ export function useOrderActions(deps) {
       return;
     }
 
-    const cancelledOrder = { ...order, status: 'cancelled', cancelReason: reason };
-    setOrders(prev => prev.map(o => o.id === orderId ? cancelledOrder : o));
+    // Optimistic local update
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'cancelled', cancelReason: reason } : o));
 
-    if (order.paymentMethod === 'wallet' && order.grandTotal > 0) {
+    const isWalletOrder = order.paymentMethod === 'wallet' && order.grandTotal > 0;
+
+    if (isWalletOrder) {
       const desc = `คืนเงิน: ยกเลิกออเดอร์ #${order.id.slice(-6)} (${reason})`;
+      // Instant local wallet feedback
       creditWallet(order.customerId, order.grandTotal, desc);
-      if (FIREBASE_ENABLED) {
-        const _cancelDate = formatDateTime();
-        creditWalletInDB(order.customerId, order.grandTotal, desc).catch(() => {});
-        addWalletEntry(order.customerId, { type: 'refund', amount: order.grandTotal, desc, date: _cancelDate }).catch(() => {});
-        saveTransaction({ type: 'wallet_refund', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: order.grandTotal, desc, date: _cancelDate }).catch(() => {});
-      }
-    }
 
-    if (FIREBASE_ENABLED) {
+      if (FIREBASE_ENABLED) {
+        // Atomic batch: order cancel + wallet credit + entry + tx log — all or nothing
+        cancelOrderBatch(orderId, {
+          cancelReason: reason,
+          customerId:   order.customerId,
+          refundAmount: order.grandTotal,
+          refundDesc:   desc,
+        }).catch(() => {
+          // Batch failed — fall back to individual writes
+          updateOrderStatusInDB(orderId, { status: 'cancelled', cancelReason: reason }).catch(() => {});
+          creditWalletInDB(order.customerId, order.grandTotal, desc).catch(() => {});
+          addWalletEntry(order.customerId, { type: 'refund', amount: order.grandTotal, desc, date: formatDateTime() }).catch(() => {});
+          saveTransaction({ type: 'wallet_refund', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: order.grandTotal, desc, date: formatDateTime() }).catch(() => {});
+        });
+      }
+    } else if (FIREBASE_ENABLED) {
       updateOrderStatusInDB(orderId, { status: 'cancelled', cancelReason: reason }).catch(() => {});
       saveTransaction({ type: 'order_cancelled', orderId, userId: order.customerId, userName: order.customerName, role: 'customer', amount: 0, desc: `ยกเลิกออเดอร์ #${order.id.slice(-6)}: ${reason}`, date: formatDateTime() }).catch(() => {});
     }
 
     setShowCancelModal(false);
     setSelectedOrderToCancel(null);
-    notifySystem('ยกเลิกออเดอร์แล้ว', `#${orderId.slice(-6)} — ${order.paymentMethod === 'wallet' ? `คืนเงิน ฿${order.grandTotal} ให้ลูกค้าแล้ว` : 'ไม่มีการตัดเงิน'}`, 'info');
+    notifySystem('ยกเลิกออเดอร์แล้ว', `#${orderId.slice(-6)} — ${isWalletOrder ? `คืนเงิน ฿${order.grandTotal} ให้ลูกค้าแล้ว` : 'ไม่มีการตัดเงิน'}`, 'info');
   };
 
   const requestCancelOrder = (orderId, reason) => {

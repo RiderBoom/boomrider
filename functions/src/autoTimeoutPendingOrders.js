@@ -200,7 +200,7 @@ const autoTimeoutPendingOrders = onSchedule(
     try {
       snap = await db.collection('orders')
         .where('status', '==', 'pending')
-        .where('createdAt', '<', cutoffStamp)
+        .where('updatedAt', '<', cutoffStamp)
         .get();
     } catch (err) {
       logger.error(`[autoTimeout] query failed: ${err?.message}`);

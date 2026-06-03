@@ -2,7 +2,7 @@ import {
   doc, setDoc, getDoc, updateDoc, deleteDoc,
   collection, getDocs, addDoc,
   serverTimestamp, query, orderBy, limit, where, Timestamp,
-  runTransaction, onSnapshot,
+  runTransaction, onSnapshot, writeBatch,
   increment, arrayUnion,
 } from 'firebase/firestore';
 import { db } from './config';
@@ -1069,6 +1069,74 @@ export const subscribeToPromoCodes = (callback) => {
   return onSnapshot(doc(db, 'system', 'promo_codes'), (snap) => {
     callback(snap.exists() ? (snap.data().codes || []) : []);
   }, () => { callback([]); });
+};
+
+// ── Single order loader — used for availability pre-check before non-tx accept ─
+export const loadOrder = async (orderId) => {
+  try {
+    const snap = await getDoc(doc(db, 'orders', String(orderId)));
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; }
+};
+
+/**
+ * cancelOrderBatch — atomic multi-collection cancel + refund
+ * Combines order status update, wallet credit, wallet entry, and transaction log
+ * into a single Firestore WriteBatch so partial failures are impossible.
+ *
+ * @param {string} orderId
+ * @param {{ cancelReason, customerId, refundAmount, refundDesc }} opts
+ */
+export const cancelOrderBatch = async (orderId, {
+  cancelReason = '',
+  customerId   = null,
+  refundAmount = 0,
+  refundDesc   = '',
+} = {}) => {
+  const batch = writeBatch(db);
+
+  batch.update(doc(db, 'orders', String(orderId)), {
+    status: 'cancelled',
+    cancelReason,
+    updatedAt: serverTimestamp(),
+  });
+
+  if (customerId && refundAmount > 0) {
+    const entry = {
+      id:          `${customerId.slice(-4)}_${Date.now()}`,
+      type:        'refund',
+      amount:      refundAmount,
+      date:        formatDateTime(),
+      createdAtMs: Date.now(),
+      desc:        refundDesc,
+    };
+
+    batch.set(doc(db, 'wallets', customerId), {
+      balance:   increment(refundAmount),
+      history:   arrayUnion(entry),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    batch.set(doc(collection(db, 'wallets', customerId, 'entries')), {
+      type:      'refund',
+      amount:    refundAmount,
+      desc:      refundDesc,
+      date:      entry.date,
+      createdAt: serverTimestamp(),
+    });
+
+    batch.set(doc(collection(db, 'transactions')), {
+      type:      'wallet_refund',
+      orderId,
+      userId:    customerId,
+      amount:    refundAmount,
+      desc:      refundDesc,
+      date:      entry.date,
+      createdAt: serverTimestamp(),
+    });
+  }
+
+  await batch.commit();
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
