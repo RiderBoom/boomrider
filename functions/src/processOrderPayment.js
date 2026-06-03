@@ -92,6 +92,12 @@ const processOrderPayment = onDocumentWritten(
     const shopOwnerUid = order.merchantUid  || null;
     const restName     = order.restaurantName || (order.type === 'parcel' ? 'พัสดุ' : '');
 
+    if (!shopOwnerUid) {
+      logger.warn(`[processOrderPayment] ${orderId} — shopOwnerUid is null: merchant will NOT be credited. Check restaurant.ownerId for restaurantId=${order.restaurantId}`);
+    }
+    if (!riderUid) {
+      logger.warn(`[processOrderPayment] ${orderId} — riderUid is null: rider will NOT be credited.`);
+    }
     logger.info(`[processOrderPayment] ${orderId} — rider=${riderUid} merchant=${shopOwnerUid} admin=${ADMIN_UID} | riderIncome=${riderIncome} merchantIncome=${merchantIncome} adminGP=${adminGP}`);
 
     // ── 6. Mark order as processed (idempotency) within a transaction ─────

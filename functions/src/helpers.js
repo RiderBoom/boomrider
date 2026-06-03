@@ -14,20 +14,14 @@ const formatDateTH = () => {
 
 const creditWallet = async (userId, amount, desc) => {
   if (!userId || !amount) return;
-  const db    = getFirestore();
-  const ref   = db.collection('wallets').doc(userId);
-  const entry = {
-    id:          `${userId.slice(-4)}_${Date.now()}`,
-    type:        amount > 0 ? 'deposit' : 'withdraw',
-    amount,
-    date:        formatDateTH(),
-    createdAtMs: Date.now(),
-    desc,
-  };
+  const db  = getFirestore();
+  const ref = db.collection('wallets').doc(userId);
+  // Only update balance — history is written exclusively via addEntry() to the
+  // entries subcollection, which is the canonical source for walletHistory display.
+  // Writing to the embedded history array was redundant and grew the wallet document.
   await ref.set(
     {
       balance:   FieldValue.increment(amount),
-      history:   FieldValue.arrayUnion(entry),
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },

@@ -478,6 +478,24 @@ export default function RiderView() {
               </div>
             )}
 
+            {/* ⚠️ คำเตือนกระเป๋าติดลบ (cash orders) */}
+            {job.paymentMethod === 'cash' && (() => {
+              const netChange = (job.riderIncome || 0) - (job.merchantIncome || 0) - (job.adminGP || 0);
+              if (netChange < 0 && (userWallet ?? 0) + netChange < 0) {
+                const shortfall = Math.ceil(Math.abs((userWallet ?? 0) + netChange));
+                return (
+                  <div className="bg-red-900/40 border border-red-700/50 rounded-xl px-3 py-2.5 mb-3">
+                    <p className="text-red-300 text-xs font-bold">⚠️ กระเป๋าจะติดลบหลังส่งสำเร็จ</p>
+                    <p className="text-red-400 text-xs mt-0.5">
+                      กระเป๋าปัจจุบัน ฿{(userWallet ?? 0).toLocaleString()} — ขาด ฿{shortfall.toLocaleString()} เพื่อชำระยอดอาหาร+GP ให้ platform
+                    </p>
+                    <p className="text-gray-500 text-[10px] mt-0.5">ยังรับงานได้ แต่กระเป๋าจะติดลบ</p>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {/* ปุ่มรับงาน */}
             <button
               disabled={acceptingId === job.id}

@@ -524,24 +524,21 @@ export const checkEmailExists = async (email) => {
 export const creditWalletInDB = async (userId, amount, desc) => {
   if (!userId || !amount) return;
   const ref = doc(db, 'wallets', userId);
-  // ใช้ increment() + arrayUnion() เพื่อ:
-  // 1) ไม่ต้อง getDoc ก่อน → ไม่ต้องการ READ permission บน wallet ของคนอื่น
-  // 2) atomic — ไม่มี race condition แม้ write พร้อมกันหลายฝ่าย
-  // 3) Firestore rule: allow write ถ้า balance เพิ่ม (ทุก auth user ทำได้) หรือ isOwner
-  const entry = {
-    id: `${userId.slice(-4)}_${Date.now()}`,
-    type: amount > 0 ? 'deposit' : 'withdraw',
-    amount,
-    date: formatDateTime(),
-    createdAtMs: Date.now(),
-    desc,
-  };
   try {
+    // 1) Atomic balance update — no read needed, no race condition
     await setDoc(ref, {
       balance:   increment(amount),
-      history:   arrayUnion(entry),
       updatedAt: serverTimestamp(),
     }, { merge: true });
+    // 2) History stored in entries subcollection only (canonical source for walletHistory)
+    await addDoc(collection(db, 'wallets', userId, 'entries'), {
+      type:        amount > 0 ? 'deposit' : 'withdraw',
+      amount,
+      desc,
+      date:        formatDateTime(),
+      createdAtMs: Date.now(),
+      createdAt:   serverTimestamp(),
+    });
     return true;
   } catch (err) {
     if (import.meta.env.DEV) console.error('[creditWalletInDB]', err?.code, err?.message);
@@ -1114,27 +1111,20 @@ export const cancelOrderBatch = async (orderId, {
   });
 
   if (customerId && refundAmount > 0) {
-    const entry = {
-      id:          `${customerId.slice(-4)}_${Date.now()}`,
-      type:        'refund',
-      amount:      refundAmount,
-      date:        formatDateTime(),
-      createdAtMs: Date.now(),
-      desc:        refundDesc,
-    };
-
+    // Balance update only — history goes to entries subcollection below
     batch.set(doc(db, 'wallets', customerId), {
       balance:   increment(refundAmount),
-      history:   arrayUnion(entry),
       updatedAt: serverTimestamp(),
     }, { merge: true });
 
+    const _now = Date.now();
     batch.set(doc(collection(db, 'wallets', customerId, 'entries')), {
-      type:      'refund',
-      amount:    refundAmount,
-      desc:      refundDesc,
-      date:      entry.date,
-      createdAt: serverTimestamp(),
+      type:        'refund',
+      amount:      refundAmount,
+      desc:        refundDesc,
+      date:        formatDateTime(),
+      createdAtMs: _now,
+      createdAt:   serverTimestamp(),
     });
 
     batch.set(doc(collection(db, 'transactions')), {

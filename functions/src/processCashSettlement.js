@@ -85,6 +85,12 @@ const processCashSettlement = onDocumentWritten(
     const shopOwnerUid = order.merchantUid || null;
     const restName     = order.restaurantName || (order.type === 'parcel' ? 'พัสดุ' : '');
 
+    if (!shopOwnerUid) {
+      logger.warn(`[processCashSettlement] ${orderId} — shopOwnerUid is null: merchant will NOT be credited. Check restaurant.ownerId for restaurantId=${order.restaurantId}`);
+    }
+    if (!riderUid) {
+      logger.warn(`[processCashSettlement] ${orderId} — riderUid is null: cash settlement cannot debit rider or credit merchant correctly.`);
+    }
     logger.info(`[processCashSettlement] ${orderId} — rider=${riderUid} merchant=${shopOwnerUid} | riderIncome=${riderIncome} merchantIncome=${merchantIncome} adminGP=${adminGP}`);
 
     // ── Mark as settled atomically ────────────────────────────────────────

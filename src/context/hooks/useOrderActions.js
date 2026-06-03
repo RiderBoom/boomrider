@@ -67,6 +67,13 @@ export function useOrderActions(deps) {
       placingOrderRef.current = false;
       return notifySystem('ยอดเงินไม่พอ', 'กรุณาเติมเงินหรือเลือกชำระเงินสด', 'error');
     }
+    const restaurantData = restaurants.find(r => r.id === cart[0].restaurantId);
+    const merchantUid    = restaurantData?.ownerId || null;
+    if (!merchantUid) {
+      placingOrderRef.current = false;
+      return notifySystem('ร้านยังไม่พร้อม', 'ร้านนี้ยังไม่มีเจ้าของในระบบ กรุณาติดต่อ Admin', 'error');
+    }
+
     const adminGP        = totalRawGP - effectivePromo;
     const merchantIncome = foodTotal - rawFoodGP;
     const riderIncome    = deliveryFee - rawDeliveryGP;
@@ -85,8 +92,8 @@ export function useOrderActions(deps) {
       riderIncome,
       restaurantId: cart[0].restaurantId,
       restaurantName: cart[0].restaurantName,
-      restaurantPhone: restaurants.find(r => r.id === cart[0].restaurantId)?.phone || '',
-      merchantUid: restaurants.find(r => r.id === cart[0].restaurantId)?.ownerId || null,
+      restaurantPhone: restaurantData?.phone || '',
+      merchantUid,
       notes: notes ? notes.trim().substring(0, 200) : '',
       status: 'pending',
       customerName: userProfile.name,
