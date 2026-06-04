@@ -4,7 +4,7 @@ import {
   loadAllOrders, loadPendingRequests, savePendingRequest, safeLocalSet,
   cancelOrderBatch, loadOrder,
 } from '../../firebase/firestore';
-import { generateId, formatDateTime } from '../../utils';
+import { generateId, formatDateTime, r2 } from '../../utils';
 import { FIREBASE_ENABLED, ADMIN_UID, USER_LOCATION } from '../../constants';
 
 export function useOrderActions(deps) {
@@ -117,7 +117,7 @@ export function useOrderActions(deps) {
       const _desc = `ชำระค่าอาหาร (${restaurantName})`;
       if (FIREBASE_ENABLED && uid) {
         // creditWalletInDB handles Firestore balance + history entry atomically (single entry)
-        setUserWallet(prev => prev - grandTotal);
+        setUserWallet(prev => r2(prev - grandTotal));
         creditWalletInDB(uid, -grandTotal, _desc).catch(() => {});
       } else {
         processTransaction('payment', -grandTotal, _desc);
@@ -202,7 +202,7 @@ export function useOrderActions(deps) {
     if (paymentMethod === 'wallet') {
       const uid = currentUser?.id || userProfile?.id;
       if (FIREBASE_ENABLED && uid) {
-        setUserWallet(prev => prev - grandTotal);
+        setUserWallet(prev => r2(prev - grandTotal));
         creditWalletInDB(uid, -grandTotal, 'ชำระค่าส่งพัสดุ').catch(() => {});
       } else {
         processTransaction('payment', -grandTotal, 'ชำระค่าส่งพัสดุ');
@@ -413,7 +413,7 @@ export function useOrderActions(deps) {
           if (riderUid     && riderUid     === myUidNow && riderIncome    > 0) localDelta += riderIncome;
           if (shopOwnerUid && shopOwnerUid === myUidNow && merchantIncome > 0) localDelta += merchantIncome;
           if (ADMIN_UID    && ADMIN_UID    === myUidNow && gpAmount       > 0) localDelta += gpAmount;
-          if (localDelta > 0) setUserWallet(prev => prev + localDelta);
+          if (localDelta > 0) setUserWallet(prev => r2(prev + localDelta));
         } else {
           // Firebase disabled — no Cloud Functions, so write everything client-side.
           if (riderUid     && riderIncome    > 0) {

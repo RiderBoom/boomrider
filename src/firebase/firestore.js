@@ -523,11 +523,13 @@ export const checkEmailExists = async (email) => {
  */
 export const creditWalletInDB = async (userId, amount, desc) => {
   if (!userId || !amount) return;
+  const rounded = Math.round(amount * 100) / 100;
+  if (!rounded) return;
   const ref = doc(db, 'wallets', userId);
   try {
     // 1) Atomic balance update — no read needed, no race condition
     await setDoc(ref, {
-      balance:   increment(amount),
+      balance:   increment(rounded),
       updatedAt: serverTimestamp(),
     }, { merge: true });
     // 2) History stored in entries subcollection only (canonical source for walletHistory)

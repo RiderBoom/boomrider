@@ -14,14 +14,13 @@ const formatDateTH = () => {
 
 const creditWallet = async (userId, amount, desc) => {
   if (!userId || !amount) return;
+  const rounded = Math.round(amount * 100) / 100;
+  if (!rounded) return;
   const db  = getFirestore();
   const ref = db.collection('wallets').doc(userId);
-  // Only update balance — history is written exclusively via addEntry() to the
-  // entries subcollection, which is the canonical source for walletHistory display.
-  // Writing to the embedded history array was redundant and grew the wallet document.
   await ref.set(
     {
-      balance:   FieldValue.increment(amount),
+      balance:   FieldValue.increment(rounded),
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },

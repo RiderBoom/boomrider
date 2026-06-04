@@ -3,7 +3,7 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, FIREBASE_ENABLED, ADMIN_UID,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime, r2 } from '../utils';
 import {
   loginWithEmail, registerWithEmail, loginWithGoogle, logout as firebaseLogout, onAuthChange,
 } from '../firebase/auth';
@@ -492,7 +492,7 @@ export function AppProvider({ children }) {
       setTempProfile(user.profile);
       setUserRoles(mergedRoles);
       const gw = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}')[user.id];
-      setUserWallet(gw?.balance ?? user.wallet ?? 0);
+      setUserWallet(r2(gw?.balance ?? user.wallet ?? 0));
       setWalletAllEntries(gw?.history ?? user.walletHistory ?? []);
       setUserAddresses(user.addresses || []);
     }
@@ -946,7 +946,7 @@ export function AppProvider({ children }) {
           walletUnsubRef.current = subscribeToWallet(firebaseUser.uid, (data) => {
             walletFromFirestoreRef.current = true;
             walletSubscribedRef.current = true;
-            setUserWallet(data.balance ?? 0);
+            setUserWallet(r2(data.balance ?? 0));
             setWalletClearedAt(data.historyClearedAt || null);
           });
           walletEntriesUnsubRef.current = subscribeToWalletEntries(firebaseUser.uid, (entries) => {
@@ -976,7 +976,7 @@ export function AppProvider({ children }) {
           try {
             const cloudWallet = await loadWallet(firebaseUser.uid);
             if (cloudWallet) {
-              setUserWallet(cloudWallet.balance ?? 0);
+              setUserWallet(r2(cloudWallet.balance ?? 0));
               setWalletAllEntries(cloudWallet.history ?? []);
             }
           } catch (_) {}
@@ -1343,7 +1343,7 @@ export function AppProvider({ children }) {
         };
         localStorage.setItem('boomrider_user', JSON.stringify(user));
         setCurrentUser(user); setIsLoggedIn(true); setUserProfile(profile); setTempProfile(profile);
-        setUserRoles(finalRoles); setUserWallet(user.wallet); setWalletAllEntries(user.walletHistory ?? []); setUserAddresses(user.addresses);
+        setUserRoles(finalRoles); setUserWallet(r2(user.wallet)); setWalletAllEntries(user.walletHistory ?? []); setUserAddresses(user.addresses);
         notifySystem('สำเร็จ', 'เข้าสู่ระบบเรียบร้อย!', 'success');
         return;
       } catch (err) {
@@ -1363,7 +1363,7 @@ export function AppProvider({ children }) {
     const updatedUser = { ...user, roles: localFinalRoles };
     localStorage.setItem('boomrider_user', JSON.stringify(updatedUser));
     setCurrentUser(updatedUser); setIsLoggedIn(true); setUserProfile(user.profile); setTempProfile(user.profile);
-    setUserRoles(localFinalRoles); setUserWallet(user.wallet); setWalletAllEntries(user.walletHistory ?? []); setUserAddresses(user.addresses);
+    setUserRoles(localFinalRoles); setUserWallet(r2(user.wallet)); setWalletAllEntries(user.walletHistory ?? []); setUserAddresses(user.addresses);
     notifySystem('สำเร็จ', 'เข้าสู่ระบบเรียบร้อย!', 'success');
   };
 
@@ -1434,7 +1434,7 @@ export function AppProvider({ children }) {
     localStorage.setItem('boomrider_users', JSON.stringify(users));
     localStorage.setItem('boomrider_user', JSON.stringify(newUser));
     setCurrentUser(newUser); setIsLoggedIn(true); setUserProfile(newUser.profile); setTempProfile(newUser.profile);
-    setUserRoles(newUser.roles); setUserWallet(newUser.wallet); setWalletAllEntries(newUser.walletHistory ?? []); setUserAddresses(newUser.addresses);
+    setUserRoles(newUser.roles); setUserWallet(r2(newUser.wallet)); setWalletAllEntries(newUser.walletHistory ?? []); setUserAddresses(newUser.addresses);
     notifySystem('สำเร็จ', 'สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ', 'success');
   };
 

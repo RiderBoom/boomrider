@@ -1,7 +1,7 @@
 import {
   creditWalletInDB, addWalletEntry, savePendingRequest,
 } from '../../firebase/firestore';
-import { generateId, formatDateTime } from '../../utils';
+import { generateId, formatDateTime, r2 } from '../../utils';
 import { FIREBASE_ENABLED } from '../../constants';
 
 export function useWalletActions(deps) {
@@ -41,7 +41,7 @@ export function useWalletActions(deps) {
       };
     });
     if (currentUser?.id === userId) {
-      setUserWallet(prev => prev + amount);
+      setUserWallet(prev => r2(prev + amount));
       if (!FIREBASE_ENABLED) {
         setWalletAllEntries(prev => [
           { id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: formatDateTime(), desc, createdAtMs: Date.now() },
@@ -52,7 +52,7 @@ export function useWalletActions(deps) {
   };
 
   const processTransaction = (type, amount, description) => {
-    setUserWallet(prev => prev + amount);
+    setUserWallet(prev => r2(prev + amount));
     const entry = { id: generateId(), type, amount, date: formatDateTime(), desc: description, createdAtMs: Date.now() };
     if (!FIREBASE_ENABLED) setWalletAllEntries(prev => [entry, ...prev]);
     if (FIREBASE_ENABLED) {

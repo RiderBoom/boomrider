@@ -2,6 +2,9 @@
 
 export const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+/** ปัดเศษทศนิยม 2 ตำแหน่ง — ป้องกัน floating-point artifact ในยอดกระเป๋าเงิน */
+export const r2 = (n) => Math.round((n ?? 0) * 100) / 100;
+
 const _pad = n => String(n).padStart(2, '0');
 const _fmt = (d) => `${_pad(d.getDate())}/${_pad(d.getMonth()+1)}/${d.getFullYear()} ${_pad(d.getHours())}:${_pad(d.getMinutes())}:${_pad(d.getSeconds())}`;
 
