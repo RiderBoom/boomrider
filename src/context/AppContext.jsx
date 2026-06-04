@@ -7,7 +7,7 @@ import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDat
 import {
   loginWithEmail, registerWithEmail, loginWithGoogle, logout as firebaseLogout, onAuthChange,
 } from '../firebase/auth';
-import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from '../firebase/messaging';
+import { requestNotificationPermission, onForegroundMessage, saveFcmToken, refreshFcmTokenIfNeeded } from '../firebase/messaging';
 import { deleteFile } from '../firebase/storage';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders, loadOrdersByRole,
@@ -986,7 +986,17 @@ export function AppProvider({ children }) {
           const fcmToken = await requestNotificationPermission();
           if (fcmToken) await saveFcmToken(firebaseUser.uid, fcmToken);
         } catch (_) {}
+
+        // Auto-refresh FCM token เมื่อ existing session โหลด (ไม่ขอ permission ซ้ำ)
+        refreshFcmTokenIfNeeded(firebaseUser.uid).catch(() => {});
       });
+
+      // Periodic FCM token refresh ทุก 24 ชั่วโมง ตลอดเวลาที่ app เปิดอยู่
+      const fcmRefreshInterval = setInterval(() => {
+        const uid = currentUserRef.current?.id;
+        if (uid) refreshFcmTokenIfNeeded(uid).catch(() => {});
+      }, 24 * 60 * 60 * 1000);
+
       // foreground message listener — store unsubscribe to prevent multiple registrations
       let unsubForeground = () => {};
       onForegroundMessage((msg) => {
@@ -1000,6 +1010,7 @@ export function AppProvider({ children }) {
       return () => {
         unsubscribe();
         unsubForeground();
+        clearInterval(fcmRefreshInterval);
         if (window.__boomriderUnsubOrders)  { window.__boomriderUnsubOrders();  window.__boomriderUnsubOrders  = null; }
         if (window.__boomriderUnsubPending) { window.__boomriderUnsubPending(); window.__boomriderUnsubPending = null; }
         if (window.__boomriderUnsubChats)   { window.__boomriderUnsubChats();   window.__boomriderUnsubChats   = null; }
