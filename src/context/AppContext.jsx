@@ -518,7 +518,7 @@ export function AppProvider({ children }) {
         // BUG-FIX: was block-scoped inside if(!isExistingSession), causing ReferenceError on
         // page reload (existing session) → subscriptions never started, no real-time updates.
         const allRolesMap  = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-        const storedRoles  = allRolesMap[firebaseUser.uid] || saved?.roles || ['customer'];
+        const storedRoles  = allRolesMap[firebaseUser.uid] || ['customer'];
         const baseRoles    = ADMIN_UID && firebaseUser.uid === ADMIN_UID
           ? [...new Set([...storedRoles, 'admin'])]
           : storedRoles;
@@ -1328,10 +1328,10 @@ export function AppProvider({ children }) {
           phone: fbUser.phoneNumber || saved?.phone || '', email: fbUser.email || loginForm.email,
           image: fbUser.photoURL || saved?.profile?.image || null, location: USER_LOCATION,
         };
-        const loginRoles = ADMIN_UID && fbUser.uid === ADMIN_UID ? ['customer', 'admin'] : (saved?.roles || ['customer']);
         const wallets    = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
         const gw         = wallets[fbUser.uid];
         const allRoles   = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
+        const loginRoles = ADMIN_UID && fbUser.uid === ADMIN_UID ? ['customer', 'admin'] : (allRoles[fbUser.uid] || ['customer']);
         const savedRoles = allRoles[fbUser.uid] || loginRoles;
         const finalRoles = ADMIN_UID && fbUser.uid === ADMIN_UID ? [...new Set([...savedRoles, 'admin'])] : savedRoles;
         const user = {
