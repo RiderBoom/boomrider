@@ -8,8 +8,7 @@
  *  1. runTransaction (idempotency guard via `timeoutProcessed: true`)
  *  2. Set status → 'cancelled_timeout'
  *  3. If paymentMethod == 'wallet': refund grandTotal to customer wallet
- *  4. Write refund to wallet_transactions collection
- *  5. Send FCM push to customer
+ *  4. Send FCM push to customer
  *
  * Race condition safety: the runTransaction re-reads the order inside the
  * transaction. If another process already set timeoutProcessed or changed
@@ -130,21 +129,6 @@ const processTimedOutOrder = async (db, orderDoc) => {
     sideEffects.push(
       addEntry(customerId, 'refund', amount, refundDesc).catch((err) =>
         logger.error(`[autoTimeout] addEntry failed ${orderId}: ${err?.message}`),
-      ),
-    );
-
-    // wallet_transactions collection (as requested)
-    sideEffects.push(
-      getFirestore().collection('wallet_transactions').add({
-        orderId,
-        customerId,
-        type:      'refund',
-        amount,
-        reason:    'order_timeout',
-        desc:      refundDesc,
-        createdAt: FieldValue.serverTimestamp(),
-      }).catch((err) =>
-        logger.error(`[autoTimeout] wallet_transactions write failed ${orderId}: ${err?.message}`),
       ),
     );
 
