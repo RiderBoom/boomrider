@@ -1151,6 +1151,53 @@ export const cancelOrderBatch = async (orderId, {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ADMIN: Bulk Data Purge — ลบข้อมูลออกจาก Firestore ถาวร (Admin only)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const PURGE_BATCH_SIZE = 400; // < 500 limit
+
+const _deleteDocs = async (refs) => {
+  for (let i = 0; i < refs.length; i += PURGE_BATCH_SIZE) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + PURGE_BATCH_SIZE).forEach(ref => batch.delete(ref));
+    await batch.commit();
+  }
+};
+
+/** ลบ orders ทั้งหมดออกจาก Firestore */
+export const purgeOrders = async () => {
+  const snap = await getDocs(collection(db, 'orders'));
+  await _deleteDocs(snap.docs.map(d => d.ref));
+  return snap.size;
+};
+
+/** ลบ transactions ทั้งหมดออกจาก Firestore */
+export const purgeTransactions = async () => {
+  const snap = await getDocs(collection(db, 'transactions'));
+  await _deleteDocs(snap.docs.map(d => d.ref));
+  return snap.size;
+};
+
+/** ลบ wallet entries (ประวัติเงิน) ของทุก user — ไม่แตะ balance */
+export const purgeWalletEntries = async () => {
+  const walletsSnap = await getDocs(collection(db, 'wallets'));
+  let total = 0;
+  for (const walletDoc of walletsSnap.docs) {
+    const entriesSnap = await getDocs(collection(db, 'wallets', walletDoc.id, 'entries'));
+    await _deleteDocs(entriesSnap.docs.map(d => d.ref));
+    total += entriesSnap.size;
+  }
+  return total;
+};
+
+/** ลบ pending_requests ทั้งหมดออกจาก Firestore */
+export const purgePendingRequests = async () => {
+  const snap = await getDocs(collection(db, 'pending_requests'));
+  await _deleteDocs(snap.docs.map(d => d.ref));
+  return snap.size;
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ADMIN NOTIFICATIONS — admin_notifs collection (cross-device)
 // ══════════════════════════════════════════════════════════════════════════════
 

@@ -7,10 +7,11 @@ import {
   Image as ImageIcon, Ban, X, Users, BarChart2, Tag,
   TrendingUp, ShoppingBag, Star, PlusCircle, Trash2,
   ToggleLeft, ToggleRight, Wallet, AlertCircle, List,
+  DatabaseZap, ShieldOff, CheckSquare, Square,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, FIREBASE_ENABLED, ADMIN_UID } from '../constants';
-import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries, fixAllWalletBalances, loadAllUsers } from '../firebase/firestore';
+import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries, fixAllWalletBalances, loadAllUsers, purgeOrders, purgeTransactions, purgeWalletEntries, purgePendingRequests } from '../firebase/firestore';
 import { formatDateTimeFromMs } from '../utils';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
@@ -179,6 +180,62 @@ export default function AdminView() {
   };
 
   const [fixWalletStatus, setFixWalletStatus] = useState(null);
+
+  // ── Purge state ───────────────────────────────────────────────────────────
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purgeOptions, setPurgeOptions] = useState({
+    orders: true,
+    transactions: true,
+    walletEntries: true,
+    pendingRequests: false,
+  });
+  const [purgeLoading, setPurgeLoading] = useState(false);
+  const [purgeResult, setPurgeResult] = useState(null);
+
+  const togglePurge = (key) => setPurgeOptions(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const handlePurge = async () => {
+    setPurgeLoading(true);
+    setPurgeResult(null);
+    const results = {};
+    try {
+      if (FIREBASE_ENABLED) {
+        if (purgeOptions.orders)          results.orders          = await purgeOrders();
+        if (purgeOptions.transactions)    results.transactions    = await purgeTransactions();
+        if (purgeOptions.walletEntries)   results.walletEntries   = await purgeWalletEntries();
+        if (purgeOptions.pendingRequests) results.pendingRequests = await purgePendingRequests();
+      }
+      // Clear matching localStorage data
+      if (purgeOptions.orders) {
+        localStorage.removeItem('boomrider_orders');
+      }
+      if (purgeOptions.walletEntries) {
+        try {
+          const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+          Object.keys(wallets).forEach(uid => { wallets[uid] = { ...wallets[uid], history: [] }; });
+          localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
+        } catch {}
+      }
+      if (purgeOptions.pendingRequests) {
+        localStorage.removeItem('boomrider_pending_requests');
+      }
+      const summary = Object.entries(results)
+        .map(([k, n]) => {
+          const labels = { orders: 'ออเดอร์', transactions: 'ธุรกรรม', walletEntries: 'ประวัติกระเป๋า', pendingRequests: 'คำขอรอดำเนินการ' };
+          return `${labels[k] || k}: ${n} รายการ`;
+        })
+        .join(' · ');
+      setPurgeResult({ ok: true, summary: summary || 'เสร็จสิ้น (localStorage)' });
+      notifySystem('ล้างข้อมูล ✅', 'ลบข้อมูลที่เลือกออกจากระบบเรียบร้อยแล้ว', 'success');
+    } catch (err) {
+      setPurgeResult({ ok: false, summary: `ผิดพลาด: ${err?.message || 'unknown'}` });
+      notifySystem('ผิดพลาด', 'ล้างข้อมูลไม่สำเร็จ ลองอีกครั้ง', 'error');
+    } finally {
+      setPurgeLoading(false);
+      setShowPurgeModal(false);
+    }
+  };
+
   const handleFixWalletBalances = async () => {
     if (!window.confirm('ปรับยอด balance ทุก wallet ให้เป็นตัวเลขที่ถูกต้อง (ปัดเศษ 2 ตำแหน่ง) ใช่หรือไม่?')) return;
     setFixWalletStatus('กำลังประมวลผล...');
@@ -1332,10 +1389,112 @@ export default function AdminView() {
               ปัดเศษทศนิยม balance ทุก wallet ให้เป็น 2 ตำแหน่ง และแก้ไข floating-point artifact
             </p>
           </div>
+
+          {/* ── ล้างข้อมูลระบบ ─────────────────────────────────────────── */}
+          <div className="mt-6 border-t pt-6">
+            <h3 className="font-bold text-red-600 border-b border-red-100 pb-2 mb-4 flex items-center gap-2">
+              <DatabaseZap size={16} /> ล้างข้อมูลระบบ (ถาวร)
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">เลือกประเภทข้อมูลที่ต้องการลบออกจากระบบอย่างถาวร ข้อมูลที่ลบแล้วไม่สามารถกู้คืนได้</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+              {[
+                { key: 'orders',          label: 'ออเดอร์ทั้งหมด',              sub: 'orders collection + localStorage',             color: 'red' },
+                { key: 'transactions',    label: 'ประวัติธุรกรรมทั้งหมด',        sub: 'transactions collection',                      color: 'orange' },
+                { key: 'walletEntries',   label: 'ประวัติเงินเข้า-ออกทั้งหมด',   sub: 'wallet entries (ไม่กระทบยอดเงินคงเหลือ)',      color: 'yellow' },
+                { key: 'pendingRequests', label: 'คำขอรอดำเนินการ',              sub: 'pending_requests (เติมเงิน/ถอน/สมัคร)',         color: 'purple' },
+              ].map(({ key, label, sub, color }) => {
+                const colorMap = {
+                  red:    'border-red-200 bg-red-50',
+                  orange: 'border-orange-200 bg-orange-50',
+                  yellow: 'border-yellow-200 bg-yellow-50',
+                  purple: 'border-purple-200 bg-purple-50',
+                };
+                const checked = purgeOptions[key];
+                return (
+                  <button
+                    key={key}
+                    onClick={() => togglePurge(key)}
+                    className={`flex items-start gap-3 p-3 rounded-xl border-2 text-left transition-all ${checked ? colorMap[color] : 'border-gray-100 bg-gray-50'}`}
+                  >
+                    {checked
+                      ? <CheckSquare size={18} className={`mt-0.5 shrink-0 text-${color}-600`} />
+                      : <Square size={18} className="mt-0.5 shrink-0 text-gray-300" />
+                    }
+                    <div>
+                      <p className="font-semibold text-sm text-gray-800">{label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => {
+                  const anySelected = Object.values(purgeOptions).some(Boolean);
+                  if (!anySelected) return notifySystem('ผิดพลาด', 'กรุณาเลือกประเภทข้อมูลอย่างน้อย 1 รายการ', 'error');
+                  setShowPurgeModal(true);
+                }}
+                className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm shadow hover:bg-red-700 transition-colors"
+              >
+                <Trash2 size={15} /> ล้างข้อมูลที่เลือก
+              </button>
+              {purgeResult && (
+                <span className={`text-sm px-3 py-1.5 rounded-lg border ${purgeResult.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                  {purgeResult.summary}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       {/* ── MODALS ────────────────────────────────────────────────────── */}
+
+      {showPurgeModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-100 rounded-full"><ShieldOff size={22} className="text-red-600" /></div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">ยืนยันการลบข้อมูล</h3>
+                <p className="text-xs text-red-500 font-medium">ข้อมูลจะถูกลบถาวร กู้คืนไม่ได้</p>
+              </div>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-5 space-y-1.5">
+              {purgeOptions.orders          && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ออเดอร์ทั้งหมด</p>}
+              {purgeOptions.transactions    && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ประวัติธุรกรรมทั้งหมด</p>}
+              {purgeOptions.walletEntries   && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ประวัติเงินเข้า-ออกทั้งหมด</p>}
+              {purgeOptions.pendingRequests && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> คำขอรอดำเนินการทั้งหมด</p>}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowPurgeModal(false)}
+                disabled={purgeLoading}
+                className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handlePurge}
+                disabled={purgeLoading}
+                className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+              >
+                {purgeLoading ? (
+                  <><span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> กำลังลบ...</>
+                ) : (
+                  <><Trash2 size={15} /> ยืนยันลบถาวร</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCancelModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-sm">
