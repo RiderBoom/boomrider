@@ -689,6 +689,8 @@ export function AppProvider({ children }) {
                   co.status === 'pending' && co.restaurantId === myShop.id && !seenOrderIdsRef.current.has(co.id),
                 );
                 if (newMerchantOrders.length > 0) {
+                  // Auto-switch merchant to the "orders" tab so they see the order immediately
+                  setMerchantTab('orders');
                   playNotificationSound('order');
                   setTimeout(() => notifySystem('🛎️ ออเดอร์ใหม่เข้าร้าน!', `มี ${newMerchantOrders.length} ออเดอร์ใหม่รอยืนยัน`, 'warning'), 0);
                 }
@@ -702,6 +704,8 @@ export function AppProvider({ children }) {
                 );
                 if (newJobs.length > 0) {
                   newJobs.forEach(co => seenOrderIdsRef.current.add(co.id));
+                  // Auto-switch rider to the "jobs" tab so the new job is visible immediately
+                  setRiderTab('jobs');
                   playNotificationSound('order');
                   const first = newJobs[0];
                   const dest = first.type === 'parcel'
