@@ -118,22 +118,12 @@ const processCashSettlement = onDocumentWritten(
     const now  = `${_p(_d.getDate())}/${_p(_d.getMonth()+1)}/${_d.getFullYear()} ${_p(_d.getHours())}:${_p(_d.getMinutes())}`;
     const jobs = [];
 
-    if (riderUid) {
-      // Cash order: rider already received grandTotal as physical cash from the customer.
-      // Rider keeps riderIncome as cash (no wallet credit).
-      // Rider owes the platform: merchantIncome (food portion) + adminGP (platform GP).
-      if (merchantIncome > 0) {
-        jobs.push(creditWallet(riderUid, -merchantIncome, `โอนยอดอาหาร(สด) ${restName} ${shortId}`));
-        jobs.push(addEntry(riderUid, 'expense', -merchantIncome, `โอนยอดอาหาร(สด) ${restName} ${shortId}`));
-      }
-      if (adminGP > 0) {
-        jobs.push(creditWallet(riderUid, -adminGP, `หัก GP(สด) ${restName} ${shortId}`));
-        jobs.push(addEntry(riderUid, 'expense', -adminGP, `หัก GP(สด) ${restName} ${shortId}`));
-      }
-    }
-    if (shopOwnerUid && merchantIncome > 0) {
-      jobs.push(creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน(สด) ${restName} ${shortId}`));
-      jobs.push(addEntry(shopOwnerUid, 'income', merchantIncome, `รายได้ร้าน(สด) ${restName} ${shortId}`));
+    // Cash order: rider collected grandTotal as physical cash from the customer.
+    // Merchant receives food portion as physical cash from the rider — no wallet credit.
+    // Only the platform GP is settled digitally: deducted from rider, credited to admin.
+    if (riderUid && adminGP > 0) {
+      jobs.push(creditWallet(riderUid, -adminGP, `หัก GP(สด) ${restName} ${shortId}`));
+      jobs.push(addEntry(riderUid, 'expense', -adminGP, `หัก GP(สด) ${restName} ${shortId}`));
     }
     if (ADMIN_UID && adminGP > 0) {
       jobs.push(creditWallet(ADMIN_UID, adminGP, `GP(สด) ${restName} ${shortId}`));
@@ -144,8 +134,7 @@ const processCashSettlement = onDocumentWritten(
 
     // ── Audit log ─────────────────────────────────────────────────────────
     const txJobs = [];
-    if (merchantIncome > 0 && shopOwnerUid) txJobs.push(saveTransaction({ type: 'merchant_income', orderId, userId: shopOwnerUid, userName: restName            || 'ร้านค้า', role: 'merchant', amount: merchantIncome, desc: `รายได้ร้าน(สด) ${shortId}`,      date: now }));
-    if (adminGP        > 0)                 txJobs.push(saveTransaction({ type: 'admin_gp',         orderId, userId: ADMIN_UID,   userName: 'Admin',                          role: 'admin',    amount: adminGP,        desc: `GP(สด) ${shortId}`,              date: now }));
+    if (adminGP > 0) txJobs.push(saveTransaction({ type: 'admin_gp', orderId, userId: ADMIN_UID, userName: 'Admin', role: 'admin', amount: adminGP, desc: `GP(สด) ${shortId}`, date: now }));
     await Promise.allSettled(txJobs);
 
     logger.info(`[processCashSettlement] ${orderId} cash settled ✓`);

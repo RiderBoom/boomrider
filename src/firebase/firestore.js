@@ -1133,7 +1133,7 @@ export const cancelOrderBatch = async (orderId, {
       userId:    customerId,
       amount:    refundAmount,
       desc:      refundDesc,
-      date:      entry.date,
+      date:      formatDateTime(),
       createdAt: serverTimestamp(),
     });
   }

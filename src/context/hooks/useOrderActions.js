@@ -429,13 +429,14 @@ export function useOrderActions(deps) {
         // FIREBASE_ENABLED=true → CF processCashSettlement handles all wallet writes on 'delivered'.
         // FIREBASE_ENABLED=false → no CF available; handle client-side on 'completed'.
         if (!FIREBASE_ENABLED && !targetOrder.cashSettled) {
-          const shortId_       = targetOrder.id.slice(-6);
-          const merchantIncome = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
-          const gpAmount       = typeof targetOrder.adminGP        === 'number' ? targetOrder.adminGP        : 0;
-          const restName       = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
+          const shortId_  = targetOrder.id.slice(-6);
+          const gpAmount  = typeof targetOrder.adminGP === 'number' ? targetOrder.adminGP : 0;
+          const restName  = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
           setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, cashSettled: true } : o));
-          if (shopOwnerUid && merchantIncome > 0)
-            creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน(สด) ${restName} #${shortId_}`);
+          // Merchant receives physical cash from rider — no wallet credit needed.
+          // Only platform GP settled digitally.
+          if (riderUid && gpAmount > 0)
+            creditWallet(riderUid, -gpAmount, `หัก GP(สด) ${restName} #${shortId_}`);
           if (ADMIN_UID && gpAmount > 0)
             creditWallet(ADMIN_UID, gpAmount, `GP(สด) ${restName} #${shortId_}`);
         }
