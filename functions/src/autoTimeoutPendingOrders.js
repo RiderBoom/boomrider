@@ -196,11 +196,12 @@ const autoTimeoutPendingOrders = onSchedule(
 
     logger.info(`[autoTimeout] scanning pending orders older than ${cutoff.toISOString()}`);
 
+    // Single-field equality query — no composite index needed.
+    // Time filter is applied in-memory after fetch (pending orders are always a small set).
     let snap;
     try {
       snap = await db.collection('orders')
         .where('status', '==', 'pending')
-        .where('updatedAt', '<', cutoffStamp)
         .get();
     } catch (err) {
       logger.error(`[autoTimeout] query failed: ${err?.message}`);
@@ -212,10 +213,23 @@ const autoTimeoutPendingOrders = onSchedule(
       return;
     }
 
-    logger.info(`[autoTimeout] found ${snap.size} candidates`);
+    // Filter timed-out orders in-memory
+    const timedOut = snap.docs.filter(d => {
+      const updatedAt = d.data().updatedAt;
+      if (!updatedAt) return false;
+      const ts = updatedAt.toDate ? updatedAt.toDate() : new Date(updatedAt);
+      return ts < cutoffStamp;
+    });
+
+    if (timedOut.length === 0) {
+      logger.info('[autoTimeout] no timed-out orders found');
+      return;
+    }
+
+    logger.info(`[autoTimeout] found ${timedOut.length} candidates (from ${snap.size} pending)`);
 
     // Process up to 20 at a time to stay well within the 540s timeout
-    const docs    = snap.docs.slice(0, 20);
+    const docs    = timedOut.slice(0, 20);
     const results = await Promise.allSettled(
       docs.map((d) => processTimedOutOrder(db, d)),
     );
