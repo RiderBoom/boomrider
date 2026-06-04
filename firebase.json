@@ -1,15 +1,4 @@
 {
-  "hosting": {
-    "public": "hosting-redirect",
-    "ignore": ["firebase.json", "**/.*"],
-    "redirects": [
-      {
-        "source": "**",
-        "destination": "https://boomrider.vercel.app",
-        "type": 301
-      }
-    ]
-  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

@@ -172,7 +172,7 @@ const processTimedOutOrder = async (db, orderDoc) => {
 // ── Scheduled Function ────────────────────────────────────────────────────────
 
 const autoTimeoutPendingOrders = onSchedule(
-  { schedule: 'every 2 minutes', region: REGION, timeoutSeconds: 540 },
+  { schedule: 'every 10 minutes', region: REGION, timeoutSeconds: 540 },
   async () => {
     const db          = getFirestore();
     const cutoff      = new Date(Date.now() - TIMEOUT_MINUTES * 60 * 1000);
