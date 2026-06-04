@@ -959,10 +959,11 @@ export function AppProvider({ children }) {
       // foreground message listener — store unsubscribe to prevent multiple registrations
       let unsubForeground = () => {};
       onForegroundMessage((msg) => {
+        const oid = msg.data?.orderId ? String(msg.data.orderId) : null;
+        // Skip if Firestore subscription already showed a toast for this order.
+        if (oid && seenOrderIdsRef.current.has(oid)) return;
         notifySystem(msg.title, msg.body, 'info');
-        // Mark the FCM order as seen so the Firestore subscription callback
-        // won't fire a second toast for the same event.
-        if (msg.data?.orderId) seenOrderIdsRef.current.add(String(msg.data.orderId));
+        if (oid) seenOrderIdsRef.current.add(oid);
       }).then((unsub) => { unsubForeground = unsub || (() => {}); }).catch(() => {});
 
       return () => {
