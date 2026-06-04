@@ -546,6 +546,8 @@ export function useOrderActions(deps) {
         prevStatus:     order.status,
         reason:         reason?.trim() || 'ไม่ระบุเหตุผล',
         requestedBy:    role,
+        customerId:     order.customerId     || '',
+        customerName:   order.customerName   || 'ลูกค้า',
       },
     };
     if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});

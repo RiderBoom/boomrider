@@ -107,13 +107,17 @@ export function useAdminActions(deps) {
         }
       }
       if (req.data.paymentMethod === 'wallet' && req.data.grandTotal > 0) {
+        // Use the customer's UID for the refund — req.userId may be the rider/merchant
+        // who submitted the cancel request, not the customer who paid.
+        const refundTo   = targetOrder?.customerId || req.data.customerId || req.userId;
+        const refundName = targetOrder?.customerName || req.data.customerName || req.user;
         const refundDesc = `คืนเงิน: ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)} (Admin อนุมัติ)`;
-        creditWallet(req.userId, req.data.grandTotal, refundDesc);
+        creditWallet(refundTo, req.data.grandTotal, refundDesc);
         if (FIREBASE_ENABLED) {
           const _refDate = formatDateTime();
-          creditWalletInDB(req.userId, req.data.grandTotal, refundDesc).catch(() => {});
-          addWalletEntry(req.userId, { type: 'refund', amount: req.data.grandTotal, desc: refundDesc, date: _refDate }).catch(() => {});
-          saveTransaction({ type: 'wallet_refund', orderId: req.data.orderId, userId: req.userId, userName: req.user, role: 'customer', amount: req.data.grandTotal, desc: refundDesc, date: _refDate }).catch(() => {});
+          creditWalletInDB(refundTo, req.data.grandTotal, refundDesc).catch(() => {});
+          addWalletEntry(refundTo, { type: 'refund', amount: req.data.grandTotal, desc: refundDesc, date: _refDate }).catch(() => {});
+          saveTransaction({ type: 'wallet_refund', orderId: req.data.orderId, userId: refundTo, userName: refundName, role: 'customer', amount: req.data.grandTotal, desc: refundDesc, date: _refDate }).catch(() => {});
         }
       }
       const refundNote = req.data.paymentMethod === 'wallet'
