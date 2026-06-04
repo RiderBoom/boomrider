@@ -665,9 +665,7 @@ export function AppProvider({ children }) {
           shopId: _myShop?.id || null,
         };
 
-        const unsubOrders = subscribeToOrders(
-          orderScope,
-          (cloudOrders) => {
+        const ordersCallback = (cloudOrders) => {
             if (!subInitializedRef.current) {
               cloudOrders.forEach(co => {
                 seenOrderIdsRef.current.add(co.id);
@@ -676,8 +674,9 @@ export function AppProvider({ children }) {
               subInitializedRef.current = true;
             } else {
               const uid      = currentUserRef.current?.id;
+              const activeScope = window.__boomriderOrderScope || orderScope;
               const shopId   = (uid && restaurantsRef.current.find(r => r.ownerId === uid)?.id)
-                             || (orderScope.role === 'merchant' ? orderScope.shopId : null);
+                             || (activeScope.role === 'merchant' ? activeScope.shopId : null);
               const myShop   = shopId ? { id: shopId } : null;
 
               if (myShop) {
@@ -744,11 +743,11 @@ export function AppProvider({ children }) {
               safeLocalSet('boomrider_orders', deduped);
               return deduped;
             });
-          },
-          async () => {
+          };
+        const ordersErrorCallback = async () => {
             try {
               // ใช้ role-scoped fallback แทน loadAllOrders() — ลด reads เมื่อ sub reconnect
-              const fallback = await loadOrdersByRole(orderScope);
+              const fallback = await loadOrdersByRole(window.__boomriderOrderScope || orderScope);
               if (fallback && fallback.length > 0) {
                 const STATUS_RANK = {
                   pending: 1, preparing: 2, ready_to_pickup: 3,
@@ -778,8 +777,11 @@ export function AppProvider({ children }) {
                 });
               }
             } catch (_) {}
-          },
-        );
+          };
+        window.__boomriderOrdersCallback      = ordersCallback;
+        window.__boomriderOrdersErrorCallback = ordersErrorCallback;
+        window.__boomriderOrderScope          = orderScope;
+        const unsubOrders = subscribeToOrders(orderScope, ordersCallback, ordersErrorCallback);
         window.__boomriderUnsubOrders = unsubOrders;
 
         // ── Subscribe real-time pending_requests ─────────────────────────────
@@ -870,6 +872,26 @@ export function AppProvider({ children }) {
         const unsubRestaurants = subscribeToRestaurants((list) => {
           setRestaurants(list);
           safeLocalSet('boomrider_restaurants', list);
+          // If the merchant subscription was set up before the shop loaded (shopId was null),
+          // restart it now with the correct shopId so new orders arrive in real-time.
+          const myShop_ = list.find(r => r.ownerId === firebaseUser.uid);
+          if (
+            myShop_ &&
+            window.__boomriderOrderScope?.role === 'merchant' &&
+            !window.__boomriderOrderScope?.shopId
+          ) {
+            const newScope_ = { ...window.__boomriderOrderScope, shopId: myShop_.id };
+            window.__boomriderOrderScope = newScope_;
+            if (window.__boomriderUnsubOrders) { window.__boomriderUnsubOrders(); window.__boomriderUnsubOrders = null; }
+            seenOrderIdsRef.current       = new Set();
+            subInitializedRef.current     = false;
+            pendingLocalOrderIdsRef.current = new Set();
+            window.__boomriderUnsubOrders = subscribeToOrders(
+              newScope_,
+              window.__boomriderOrdersCallback,
+              window.__boomriderOrdersErrorCallback,
+            );
+          }
         });
         const unsubRiders = subscribeToRiders((list) => {
           setRiders(list);
@@ -950,6 +972,9 @@ export function AppProvider({ children }) {
         if (window.__boomriderUnsubPending) { window.__boomriderUnsubPending(); window.__boomriderUnsubPending = null; }
         if (window.__boomriderUnsubChats)   { window.__boomriderUnsubChats();   window.__boomriderUnsubChats   = null; }
         if (window.__boomriderUnsubShared)  { window.__boomriderUnsubShared.forEach(fn => fn()); window.__boomriderUnsubShared = null; }
+        window.__boomriderOrderScope          = null;
+        window.__boomriderOrdersCallback      = null;
+        window.__boomriderOrdersErrorCallback = null;
         if (walletUnsubRef.current)         { walletUnsubRef.current();         walletUnsubRef.current         = null; }
         if (walletEntriesUnsubRef.current)  { walletEntriesUnsubRef.current();  walletEntriesUnsubRef.current  = null; }
       };

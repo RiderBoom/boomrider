@@ -424,6 +424,37 @@ export function useOrderActions(deps) {
           if (shopOwnerUid && merchantIncome > 0) creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน #${shortId}`);
           if (ADMIN_UID    && gpAmount       > 0) creditWallet(ADMIN_UID,    gpAmount,        `GP #${shortId}`);
         }
+      } else {
+        // Cash order: rider collected grandTotal from customer in cash
+        // Credit merchant and platform GP from system accounting; rider retains delivery cut as cash (no wallet credit for rider)
+        if (!targetOrder.cashSettled) {
+          const shortId_       = targetOrder.id.slice(-6);
+          const merchantIncome = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
+          const gpAmount       = typeof targetOrder.adminGP        === 'number' ? targetOrder.adminGP        : 0;
+          const restName       = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
+          const myUidNow       = userProfile.id || currentUser?.id;
+
+          // Mark settled before writes to prevent duplicate calls
+          setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, cashSettled: true } : o));
+
+          if (FIREBASE_ENABLED) {
+            updateOrderStatusInDB(orderId, { cashSettled: true }).catch(() => {});
+            if (shopOwnerUid && merchantIncome > 0)
+              creditWalletInDB(shopOwnerUid, merchantIncome, `รายได้ร้าน(สด) ${restName} #${shortId_}`).catch(() => {});
+            if (ADMIN_UID && gpAmount > 0)
+              creditWalletInDB(ADMIN_UID, gpAmount, `GP(สด) ${restName} #${shortId_}`).catch(() => {});
+            // Update local wallet UI for whoever is currently logged in
+            let localCashDelta = 0;
+            if (shopOwnerUid && shopOwnerUid === myUidNow && merchantIncome > 0) localCashDelta += merchantIncome;
+            if (ADMIN_UID    && ADMIN_UID    === myUidNow && gpAmount       > 0) localCashDelta += gpAmount;
+            if (localCashDelta > 0) setUserWallet(prev => prev + localCashDelta);
+          } else {
+            if (shopOwnerUid && merchantIncome > 0)
+              creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน(สด) ${restName} #${shortId_}`);
+            if (ADMIN_UID    && gpAmount       > 0)
+              creditWallet(ADMIN_UID, gpAmount, `GP(สด) ${restName} #${shortId_}`);
+          }
+        }
       }
     }
   };
