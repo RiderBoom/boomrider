@@ -689,8 +689,23 @@ export function AppProvider({ children }) {
                 }
               }
 
-              // Rider new-job notifications are handled exclusively via FCM (onOrderCreated /
-              // onOrderReadyForPickup CFs). No in-app subscription toast here to avoid duplicates.
+              // Rider: in-app toast for new ready_to_pickup jobs.
+              // seenOrderIdsRef deduplicates with FCM (whichever fires first wins).
+              if (activeScope.role === 'rider') {
+                const newJobs = cloudOrders.filter(co =>
+                  co.status === 'ready_to_pickup' && !co.riderId && !seenOrderIdsRef.current.has(co.id),
+                );
+                if (newJobs.length > 0) {
+                  newJobs.forEach(co => seenOrderIdsRef.current.add(co.id));
+                  playNotificationSound('order');
+                  const first = newJobs[0];
+                  const dest = first.type === 'parcel'
+                    ? `📦 ${first.pickup || ''} → ${first.dropoff || ''}`
+                    : `🍔 ${first.restaurantName || 'ร้านค้า'} ฿${first.deliveryFee ?? 0}`;
+                  const body = newJobs.length === 1 ? dest : `${newJobs.length} งานใหม่ — ${dest}`;
+                  setTimeout(() => notifySystem('🛵 มีงานใหม่!', body, 'warning'), 0);
+                }
+              }
 
               if (uid) {
                 const justCompleted = cloudOrders.filter(co =>
