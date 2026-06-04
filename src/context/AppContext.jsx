@@ -579,13 +579,13 @@ export function AppProvider({ children }) {
         subInitializedRef.current = false;
         pendingLocalOrderIdsRef.current = new Set();
 
-        // Declare restData/ridersData outside the try block so they're accessible below for orderScope.
-        // (const inside try {} is block-scoped and not visible after the closing brace.)
+        // ── Step 1: Load reference data (restaurants/riders/menu/config) first ──
+        // Orders are loaded AFTER scope is computed so the query is role-scoped
+        // from the very start — no admin-scope full-scan for non-admin users.
         let restData   = null;
         let ridersData = null;
         try {
-          const [initialOrders, _restLoaded, _ridersLoaded, menuData, cfgData] = await Promise.all([
-            loadAllOrders(),
+          const [_restLoaded, _ridersLoaded, menuData, cfgData] = await Promise.all([
             loadRestaurants(),
             loadRiders(),
             loadMenuItems(),
@@ -594,6 +594,52 @@ export function AppProvider({ children }) {
           restData   = _restLoaded;
           ridersData = _ridersLoaded;
 
+          if (Array.isArray(restData) && restData.length > 0) {
+            setRestaurants(restData);
+            safeLocalSet('boomrider_restaurants', restData);
+          }
+          if (Array.isArray(ridersData) && ridersData.length > 0) {
+            setRiders(ridersData);
+            safeLocalSet('boomrider_riders', ridersData);
+          }
+          if (menuData && Object.keys(menuData).length > 0) {
+            setMenuItems(menuData);
+            safeLocalSet('boomrider_menu_items', menuData);
+          }
+          if (cfgData && typeof cfgData === 'object') {
+            const { updatedAt: _ts, ...cfg } = cfgData;
+            setAppConfig(prev => ({ ...prev, ...cfg }));
+            setEditConfig(prev => ({ ...prev, ...cfg }));
+            safeLocalSet('boomrider_appconfig', cfg);
+          }
+        } catch (_) {}
+        setIsDataLoading(false);
+
+        // ── Step 2: Compute role scope (restData/ridersData now available) ──────
+        // Scope is correct on first attempt — no fallback-then-restart needed.
+        const _uid             = firebaseUser.uid;
+        const _isAdmin         = !!(ADMIN_UID && _uid === ADMIN_UID);
+        const ownedRestaurant  = !_isAdmin && Array.isArray(restData)
+          ? (restData.find(r => r.ownerId === _uid) ?? null) : null;
+        const ownedRider       = !_isAdmin && Array.isArray(ridersData)
+          ? (ridersData.find(r => r.userId === _uid) ?? null) : null;
+        const _isRider    = !_isAdmin && (baseRoles.includes('rider')    || !!ownedRider);
+        const _isMerchant = !_isAdmin && !_isRider && (baseRoles.includes('merchant') || !!ownedRestaurant);
+        const _myShop     = _isMerchant ? (ownedRestaurant ?? null) : null;
+        const orderScope = {
+          role:   _isAdmin    ? 'admin'
+                : _isRider    ? 'rider'
+                : _isMerchant ? 'merchant'
+                : 'customer',
+          userId: _uid,
+          shopId: _myShop?.id || null,
+        };
+
+        // ── Step 3: Load initial orders with role-scoped query ───────────────────
+        // loadOrdersByRole uses the same filters as subscribeToOrders so the
+        // initial snapshot is consistent with the real-time stream that follows.
+        try {
+          const initialOrders = await loadOrdersByRole(orderScope);
           if (initialOrders && initialOrders.length > 0) {
             const STATUS_RANK = {
               pending: 1, preparing: 2, ready_to_pickup: 3,
@@ -622,48 +668,7 @@ export function AppProvider({ children }) {
               return deduped;
             });
           }
-
-          if (Array.isArray(restData) && restData.length > 0) {
-            setRestaurants(restData);
-            safeLocalSet('boomrider_restaurants', restData);
-          }
-          if (Array.isArray(ridersData) && ridersData.length > 0) {
-            setRiders(ridersData);
-            safeLocalSet('boomrider_riders', ridersData);
-          }
-          if (menuData && Object.keys(menuData).length > 0) {
-            setMenuItems(menuData);
-            safeLocalSet('boomrider_menu_items', menuData);
-          }
-          if (cfgData && typeof cfgData === 'object') {
-            const { updatedAt: _ts, ...cfg } = cfgData;
-            setAppConfig(prev => ({ ...prev, ...cfg }));
-            setEditConfig(prev => ({ ...prev, ...cfg }));
-            safeLocalSet('boomrider_appconfig', cfg);
-          }
         } catch (_) {}
-        setIsDataLoading(false);
-
-        // ── Role scope: คำนวณ query scope ครั้งเดียว ใช้ทั้ง subscription + fallback ──
-        // Use Firestore ownership data (restData/ridersData) as authoritative source so
-        // fresh-device logins without localStorage roles still get the correct scope.
-        const _uid             = firebaseUser.uid;
-        const _isAdmin         = !!(ADMIN_UID && _uid === ADMIN_UID);
-        const ownedRestaurant  = !_isAdmin && Array.isArray(restData)
-          ? (restData.find(r => r.ownerId === _uid) ?? null) : null;
-        const ownedRider       = !_isAdmin && Array.isArray(ridersData)
-          ? (ridersData.find(r => r.userId === _uid) ?? null) : null;
-        const _isRider    = !_isAdmin && (baseRoles.includes('rider')    || !!ownedRider);
-        const _isMerchant = !_isAdmin && !_isRider && (baseRoles.includes('merchant') || !!ownedRestaurant);
-        const _myShop     = _isMerchant ? (ownedRestaurant ?? null) : null;
-        const orderScope = {
-          role:   _isAdmin    ? 'admin'
-                : _isRider    ? 'rider'
-                : _isMerchant ? 'merchant'
-                : 'customer',
-          userId: _uid,
-          shopId: _myShop?.id || null,
-        };
 
         const ordersCallback = (cloudOrders) => {
             if (!subInitializedRef.current) {
