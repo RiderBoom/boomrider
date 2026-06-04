@@ -11,7 +11,7 @@ import { requestNotificationPermission, onForegroundMessage, saveFcmToken } from
 import { deleteFile } from '../firebase/storage';
 import {
   saveOrder, updateOrderStatusInDB, saveAppConfig, loadAppConfig, loadAllOrders, loadOrdersByRole,
-  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew, subscribeToAllWallets,
+  saveWallet, loadWallet, creditWalletInDB, subscribeToWallet, initWalletIfNew, subscribeToAllWallets, loadAllWallets,
   saveRestaurant, loadRestaurants, deleteRestaurantFromDB, subscribeToRestaurants,
   saveMenuItems, loadMenuItems, subscribeToMenuItems,
   deletePendingRequest, loadPendingRequests, subscribeToPendingRequests,
@@ -327,19 +327,15 @@ export function AppProvider({ children }) {
     if (savedPending) { try { setPendingRequests(JSON.parse(savedPending)); } catch {} }
   }, []);
 
-  // ── Admin: subscribe to all wallets (real-time) ──────────────────────────
+  // ── Admin: poll all wallets every 5 min instead of real-time collection listener ──
   useEffect(() => {
-    if (!FIREBASE_ENABLED || !isAdmin) {
-      if (allWalletsUnsubRef.current) { allWalletsUnsubRef.current(); allWalletsUnsubRef.current = null; }
-      return;
-    }
-    if (allWalletsUnsubRef.current) allWalletsUnsubRef.current();
-    allWalletsUnsubRef.current = subscribeToAllWallets((wallets) => {
-      setGlobalWallets(wallets);
-    });
-    return () => {
-      if (allWalletsUnsubRef.current) { allWalletsUnsubRef.current(); allWalletsUnsubRef.current = null; }
-    };
+    if (allWalletsUnsubRef.current) { allWalletsUnsubRef.current(); allWalletsUnsubRef.current = null; }
+    if (!FIREBASE_ENABLED || !isAdmin) return;
+    const fetchWallets = () => loadAllWallets().then(w => { if (Object.keys(w).length) setGlobalWallets(w); }).catch(() => {});
+    fetchWallets();
+    const timer = setInterval(fetchWallets, 5 * 60 * 1000);
+    allWalletsUnsubRef.current = () => clearInterval(timer);
+    return () => { clearInterval(timer); allWalletsUnsubRef.current = null; };
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Admin notifications: Firestore or localStorage polling ──────────────
@@ -888,50 +884,59 @@ export function AppProvider({ children }) {
           );
         }
 
-        // ── Subscribe real-time shared data ──────────────────────────────────
+        // ── Periodic refresh for shared data (poll every 30 min, no real-time listener) ──
+        // restaurants/riders/menuItems change rarely — polling avoids a collection-wide
+        // onSnapshot that bills one read per doc per change for every logged-in user.
         if (window.__boomriderUnsubShared) {
           window.__boomriderUnsubShared.forEach(fn => fn());
           window.__boomriderUnsubShared = null;
         }
-        const unsubRestaurants = subscribeToRestaurants((list) => {
-          setRestaurants(list);
-          safeLocalSet('boomrider_restaurants', list);
-          // If the merchant subscription was set up before the shop loaded (shopId was null),
-          // restart it now with the correct shopId so new orders arrive in real-time.
-          const myShop_ = list.find(r => r.ownerId === firebaseUser.uid);
-          if (
-            myShop_ &&
-            window.__boomriderOrderScope?.role === 'merchant' &&
-            !window.__boomriderOrderScope?.shopId
-          ) {
-            const newScope_ = { ...window.__boomriderOrderScope, shopId: myShop_.id };
-            window.__boomriderOrderScope = newScope_;
-            if (window.__boomriderUnsubOrders) { window.__boomriderUnsubOrders(); window.__boomriderUnsubOrders = null; }
-            seenOrderIdsRef.current       = new Set();
-            subInitializedRef.current     = false;
-            pendingLocalOrderIdsRef.current = new Set();
-            window.__boomriderUnsubOrders = subscribeToOrders(
-              newScope_,
-              window.__boomriderOrdersCallback,
-              window.__boomriderOrdersErrorCallback,
-            );
-          }
-        });
-        const unsubRiders = subscribeToRiders((list) => {
-          setRiders(list);
-          safeLocalSet('boomrider_riders', list);
-        });
-        const unsubMenuItems = subscribeToMenuItems((menus) => {
-          if (Object.keys(menus).length > 0) {
-            setMenuItems(menus);
-            safeLocalSet('boomrider_menu_items', menus);
-          }
-        });
+        const refreshSharedData = async () => {
+          try {
+            const [restList, riderList, menuData] = await Promise.all([
+              loadRestaurants(),
+              loadRiders(),
+              loadMenuItems(),
+            ]);
+            if (Array.isArray(restList) && restList.length > 0) {
+              setRestaurants(restList);
+              safeLocalSet('boomrider_restaurants', restList);
+              // Merchant scope recovery: if shopId was missing when order sub started, restart it
+              const myShop_ = restList.find(r => r.ownerId === firebaseUser.uid);
+              if (
+                myShop_ &&
+                window.__boomriderOrderScope?.role === 'merchant' &&
+                !window.__boomriderOrderScope?.shopId
+              ) {
+                const newScope_ = { ...window.__boomriderOrderScope, shopId: myShop_.id };
+                window.__boomriderOrderScope = newScope_;
+                if (window.__boomriderUnsubOrders) { window.__boomriderUnsubOrders(); window.__boomriderUnsubOrders = null; }
+                seenOrderIdsRef.current        = new Set();
+                subInitializedRef.current      = false;
+                pendingLocalOrderIdsRef.current = new Set();
+                window.__boomriderUnsubOrders = subscribeToOrders(
+                  newScope_,
+                  window.__boomriderOrdersCallback,
+                  window.__boomriderOrdersErrorCallback,
+                );
+              }
+            }
+            if (Array.isArray(riderList) && riderList.length > 0) {
+              setRiders(riderList);
+              safeLocalSet('boomrider_riders', riderList);
+            }
+            if (menuData && Object.keys(menuData).length > 0) {
+              setMenuItems(menuData);
+              safeLocalSet('boomrider_menu_items', menuData);
+            }
+          } catch (_) {}
+        };
+        const sharedRefreshTimer = setInterval(refreshSharedData, 30 * 60 * 1000);
         const unsubConfig = subscribeToConfig((cfg) => {
           setAppConfig(cfg);
           safeLocalSet('boomrider_appconfig', cfg);
         });
-        window.__boomriderUnsubShared = [unsubRestaurants, unsubRiders, unsubMenuItems, unsubConfig];
+        window.__boomriderUnsubShared = [() => clearInterval(sharedRefreshTimer), unsubConfig];
 
         // ── Subscribe wallet (real-time) ─────────────────────────────────────
         if (walletUnsubRef.current) walletUnsubRef.current();
@@ -960,11 +965,13 @@ export function AppProvider({ children }) {
               firebaseLogout().then(() => notifySystem('บัญชีถูกระงับ', 'บัญชีของคุณถูกระงับการใช้งาน', 'error')).catch(() => {});
             }
           });
-          saveUserProfile(firebaseUser.uid, {
-            name:  firebaseUser.displayName || saved?.profile?.name || '',
-            email: firebaseUser.email || '',
-            phone: firebaseUser.phoneNumber || saved?.profile?.phone || '',
-          }).catch(() => {});
+          const _newName  = firebaseUser.displayName || saved?.profile?.name || '';
+          const _newEmail = firebaseUser.email || '';
+          const _newPhone = firebaseUser.phoneNumber || saved?.profile?.phone || '';
+          const _prev     = saved?.profile || {};
+          if (_newName !== _prev.name || _newEmail !== _prev.email || _newPhone !== _prev.phone) {
+            saveUserProfile(firebaseUser.uid, { name: _newName, email: _newEmail, phone: _newPhone }).catch(() => {});
+          }
         } else {
           try {
             const cloudWallet = await loadWallet(firebaseUser.uid);

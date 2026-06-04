@@ -597,6 +597,15 @@ export const subscribeToWallet = (userId, onUpdate) => {
   }, () => {}); // silent error fallback
 };
 
+export const loadAllWallets = async () => {
+  try {
+    const snap = await getDocs(collection(db, 'wallets'));
+    const wallets = {};
+    snap.forEach(d => { wallets[d.id] = d.data(); });
+    return wallets;
+  } catch { return {}; }
+};
+
 /**
  * Real-time subscription บน wallets collection ทั้งหมด (สำหรับ Admin)
  * @param {function} onUpdate — รับ map { [userId]: { balance, history } }
