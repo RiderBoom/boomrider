@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write           # ต้องการสำหรับสร้าง/อัปเดต GitHub Release
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
     steps:
       # ── 1. Checkout code ────────────────────────────────────────────────────
