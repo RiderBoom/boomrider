@@ -61,7 +61,8 @@ export function useOrderActions(deps) {
     const rawFoodGP     = foodTotal * (appConfig.gpFood / 100);
     const rawDeliveryGP = deliveryFee * (appConfig.gpDelivery / 100);
     const totalRawGP    = rawFoodGP + rawDeliveryGP;
-    const effectivePromo = Math.min(promoDiscount || 0, totalRawGP);
+    // Allow full promo discount — platform absorbs cost from GP (floors to 0, never negative)
+    const effectivePromo = Math.min(promoDiscount || 0, foodTotal + deliveryFee);
     const grandTotal     = Math.max(0, foodTotal + deliveryFee - effectivePromo);
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
       placingOrderRef.current = false;
@@ -74,7 +75,7 @@ export function useOrderActions(deps) {
       return notifySystem('ร้านยังไม่พร้อม', 'ร้านนี้ยังไม่มีเจ้าของในระบบ กรุณาติดต่อ Admin', 'error');
     }
 
-    const adminGP        = totalRawGP - effectivePromo;
+    const adminGP        = Math.max(0, totalRawGP - effectivePromo);
     const merchantIncome = foodTotal - rawFoodGP;
     const riderIncome    = deliveryFee - rawDeliveryGP;
     const newOrder = {
@@ -112,10 +113,14 @@ export function useOrderActions(deps) {
     setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
     setCart([]);
     if (paymentMethod === 'wallet') {
-      processTransaction('payment', -grandTotal, `ชำระค่าอาหาร (${restaurantName})`);
-      if (FIREBASE_ENABLED) {
-        const uid = currentUser?.id || userProfile?.id;
-        if (uid) creditWalletInDB(uid, -grandTotal, `ชำระค่าอาหาร (${restaurantName})`).catch(() => {});
+      const uid = currentUser?.id || userProfile?.id;
+      const _desc = `ชำระค่าอาหาร (${restaurantName})`;
+      if (FIREBASE_ENABLED && uid) {
+        // creditWalletInDB handles Firestore balance + history entry atomically (single entry)
+        setUserWallet(prev => prev - grandTotal);
+        creditWalletInDB(uid, -grandTotal, _desc).catch(() => {});
+      } else {
+        processTransaction('payment', -grandTotal, _desc);
       }
     }
     if (FIREBASE_ENABLED) {
@@ -195,10 +200,12 @@ export function useOrderActions(deps) {
     setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
 
     if (paymentMethod === 'wallet') {
-      processTransaction('payment', -grandTotal, 'ชำระค่าส่งพัสดุ');
-      if (FIREBASE_ENABLED) {
-        const uid = currentUser?.id || userProfile?.id;
-        if (uid) creditWalletInDB(uid, -grandTotal, 'ชำระค่าส่งพัสดุ').catch(() => {});
+      const uid = currentUser?.id || userProfile?.id;
+      if (FIREBASE_ENABLED && uid) {
+        setUserWallet(prev => prev - grandTotal);
+        creditWalletInDB(uid, -grandTotal, 'ชำระค่าส่งพัสดุ').catch(() => {});
+      } else {
+        processTransaction('payment', -grandTotal, 'ชำระค่าส่งพัสดุ');
       }
     }
     if (FIREBASE_ENABLED) {
@@ -249,7 +256,7 @@ export function useOrderActions(deps) {
           if (o.id !== orderId) return o;
           return { ...o, status: 'rider_accepted', riderId, riderUid, riderPhone, riderName, riderLocation: riderLocation || o.pickupLocation };
         }));
-        updateOrderStatusInDB(orderId, { riderPhone, riderName }).catch(() => {});
+        updateOrderStatusInDB(orderId, { status: 'rider_accepted', riderId, riderUid, riderPhone, riderName }).catch(() => {});
         notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย — ไปรับงานได้เลย', 'success');
         return true;
       } catch (err) {
@@ -265,7 +272,7 @@ export function useOrderActions(deps) {
                 if (o.id !== orderId) return o;
                 return { ...o, status: 'rider_accepted', riderId, riderUid, riderPhone, riderName, riderLocation: riderLocation || o.pickupLocation };
               }));
-              updateOrderStatusInDB(orderId, { riderPhone, riderName }).catch(() => {});
+              updateOrderStatusInDB(orderId, { status: 'rider_accepted', riderId, riderUid, riderPhone, riderName }).catch(() => {});
               notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย — ไปรับงานได้เลย', 'success');
               return true;
             }

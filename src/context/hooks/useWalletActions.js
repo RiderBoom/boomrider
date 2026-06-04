@@ -57,7 +57,7 @@ export function useWalletActions(deps) {
     if (!FIREBASE_ENABLED) setWalletAllEntries(prev => [entry, ...prev]);
     if (FIREBASE_ENABLED) {
       const uid = currentUserRef.current?.id;
-      if (uid) addWalletEntry(uid, { type, amount, desc: description, date: entry.date }).catch(() => {});
+      if (uid) addWalletEntry(uid, { type, amount, desc: description, date: entry.date, createdAtMs: entry.createdAtMs }).catch(() => {});
     }
   };
 
