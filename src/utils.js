@@ -78,6 +78,19 @@ export const playNotificationSound = (type = 'order') => {
 
 export const deg2rad = (deg) => deg * (Math.PI / 180);
 
+export const safeLocalSet = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    try {
+      const stripped = JSON.parse(JSON.stringify(value, (k, v) =>
+        typeof v === 'string' && v.startsWith('data:') ? '[image]' : v,
+      ));
+      localStorage.setItem(key, JSON.stringify(stripped));
+    } catch {}
+  }
+};
+
 export const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);

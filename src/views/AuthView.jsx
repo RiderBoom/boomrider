@@ -2,7 +2,6 @@ import React from 'react';
 import { Phone, Mail } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import ToastContainer from '../components/ToastContainer';
-import { FIREBASE_ENABLED } from '../constants';
 
 export default function AuthView() {
   const {
@@ -81,7 +80,7 @@ export default function AuthView() {
           <div className="space-y-3">
             {[
               { label: 'ชื่อ-นามสกุล *', type: 'text', field: 'name', placeholder: 'ชื่อจริง นามสกุล', autoComplete: 'name' },
-              { label: FIREBASE_ENABLED ? 'อีเมล *' : 'อีเมล (ไม่บังคับ)', type: 'email', field: 'email', placeholder: 'email@example.com', autoComplete: 'email' },
+              { label: 'อีเมล (ไม่บังคับ)', type: 'email', field: 'email', placeholder: 'email@example.com', autoComplete: 'email' },
               { label: 'เบอร์โทรศัพท์ (ไม่บังคับ)', type: 'tel', field: 'phone', placeholder: '081-xxx-xxxx', autoComplete: 'tel' },
               { label: 'รหัสผ่าน * (6 ตัวขึ้นไป)', type: 'password', field: 'password', placeholder: '••••••••', autoComplete: 'new-password' },
               { label: 'ยืนยันรหัสผ่าน *', type: 'password', field: 'confirmPassword', placeholder: '••••••••', autoComplete: 'new-password' },

@@ -1,13 +1,8 @@
-import {
-  creditWalletInDB, addWalletEntry, savePendingRequest,
-} from '../../firebase/firestore';
 import { generateId, formatDateTime, r2 } from '../../utils';
-import { FIREBASE_ENABLED } from '../../constants';
 
 export function useWalletActions(deps) {
   const {
     currentUser,
-    currentUserRef,
     userProfile,
     userWallet,
     pendingRequests,
@@ -42,23 +37,17 @@ export function useWalletActions(deps) {
     });
     if (currentUser?.id === userId) {
       setUserWallet(prev => r2(prev + amount));
-      if (!FIREBASE_ENABLED) {
-        setWalletAllEntries(prev => [
-          { id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: formatDateTime(), desc, createdAtMs: Date.now() },
-          ...prev,
-        ]);
-      }
+      setWalletAllEntries(prev => [
+        { id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: formatDateTime(), desc, createdAtMs: Date.now() },
+        ...prev,
+      ]);
     }
   };
 
   const processTransaction = (type, amount, description) => {
     setUserWallet(prev => r2(prev + amount));
     const entry = { id: generateId(), type, amount, date: formatDateTime(), desc: description, createdAtMs: Date.now() };
-    if (!FIREBASE_ENABLED) setWalletAllEntries(prev => [entry, ...prev]);
-    if (FIREBASE_ENABLED) {
-      const uid = currentUserRef.current?.id;
-      if (uid) addWalletEntry(uid, { type, amount, desc: description, date: entry.date, createdAtMs: entry.createdAtMs }).catch(() => {});
-    }
+    setWalletAllEntries(prev => [entry, ...prev]);
   };
 
   const requestTopUp = (amount, slipImage, _walletType = null, bankInfo = {}) => {
@@ -76,9 +65,6 @@ export function useWalletActions(deps) {
       userId: uid, user: userProfile.name || 'ผู้ใช้',
       timestamp: formatDateTime(),
     };
-    if (FIREBASE_ENABLED) {
-      savePendingRequest(newReq).catch(() => {});
-    }
     setPendingRequests(prev => [newReq, ...prev]);
     setShowTopUpModal(false);
     setTopUpSlip(null);
@@ -115,7 +101,6 @@ export function useWalletActions(deps) {
       userId: uid, user: userProfile.name || 'ผู้ใช้',
       timestamp: formatDateTime(),
     };
-    if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});
     setPendingRequests(prev => [newReq, ...prev]);
     setWithdrawAmount(''); setWithdrawBank(''); setWithdrawAccount(''); setWithdrawName('');
     setWithdrawMode(false);
@@ -126,11 +111,6 @@ export function useWalletActions(deps) {
   const adminAdjustWallet = (userId, amount, desc) => {
     const fullDesc = `[Admin] ${desc}`;
     creditWallet(userId, amount, fullDesc);
-    if (FIREBASE_ENABLED) {
-      const _adjDate = formatDateTime();
-      creditWalletInDB(userId, amount, fullDesc).catch(() => {});
-      addWalletEntry(userId, { type: amount > 0 ? 'deposit' : 'withdraw', amount, desc: fullDesc, date: _adjDate }).catch(() => {});
-    }
     notifySystem('Admin', `ปรับยอด ${amount > 0 ? '+' : ''}฿${amount} ให้ผู้ใช้เรียบร้อย`, 'success');
   };
 

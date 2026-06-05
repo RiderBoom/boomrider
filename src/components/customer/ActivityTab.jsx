@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   MapPin, Clock, Star, Navigation, MessageSquare,
   Banknote, CheckCircle, Receipt, ShoppingBag, Bike,
   X, ArrowLeft,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { subscribeToRiderLocation } from '../../firebase/firestore';
 import { getDistanceFromLatLonInKm } from '../../utils';
 import InteractiveMap from '../InteractiveMap';
 
@@ -37,38 +36,17 @@ export default function ActivityTab() {
     setActiveTab,
   } = useApp();
 
-  const [riderLocations, setRiderLocations] = useState({});
-  const riderLocUnsubs = useRef({});
-
   const [trackingOrderId, setTrackingOrderId] = useState(null);
   const [showCancelReqModal, setShowCancelReqModal] = useState(false);
   const [cancelReqOrderId, setCancelReqOrderId] = useState(null);
   const [cancelReqReason, setCancelReqReason] = useState('');
 
-  useEffect(() => {
-    const activeOrders = orders.filter(o => TRACKING_STATUSES.includes(o.status) && o.riderUid);
-    const activeIds = new Set(activeOrders.map(o => o.id));
-
-    Object.keys(riderLocUnsubs.current).forEach(id => {
-      if (!activeIds.has(id)) {
-        riderLocUnsubs.current[id]();
-        delete riderLocUnsubs.current[id];
-        setRiderLocations(prev => { const n = { ...prev }; delete n[id]; return n; });
-      }
-    });
-
-    activeOrders.forEach(o => {
-      if (riderLocUnsubs.current[o.id]) return;
-      riderLocUnsubs.current[o.id] = subscribeToRiderLocation(o.riderUid, (loc) => {
-        setRiderLocations(prev => ({ ...prev, [o.id]: loc }));
-      });
-    });
-
-    return () => {
-      Object.values(riderLocUnsubs.current).forEach(unsub => unsub());
-      riderLocUnsubs.current = {};
-    };
-  }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Derive rider locations from order.riderLocation (updated by local simulation in AppContext)
+  const riderLocations = Object.fromEntries(
+    orders
+      .filter(o => TRACKING_STATUSES.includes(o.status) && o.riderLocation)
+      .map(o => [o.id, o.riderLocation]),
+  );
 
   const myOrders = orders.filter(o =>
     o.customerId === userProfile.id || o.customerId === currentUser?.id,

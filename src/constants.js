@@ -40,12 +40,6 @@ export const STATUS_LABELS = {
   cancelled: { label: "ยกเลิกแล้ว", color: "text-red-500", bg: "bg-red-100" },
 };
 
-// ===== Firebase Feature Flag =====
-export const FIREBASE_ENABLED = !!(
-  import.meta.env.VITE_FIREBASE_API_KEY &&
-  import.meta.env.VITE_FIREBASE_API_KEY.length > 10
-);
-
 // ===== Admin Config =====
 export const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
 

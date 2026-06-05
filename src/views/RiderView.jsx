@@ -7,9 +7,7 @@ import {
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
 import { getDistanceFromLatLonInKm, formatDateTimeFromMs, formatDateTime, compressImage } from '../utils';
-import { USER_LOCATION, FIREBASE_ENABLED } from '../constants';
-import { updateRiderLocation, upsertRiderLocation } from '../firebase/firestore';
-import { uploadDeliveryProof } from '../firebase/storage';
+import { USER_LOCATION } from '../constants';
 
 export default function RiderView() {
   const {
@@ -24,7 +22,6 @@ export default function RiderView() {
     openChatWindow,
     setProfileSubView, setActiveTab,
     updateRiderWorkingLocation,
-    FIREBASE_ENABLED,
     userWallet,
     walletHistory,
     pendingRequests,
@@ -118,24 +115,8 @@ export default function RiderView() {
       setRiderGPS(loc);
       setGpsStatus('tracking');
 
-      if (!FIREBASE_ENABLED) return;
-
-      const now = Date.now();
-      if (now - lastWriteRef.current < THROTTLE) return;
-      lastWriteRef.current = now;
-
-      const riderId  = riderIdRef.current;
-      const activeJob = activeJobRef.current;
-
-      // 1️⃣ อัปเดตตำแหน่งทั่วไปของไรเดอร์ใน riders collection
-      if (riderId) {
-        updateRiderLocation(riderId, loc);
-      }
-
-      // 2️⃣ อัปเดตตำแหน่งใน rider_locations/{riderUid} (แยกจาก orders ป้องกัน fan-out)
-      if (riderUidRef.current) {
-        upsertRiderLocation(riderUidRef.current, loc, activeJob?.id ?? null);
-      }
+      const riderId = riderIdRef.current;
+      if (riderId) updateRiderWorkingLocation(riderId, loc);
     };
 
     const onError = (err) => {
@@ -882,12 +863,7 @@ export default function RiderView() {
                                   setProofUploading(prev => ({ ...prev, [job.id]: true }));
                                   try {
                                     const compressed = await compressImage(file, 800, 600, 0.8).catch(() => file);
-                                    if (FIREBASE_ENABLED) {
-                                      const url = await uploadDeliveryProof(job.id, 'delivery', compressed);
-                                      setProofPhotos(prev => ({ ...prev, [job.id]: url }));
-                                    } else {
-                                      setProofPhotos(prev => ({ ...prev, [job.id]: typeof compressed === 'string' ? compressed : URL.createObjectURL(file) }));
-                                    }
+                                    setProofPhotos(prev => ({ ...prev, [job.id]: typeof compressed === 'string' ? compressed : URL.createObjectURL(file) }));
                                   } catch { /* proof is optional — never block delivery */ }
                                   finally { setProofUploading(prev => ({ ...prev, [job.id]: false })); }
                                 }}

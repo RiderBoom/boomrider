@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ShieldAlert, ArrowLeft, MessageSquare, Bell, Check, XCircle,
   ChefHat, Bike, Sliders, Save, CreditCard,
@@ -10,8 +10,7 @@ import {
   DatabaseZap, ShieldOff, CheckSquare, Square,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { STATUS_LABELS, FIREBASE_ENABLED, ADMIN_UID } from '../constants';
-import { saveAppConfig, subscribeToTransactions, clearTransactionLog, getTransactionLogMeta, loadWalletEntries, fixAllWalletBalances, loadAllUsers, purgeOrders, purgeTransactions, purgeWalletEntries, purgePendingRequests } from '../firebase/firestore';
+import { STATUS_LABELS, ADMIN_UID } from '../constants';
 import { formatDateTimeFromMs } from '../utils';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
@@ -109,83 +108,50 @@ export default function AdminView() {
   const [txList, setTxList] = useState([]);
   const [txLoading, setTxLoading] = useState(false);
   const [txRefreshKey, setTxRefreshKey] = useState(0);
-  const txUnsubRef = useRef(null);
 
-  // Load all users — Firestore (all devices) หรือ localStorage (fallback)
   useEffect(() => {
     if (adminTab !== 'users') return;
-    if (FIREBASE_ENABLED) {
-      loadAllUsers().then(fsUsers => {
-        // Merge wallet balance จาก globalWallets ที่ subscribe live อยู่แล้ว
-        setAllUsers(fsUsers.map(u => ({
-          ...u,
-          walletBalance: globalWallets[u.id]?.balance ?? 0,
-          roles: u.roles || ['customer'],
-        })));
-      }).catch(() => {
-        // Fallback to localStorage ถ้า Firestore load ล้มเหลว
-        const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-        const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-        const roles   = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-        setAllUsers(users.map(u => ({
-          ...u,
-          walletBalance: wallets[u.id]?.balance ?? globalWallets[u.id]?.balance ?? u.wallet ?? 0,
-          roles: roles[u.id] || u.roles || ['customer'],
-        })));
-      });
-    } else {
-      const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-      const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-      const roles   = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-      setAllUsers(users.map(u => ({
-        ...u,
-        walletBalance: wallets[u.id]?.balance ?? u.wallet ?? 0,
-        roles: roles[u.id] || u.roles || ['customer'],
-      })));
-    }
+    const users   = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
+    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+    const roles   = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
+    setAllUsers(users.map(u => ({
+      ...u,
+      walletBalance: wallets[u.id]?.balance ?? globalWallets[u.id]?.balance ?? u.wallet ?? 0,
+      roles: roles[u.id] || u.roles || ['customer'],
+    })));
   }, [adminTab, globalWallets]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Firestore transaction log subscription
+  // Build transaction list from globalWallets when on ledger tab
   useEffect(() => {
-    if (adminTab !== 'ledger' || !FIREBASE_ENABLED) return;
+    if (adminTab !== 'ledger') return;
+    const { globalWallets: gw } = { globalWallets };
+    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+    const users   = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
+    const entries = [];
+    Object.entries(wallets).forEach(([uid, w]) => {
+      const uname = users.find(u => u.id === uid)?.name || uid.slice(0, 8);
+      (w.history || []).forEach(e => entries.push({ ...e, userId: uid, userName: uname }));
+    });
+    entries.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+    setTxList(entries);
+  }, [adminTab, txRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    let cancelled = false;
-    setTxLoading(true);
+  const handleClearTransactions = () => {
+    if (!window.confirm('ล้างประวัติธุรกรรมทั้งระบบออกจาก localStorage ใช่หรือไม่?')) return;
+    try {
+      const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+      Object.keys(wallets).forEach(uid => { wallets[uid] = { ...wallets[uid], history: [] }; });
+      localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
+    } catch {}
     setTxList([]);
-
-    getTransactionLogMeta().then(meta => {
-      if (cancelled) return;
-      const clearedAt = meta?.clearedAt || null;
-      txUnsubRef.current?.();
-      txUnsubRef.current = subscribeToTransactions(clearedAt, (txs) => {
-        if (!cancelled) { setTxList(txs); setTxLoading(false); }
-      }, () => { if (!cancelled) setTxLoading(false); });
-    }).catch(() => { if (!cancelled) setTxLoading(false); });
-
-    return () => {
-      cancelled = true;
-      txUnsubRef.current?.();
-      txUnsubRef.current = null;
-    };
-  }, [adminTab, txRefreshKey]);
-
-  const handleClearTransactions = async () => {
-    if (!window.confirm('ล้างข้อมูลธุรกรรมทั้งหมดหรือไม่?\n(ข้อมูลจะถูกซ่อน ไม่ได้ลบออกจากระบบ)')) return;
-    const ok = await clearTransactionLog();
-    if (ok) {
-      setTxList([]);
-      setTxRefreshKey(k => k + 1);
-      notifySystem('ล้างข้อมูล', 'ล้างบันทึกธุรกรรมเรียบร้อยแล้ว', 'success');
-    }
+    setTxRefreshKey(k => k + 1);
+    notifySystem('ล้างข้อมูล', 'ล้างบันทึกธุรกรรมเรียบร้อยแล้ว', 'success');
   };
-
-  const [fixWalletStatus, setFixWalletStatus] = useState(null);
 
   // ── Purge state ───────────────────────────────────────────────────────────
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [purgeOptions, setPurgeOptions] = useState({
     orders: true,
-    transactions: true,
     walletEntries: true,
     pendingRequests: false,
   });
@@ -194,69 +160,30 @@ export default function AdminView() {
 
   const togglePurge = (key) => setPurgeOptions(prev => ({ ...prev, [key]: !prev[key] }));
 
-  const handlePurge = async () => {
+  const handlePurge = () => {
     setPurgeLoading(true);
     setPurgeResult(null);
-    const results = {};
     try {
-      if (FIREBASE_ENABLED) {
-        if (purgeOptions.orders)          results.orders          = await purgeOrders();
-        if (purgeOptions.transactions)    results.transactions    = await purgeTransactions();
-        if (purgeOptions.walletEntries)   results.walletEntries   = await purgeWalletEntries();
-        if (purgeOptions.pendingRequests) results.pendingRequests = await purgePendingRequests();
-      }
-      // Clear matching localStorage data
-      if (purgeOptions.orders) {
-        localStorage.removeItem('boomrider_orders');
-      }
+      if (purgeOptions.orders) localStorage.removeItem('boomrider_orders');
       if (purgeOptions.walletEntries) {
-        try {
-          const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-          Object.keys(wallets).forEach(uid => { wallets[uid] = { ...wallets[uid], history: [] }; });
-          localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
-        } catch {}
+        const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+        Object.keys(wallets).forEach(uid => { wallets[uid] = { ...wallets[uid], history: [] }; });
+        localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
       }
-      if (purgeOptions.pendingRequests) {
-        localStorage.removeItem('boomrider_pending_requests');
-      }
-      const summary = Object.entries(results)
-        .map(([k, n]) => {
-          const labels = { orders: 'ออเดอร์', transactions: 'ธุรกรรม', walletEntries: 'ประวัติกระเป๋า', pendingRequests: 'คำขอรอดำเนินการ' };
-          return `${labels[k] || k}: ${n} รายการ`;
-        })
-        .join(' · ');
-      setPurgeResult({ ok: true, summary: summary || 'เสร็จสิ้น (localStorage)' });
-      notifySystem('ล้างข้อมูล ✅', 'ลบข้อมูลที่เลือกออกจากระบบเรียบร้อยแล้ว', 'success');
+      if (purgeOptions.pendingRequests) localStorage.removeItem('boomrider_pending_requests');
+      setPurgeResult({ ok: true, summary: 'เสร็จสิ้น' });
+      notifySystem('ล้างข้อมูล ✅', 'ลบข้อมูลที่เลือกออกจาก localStorage เรียบร้อยแล้ว', 'success');
     } catch (err) {
       setPurgeResult({ ok: false, summary: `ผิดพลาด: ${err?.message || 'unknown'}` });
-      notifySystem('ผิดพลาด', 'ล้างข้อมูลไม่สำเร็จ ลองอีกครั้ง', 'error');
     } finally {
       setPurgeLoading(false);
       setShowPurgeModal(false);
     }
   };
 
-  const handleFixWalletBalances = async () => {
-    if (!window.confirm('ปรับยอด balance ทุก wallet ให้เป็นตัวเลขที่ถูกต้อง (ปัดเศษ 2 ตำแหน่ง) ใช่หรือไม่?')) return;
-    setFixWalletStatus('กำลังประมวลผล...');
-    try {
-      const results = await fixAllWalletBalances();
-      const ok = results.filter(r => r.ok).length;
-      const fail = results.filter(r => !r.ok).length;
-      setFixWalletStatus(`สำเร็จ ${ok} รายการ${fail ? ` / ล้มเหลว ${fail} รายการ` : ''}`);
-    } catch (err) {
-      setFixWalletStatus(`ผิดพลาด: ${err?.message || 'unknown'}`);
-    }
-  };
-
-  const saveConfig = async () => {
+  const saveConfig = () => {
     setAppConfig(editConfig);
-    try {
-      if (FIREBASE_ENABLED) await saveAppConfig(editConfig);
-      notifySystem('สำเร็จ', 'บันทึกการตั้งค่าระบบเรียบร้อยแล้ว', 'success');
-    } catch {
-      notifySystem('สำเร็จ', 'บันทึกการตั้งค่าเรียบร้อย (local)', 'success');
-    }
+    notifySystem('สำเร็จ', 'บันทึกการตั้งค่าระบบเรียบร้อยแล้ว', 'success');
   };
 
   // ── Derived metrics ──────────────────────────────────────────────────────
@@ -335,21 +262,16 @@ export default function AdminView() {
   ];
 
   // ── Wallet adjust ─────────────────────────────────────────────────────────
-  const loadUserWalletEntries = async (userId) => {
-    if (!userId || !FIREBASE_ENABLED) return;
-    setUserWalletLoading(prev => ({ ...prev, [userId]: true }));
-    try {
-      const entries = await loadWalletEntries(userId);
-      setUserWalletEntries(prev => ({ ...prev, [userId]: entries }));
-    } catch (_) {}
-    finally {
-      setUserWalletLoading(prev => ({ ...prev, [userId]: false }));
-    }
+  const loadUserWalletEntries = (userId) => {
+    if (!userId) return;
+    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+    setUserWalletEntries(prev => ({ ...prev, [userId]: wallets[userId]?.history || [] }));
   };
 
-  const handleClearUserWalletHistory = async (userId, userName) => {
+  const handleClearUserWalletHistory = (userId, userName) => {
     if (!window.confirm(`ล้างประวัติกระเป๋าของ ${userName} ใช่หรือไม่?\n(รายการจะถูกซ่อน — ยอดเงินคงเดิม)`)) return;
-    await clearWalletHistory(userId);
+    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+    if (wallets[userId]) { wallets[userId] = { ...wallets[userId], history: [] }; localStorage.setItem('boomrider_wallets', JSON.stringify(wallets)); }
     setUserWalletEntries(prev => ({ ...prev, [userId]: [] }));
     notifySystem('Admin', `ล้างประวัติกระเป๋าของ ${userName} แล้ว`, 'success');
   };
@@ -647,11 +569,6 @@ export default function AdminView() {
               <h2 className="font-bold text-lg flex items-center gap-2 text-gray-700">
                 <Wallet size={20} className="text-purple-600" /> ยอด Wallet ทั้งระบบ
               </h2>
-              {FIREBASE_ENABLED && (
-                <span className="text-xs bg-green-50 text-green-600 border border-green-200 rounded-full px-2 py-0.5 font-medium">
-                  ข้อมูลสด (Firestore)
-                </span>
-              )}
             </div>
             {(() => {
               const entries = Object.entries(globalWallets);
@@ -946,13 +863,11 @@ export default function AdminView() {
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-xs font-bold text-gray-600">ประวัติธุรกรรม</p>
                             <div className="flex gap-2">
-                              {FIREBASE_ENABLED && (
-                                <button
-                                  onClick={() => loadUserWalletEntries(user.id)}
-                                  className="text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded font-bold hover:bg-blue-200"
-                                >รีเฟรช</button>
-                              )}
-                              {FIREBASE_ENABLED && (userWalletEntries[user.id] || []).length > 0 && (
+                              <button
+                                onClick={() => loadUserWalletEntries(user.id)}
+                                className="text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded font-bold hover:bg-blue-200"
+                              >รีเฟรช</button>
+                              {(userWalletEntries[user.id] || []).length > 0 && (
                                 <button
                                   onClick={() => handleClearUserWalletHistory(user.id, user.name)}
                                   className="text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded font-bold hover:bg-red-200"
@@ -962,8 +877,6 @@ export default function AdminView() {
                           </div>
                           {userWalletLoading[user.id] ? (
                             <p className="text-xs text-gray-400 text-center py-3">กำลังโหลด...</p>
-                          ) : !FIREBASE_ENABLED ? (
-                            <p className="text-xs text-gray-400 text-center py-2">ต้องเปิด Firebase เพื่อดูประวัติ</p>
                           ) : (userWalletEntries[user.id] || []).length === 0 ? (
                             <p className="text-xs text-gray-400 text-center py-2">ยังไม่มีประวัติธุรกรรม</p>
                           ) : (
@@ -1373,17 +1286,6 @@ export default function AdminView() {
               <Sliders size={16} /> เครื่องมือระบบ (Admin Only)
             </h3>
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleFixWalletBalances}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-700 border border-orange-200 rounded-xl text-sm font-semibold hover:bg-orange-100 transition-colors"
-              >
-                <Wallet size={15} /> แก้ไข Balance Wallet ทั้งหมด
-              </button>
-              {fixWalletStatus && (
-                <span className="text-sm text-gray-600 bg-gray-50 border rounded-lg px-3 py-1.5">
-                  {fixWalletStatus}
-                </span>
-              )}
             </div>
             <p className="text-xs text-gray-400 mt-2">
               ปัดเศษทศนิยม balance ทุก wallet ให้เป็น 2 ตำแหน่ง และแก้ไข floating-point artifact
@@ -1399,8 +1301,7 @@ export default function AdminView() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
               {[
-                { key: 'orders',          label: 'ออเดอร์ทั้งหมด',              sub: 'orders collection + localStorage',             color: 'red' },
-                { key: 'transactions',    label: 'ประวัติธุรกรรมทั้งหมด',        sub: 'transactions collection',                      color: 'orange' },
+                { key: 'orders',          label: 'ออเดอร์ทั้งหมด',              sub: 'localStorage orders',                          color: 'red' },
                 { key: 'walletEntries',   label: 'ประวัติเงินเข้า-ออกทั้งหมด',   sub: 'wallet entries (ไม่กระทบยอดเงินคงเหลือ)',      color: 'yellow' },
                 { key: 'pendingRequests', label: 'คำขอรอดำเนินการ',              sub: 'pending_requests (เติมเงิน/ถอน/สมัคร)',         color: 'purple' },
               ].map(({ key, label, sub, color }) => {
@@ -1466,7 +1367,6 @@ export default function AdminView() {
 
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-5 space-y-1.5">
               {purgeOptions.orders          && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ออเดอร์ทั้งหมด</p>}
-              {purgeOptions.transactions    && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ประวัติธุรกรรมทั้งหมด</p>}
               {purgeOptions.walletEntries   && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ประวัติเงินเข้า-ออกทั้งหมด</p>}
               {purgeOptions.pendingRequests && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> คำขอรอดำเนินการทั้งหมด</p>}
             </div>
@@ -1562,14 +1462,6 @@ export default function AdminView() {
 
         const totalIn  = filtered.reduce((s, e) => s + Math.max(0, e.amount ?? 0), 0);
         const totalOut = filtered.reduce((s, e) => s + Math.min(0, e.amount ?? 0), 0);
-
-        if (!FIREBASE_ENABLED) return (
-          <div className="bg-white rounded-xl p-12 text-center text-gray-400 shadow-sm">
-            <Wallet size={40} className="mx-auto mb-3 opacity-20" />
-            <p className="font-semibold">ต้องเชื่อมต่อ Firebase</p>
-            <p className="text-xs mt-1">ระบบบันทึกธุรกรรมทำงานผ่าน Firestore</p>
-          </div>
-        );
 
         return (
           <div>

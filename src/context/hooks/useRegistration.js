@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { FIREBASE_ENABLED, USER_LOCATION } from '../../constants';
+import { USER_LOCATION } from '../../constants';
 import { compressImage, generateId, formatDateTime } from '../../utils';
-import { uploadIdCard, uploadShopPhoto, uploadProfilePhoto, uploadDataUrl } from '../../firebase/storage';
-import { savePendingRequest } from '../../firebase/firestore';
 
 export function useRegistration({
   currentUser, userProfile, userRoles,
@@ -21,8 +19,8 @@ export function useRegistration({
   });
 
   const requestRegisterMerchant = async (data) => {
-    if (!data.shopName || !data.realName || !data.idCard || !data.phone || !data.bankAccount || !data.idCardImage) {
-      return notifySystem('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลให้ครบถ้วนและอัปโหลดรูปบัตรประชาชน', 'error');
+    if (!data.shopName || !data.realName || !data.idCard || !data.phone || !data.bankName || !data.bankAccount || !data.idCardImage) {
+      return notifySystem('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลให้ครบถ้วนรวมถึงชื่อธนาคาร และอัปโหลดรูปบัตรประชาชน', 'error');
     }
     if (restaurants.some(r => r.ownerId === userProfile.id || r.ownerId === currentUser?.id)) {
       if (!userRoles.includes('merchant')) {
@@ -36,88 +34,56 @@ export function useRegistration({
     if (isPending('merchant_reg')) return notifySystem('รออนุมัติ', 'คำขอสมัครร้านค้ากำลังรอการอนุมัติ', 'info');
     const uid = userProfile.id || currentUser?.id || '';
 
-    // ── อัปโหลดรูป KYC ไป Firebase Storage ก่อน save pending request ─────────
-    let idCardUrl = null;
-    let shopImageUrl = null;
-    if (FIREBASE_ENABLED && uid) {
-      try {
-        idCardUrl = data._idCardImageFile
-          ? await uploadIdCard(uid, await compressImage(data._idCardImageFile, 1200, 900, 0.88).catch(() => data._idCardImageFile))
-          : data.idCardImage?.startsWith('data:')
-            ? await uploadDataUrl(data.idCardImage, `kyc/${uid}/id_card_${Date.now()}.jpg`)
-            : null;
-      } catch {}
-      try {
-        shopImageUrl = data._shopImageFile
-          ? await uploadShopPhoto(`pending_${uid}`, await compressImage(data._shopImageFile, 800, 600, 0.75).catch(() => data._shopImageFile))
-          : data.shopImage?.startsWith('data:')
-            ? await uploadDataUrl(data.shopImage, `shops/pending_${uid}/cover_${Date.now()}.jpg`)
-            : null;
-      } catch {}
+    // compress images to base64 for local storage
+    let idCardImage = data.idCardImage;
+    let shopImage   = data.shopImage;
+    if (data._idCardImageFile) {
+      try { idCardImage = await compressImage(data._idCardImageFile, 1200, 900, 0.75); } catch {}
+    }
+    if (data._shopImageFile) {
+      try { shopImage = await compressImage(data._shopImageFile, 800, 600, 0.65); } catch {}
     }
 
-    const { idCardImage, shopImage, _idCardImageFile, _shopImageFile, ...dataNoImages } = data;
+    const { _idCardImageFile, _shopImageFile, ...dataNoFiles } = data;
     const merchantLocation = data.location || userProfile.location || USER_LOCATION;
     const newReq = {
       id: generateId(), type: 'merchant_reg',
-      data: {
-        ...dataNoImages,
-        location:    merchantLocation,
-        idCardImage: idCardUrl    || (idCardImage  ? '✓ อัปโหลดบัตรประชาชนแล้ว' : null),
-        shopImage:   shopImageUrl || (shopImage    ? '✓ อัปโหลดรูปร้านแล้ว'       : null),
-      },
-      _hasImages: !!(idCardUrl || shopImageUrl || idCardImage || shopImage),
+      data: { ...dataNoFiles, location: merchantLocation, idCardImage, shopImage },
       userId: uid, user: userProfile.name,
       timestamp: formatDateTime(),
     };
-    if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});
     setPendingRequests(prev => [newReq, ...prev]);
+    try { localStorage.setItem('boomrider_pending_requests', JSON.stringify([newReq])); } catch {}
     notifySystem('สำเร็จ', 'ส่งใบสมัครร้านค้าเรียบร้อย รอแอดมินอนุมัติ', 'success');
     notifyAdmin('🏪 สมัครร้านค้าใหม่', `${userProfile.name} ส่งใบสมัครร้าน ${data.shopName}`, 'warning');
     return true;
   };
 
   const requestRegisterRider = async (data) => {
-    if (!data.realName || !data.idCard || !data.phone || !data.bankAccount || !data.idCardImage) {
-      return notifySystem('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลให้ครบถ้วนและอัปโหลดรูปบัตรประชาชน', 'error');
+    if (!data.realName || !data.idCard || !data.phone || !data.bankName || !data.bankAccount || !data.idCardImage) {
+      return notifySystem('ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลให้ครบถ้วนรวมถึงชื่อธนาคาร และอัปโหลดรูปบัตรประชาชน', 'error');
     }
     if (isPending('rider_reg')) return notifySystem('รออนุมัติ', 'คำขอสมัครไรเดอร์กำลังรอการอนุมัติ', 'info');
     const uid = userProfile.id || currentUser?.id || '';
 
-    // ── อัปโหลดรูป KYC ไป Firebase Storage ก่อน save pending request ─────────
-    let idCardUrl = null;
-    let profileImageUrl = null;
-    if (FIREBASE_ENABLED && uid) {
-      try {
-        idCardUrl = data._idCardImageFile
-          ? await uploadIdCard(uid, await compressImage(data._idCardImageFile, 1200, 900, 0.88).catch(() => data._idCardImageFile))
-          : data.idCardImage?.startsWith('data:')
-            ? await uploadDataUrl(data.idCardImage, `kyc/${uid}/id_card_${Date.now()}.jpg`)
-            : null;
-      } catch {}
-      try {
-        profileImageUrl = data._profileImageFile
-          ? await uploadProfilePhoto(uid, await compressImage(data._profileImageFile, 400, 400, 0.8).catch(() => data._profileImageFile))
-          : data.profileImage?.startsWith('data:')
-            ? await uploadDataUrl(data.profileImage, `users/${uid}/kyc_profile_${Date.now()}.jpg`)
-            : null;
-      } catch {}
+    let idCardImage  = data.idCardImage;
+    let profileImage = data.profileImage;
+    if (data._idCardImageFile) {
+      try { idCardImage = await compressImage(data._idCardImageFile, 1200, 900, 0.75); } catch {}
+    }
+    if (data._profileImageFile) {
+      try { profileImage = await compressImage(data._profileImageFile, 400, 400, 0.7); } catch {}
     }
 
-    const { idCardImage, profileImage, _idCardImageFile, _profileImageFile, ...dataNoImages } = data;
+    const { _idCardImageFile, _profileImageFile, ...dataNoFiles } = data;
     const newReq = {
       id: generateId(), type: 'rider_reg',
-      data: {
-        ...dataNoImages,
-        idCardImage:  idCardUrl       || (idCardImage  ? '✓ อัปโหลดบัตรประชาชนแล้ว' : null),
-        profileImage: profileImageUrl || (profileImage ? '✓ อัปโหลดรูปโปรไฟล์แล้ว'   : null),
-      },
-      _hasImages: !!(idCardUrl || profileImageUrl || idCardImage || profileImage),
+      data: { ...dataNoFiles, idCardImage, profileImage },
       userId: uid, user: userProfile.name,
       timestamp: formatDateTime(),
     };
-    if (FIREBASE_ENABLED) savePendingRequest(newReq).catch(() => {});
     setPendingRequests(prev => [newReq, ...prev]);
+    try { localStorage.setItem('boomrider_pending_requests', JSON.stringify([newReq])); } catch {}
     notifySystem('สำเร็จ', 'ส่งใบสมัครไรเดอร์เรียบร้อย รอแอดมินอนุมัติ', 'success');
     notifyAdmin('🛵 สมัครไรเดอร์ใหม่', `${userProfile.name} ส่งใบสมัคร`, 'warning');
     return true;
