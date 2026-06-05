@@ -74,6 +74,7 @@ export function useRegistration({
     setPendingRequests(prev => [newReq, ...prev]);
     notifySystem('สำเร็จ', 'ส่งใบสมัครร้านค้าเรียบร้อย รอแอดมินอนุมัติ', 'success');
     notifyAdmin('🏪 สมัครร้านค้าใหม่', `${userProfile.name} ส่งใบสมัครร้าน ${data.shopName}`, 'warning');
+    return true;
   };
 
   const requestRegisterRider = async (data) => {
@@ -119,6 +120,7 @@ export function useRegistration({
     setPendingRequests(prev => [newReq, ...prev]);
     notifySystem('สำเร็จ', 'ส่งใบสมัครไรเดอร์เรียบร้อย รอแอดมินอนุมัติ', 'success');
     notifyAdmin('🛵 สมัครไรเดอร์ใหม่', `${userProfile.name} ส่งใบสมัคร`, 'warning');
+    return true;
   };
 
   return {

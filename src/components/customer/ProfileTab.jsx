@@ -44,6 +44,11 @@ export default function ProfileTab() {
   const [newAddrMode, setNewAddrMode] = useState(false);
   const [userPinLoc, setUserPinLoc] = useState(null);
   const [userPinSaving, setUserPinSaving] = useState(false);
+  const [merchantSubmitting, setMerchantSubmitting] = useState(false);
+  const [riderSubmitting, setRiderSubmitting] = useState(false);
+
+  const MERCHANT_FORM_INIT = { shopName: '', category: 'Street Food', realName: '', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, shopImage: null, location: null };
+  const RIDER_FORM_INIT    = { realName: '', vehicle: 'Motorcycle', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, profileImage: null };
 
   return (
     <div className="p-4 min-h-screen pb-24">
@@ -528,7 +533,23 @@ export default function ProfileTab() {
                 {merchantRegForm.idCardImage && <img src={merchantRegForm.idCardImage} className="mt-2 h-32 w-full object-cover rounded-lg" alt="id" />}
               </div>
             </div>
-            <button onClick={() => requestRegisterMerchant(merchantRegForm)} className="w-full bg-orange-500 text-white py-3 rounded-lg font-bold shadow-lg">ส่งใบสมัคร</button>
+            <button
+              disabled={merchantSubmitting}
+              onClick={async () => {
+                setMerchantSubmitting(true);
+                const ok = await requestRegisterMerchant(merchantRegForm);
+                setMerchantSubmitting(false);
+                if (ok) {
+                  setMerchantRegForm(MERCHANT_FORM_INIT);
+                  setProfileSubView('main');
+                }
+              }}
+              className="w-full bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              {merchantSubmitting
+                ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> กำลังส่งข้อมูล...</>
+                : 'ส่งใบสมัครร้านค้า'}
+            </button>
           </div>
         </div>
 
@@ -553,16 +574,40 @@ export default function ProfileTab() {
                 <div><label className="text-sm mb-1 block">ธนาคาร</label><input value={riderRegForm.bankName} onChange={e => setRiderRegForm({ ...riderRegForm, bankName: e.target.value })} className="w-full border p-2 rounded-lg" placeholder="กสิกร, ไทยพาณิชย์..." /></div>
                 <div><label className="text-sm mb-1 block">เลขที่บัญชี</label><input value={riderRegForm.bankAccount} onChange={e => setRiderRegForm({ ...riderRegForm, bankAccount: e.target.value })} className="w-full border p-2 rounded-lg" /></div>
               </div>
-              <div className="mb-4">
-                <label className="text-sm mb-1 block">รูปถ่ายบัตรประชาชน</label>
+              <div className="mb-2">
+                <label className="text-sm mb-1 block">รูปถ่ายบัตรประชาชน <span className="text-red-500">*</span></label>
                 <label className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${riderRegForm.idCardImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
                   {riderRegForm.idCardImage ? <><Check className="inline mr-1" /> เลือกแล้ว</> : <><Camera className="inline mr-1" /> ถ่ายรูป/เลือกรูป</>}
                   <input type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setRiderRegForm, 'idCardImage')} />
                 </label>
                 {riderRegForm.idCardImage && <img src={riderRegForm.idCardImage} className="mt-2 h-32 w-full object-cover rounded-lg" alt="id" />}
               </div>
+              <div className="mb-4">
+                <label className="text-sm mb-1 block">รูปโปรไฟล์ไรเดอร์ (ไม่บังคับ)</label>
+                <label className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${riderRegForm.profileImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
+                  {riderRegForm.profileImage ? <><Check className="inline mr-1" /> เลือกแล้ว</> : <><Camera className="inline mr-1" /> ถ่ายรูป/เลือกรูป</>}
+                  <input type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setRiderRegForm, 'profileImage')} />
+                </label>
+                {riderRegForm.profileImage && <img src={riderRegForm.profileImage} className="mt-2 h-32 w-full object-cover rounded-lg" alt="profile" />}
+              </div>
             </div>
-            <button onClick={() => requestRegisterRider(riderRegForm)} className="w-full bg-blue-500 text-white py-3 rounded-lg font-bold shadow-lg">ส่งใบสมัคร</button>
+            <button
+              disabled={riderSubmitting}
+              onClick={async () => {
+                setRiderSubmitting(true);
+                const ok = await requestRegisterRider(riderRegForm);
+                setRiderSubmitting(false);
+                if (ok) {
+                  setRiderRegForm(RIDER_FORM_INIT);
+                  setProfileSubView('main');
+                }
+              }}
+              className="w-full bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              {riderSubmitting
+                ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> กำลังส่งข้อมูล...</>
+                : 'ส่งใบสมัครไรเดอร์'}
+            </button>
           </div>
         </div>
       )}
