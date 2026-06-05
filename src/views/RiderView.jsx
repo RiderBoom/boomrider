@@ -80,7 +80,7 @@ export default function RiderView() {
 
   // Refs: อัปเดตทุก render ผ่าน useEffect → callback ไม่มี stale closure
   const riderIdRef    = React.useRef(null);
-  const riderUidRef   = React.useRef(null);   // Firebase Auth UID (ใช้เป็น key ใน rider_locations)
+  const riderUidRef   = React.useRef(null);
   const activeJobRef  = React.useRef(null);   // { id, status } ของงานที่กำลังทำอยู่
   const lastWriteRef  = React.useRef(0);      // throttle timestamp
 

@@ -20,10 +20,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // Split vendor libs into cacheable chunks
-        // Firebase (~800KB) and Maps (~200KB) change rarely → long cache hits
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
-          if (id.includes('firebase'))    return 'vendor-firebase';
           if (id.includes('leaflet'))     return 'vendor-maps';
           if (id.includes('lucide-react')) return 'vendor-icons';
           // React core must be in the same chunk as react-dom — checked AFTER leaflet

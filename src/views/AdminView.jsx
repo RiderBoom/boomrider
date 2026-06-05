@@ -789,7 +789,7 @@ export default function AdminView() {
             {allUsers.length === 0 ? (
               <div className="p-10 text-center text-gray-400">
                 <Users size={40} className="mx-auto mb-2 opacity-20" />
-                <p>ไม่มีผู้ใช้ (Firebase users จะไม่แสดงที่นี่)</p>
+                <p>ไม่มีผู้ใช้</p>
               </div>
             ) : (
               <div className="divide-y max-h-[600px] overflow-y-auto">

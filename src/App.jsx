@@ -1,8 +1,5 @@
 import { lazy, Suspense } from 'react';
 
-// AppShell pulls in AppContext → Firebase SDK.
-// Dynamic import keeps vendor-firebase out of the initial modulepreload list,
-// so the login screen paints before the 471 KB Firebase chunk is fetched.
 const AppShell = lazy(() => import('./AppShell'));
 
 function BootSpinner() {
