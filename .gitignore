@@ -3,6 +3,7 @@ dist
 .env.local
 .env.*.local
 functions/.env
+.env.vercel*
 
 .vercel/
 .firebase/
