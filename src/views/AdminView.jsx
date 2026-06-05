@@ -84,7 +84,6 @@ export default function AdminView() {
     // Admin tools
     adminAdjustWallet, adminBanUser,
     creditWallet,
-    clearWalletHistory,
     isDataLoading,
   } = useApp();
 

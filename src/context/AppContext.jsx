@@ -57,7 +57,7 @@ export function AppProvider({ children }) {
   const [walletClearedAt, setWalletClearedAt] = useState(null);
   const walletHistory = useMemo(() => {
     if (!walletClearedAt) return walletAllEntries;
-    const ms = walletClearedAt?.toMillis ? walletClearedAt.toMillis() : 0;
+    const ms = walletClearedAt instanceof Date ? walletClearedAt.getTime() : 0;
     return walletAllEntries.filter(e => (e.createdAtMs || 0) > ms);
   }, [walletAllEntries, walletClearedAt]);
 
@@ -780,6 +780,20 @@ export function AppProvider({ children }) {
     setActiveTab('home');
     setProfileSubView('main');
   };
+
+  // --- Clear wallet history ---
+  const clearWalletHistory = useCallback(() => {
+    setWalletAllEntries([]);
+    setWalletClearedAt(new Date());
+    try {
+      const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
+      const uid = currentUser?.id || userProfile?.id;
+      if (uid && wallets[uid]) {
+        wallets[uid] = { ...wallets[uid], history: [] };
+        localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
+      }
+    } catch {}
+  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Rating ---
   const openRatingModal = useCallback((order) => {
