@@ -10,7 +10,7 @@ import {
   DatabaseZap, ShieldOff, CheckSquare, Square,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { STATUS_LABELS, ADMIN_UID } from '../constants';
+import { STATUS_LABELS, ADMIN_EMAIL } from '../constants';
 import { formatDateTimeFromMs } from '../utils';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
@@ -84,6 +84,7 @@ export default function AdminView() {
     // Admin tools
     adminAdjustWallet, adminBanUser,
     creditWallet,
+    setOrders, setRestaurants, setRiders, setPendingRequests, setGlobalWallets,
     isDataLoading,
   } = useApp();
 
@@ -149,34 +150,49 @@ export default function AdminView() {
 
   // ── Purge state ───────────────────────────────────────────────────────────
   const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [showResetAllModal, setShowResetAllModal] = useState(false);
   const [purgeOptions, setPurgeOptions] = useState({
-    orders: true,
-    walletEntries: true,
+    orders: false,
+    walletEntries: false,
     pendingRequests: false,
+    restaurants: false,
+    riders: false,
+    users: false,
+    wallets: false,
   });
   const [purgeLoading, setPurgeLoading] = useState(false);
   const [purgeResult, setPurgeResult] = useState(null);
 
   const togglePurge = (key) => setPurgeOptions(prev => ({ ...prev, [key]: !prev[key] }));
 
-  const handlePurge = () => {
+  const handlePurge = (isResetAll = false) => {
+    const opts = isResetAll
+      ? { orders: true, walletEntries: true, pendingRequests: true, restaurants: true, riders: true, users: true, wallets: true }
+      : purgeOptions;
     setPurgeLoading(true);
     setPurgeResult(null);
     try {
-      if (purgeOptions.orders) localStorage.removeItem('boomrider_orders');
-      if (purgeOptions.walletEntries) {
+      if (opts.orders)          { localStorage.removeItem('boomrider_orders');           setOrders([]); }
+      if (opts.pendingRequests) { localStorage.removeItem('boomrider_pending_requests'); setPendingRequests([]); }
+      if (opts.restaurants)     { localStorage.removeItem('boomrider_restaurants');      setRestaurants([]); }
+      if (opts.riders)          { localStorage.removeItem('boomrider_riders');           setRiders([]); }
+      if (opts.users)           { localStorage.removeItem('boomrider_users'); localStorage.removeItem('boomrider_user_roles'); setAllUsers([]); }
+      if (opts.wallets) {
+        localStorage.removeItem('boomrider_wallets');
+        setGlobalWallets({});
+      } else if (opts.walletEntries) {
         const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
         Object.keys(wallets).forEach(uid => { wallets[uid] = { ...wallets[uid], history: [] }; });
         localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
       }
-      if (purgeOptions.pendingRequests) localStorage.removeItem('boomrider_pending_requests');
       setPurgeResult({ ok: true, summary: 'เสร็จสิ้น' });
-      notifySystem('ล้างข้อมูล ✅', 'ลบข้อมูลที่เลือกออกจาก localStorage เรียบร้อยแล้ว', 'success');
+      notifySystem('ล้างข้อมูล ✅', 'ลบข้อมูลที่เลือกออกจากระบบเรียบร้อยแล้ว', 'success');
     } catch (err) {
       setPurgeResult({ ok: false, summary: `ผิดพลาด: ${err?.message || 'unknown'}` });
     } finally {
       setPurgeLoading(false);
       setShowPurgeModal(false);
+      setShowResetAllModal(false);
     }
   };
 
@@ -356,9 +372,9 @@ export default function AdminView() {
           </div>
           {/* ── กระเป๋าเงิน Admin (GP สะสม) ───────────────────────────────── */}
           {(() => {
-            const adminBal = globalWallets[ADMIN_UID]?.balance ?? userWallet ?? 0;
-            const rawHistory = globalWallets[ADMIN_UID]?.history?.length
-              ? globalWallets[ADMIN_UID].history
+            const adminBal = globalWallets[ADMIN_EMAIL]?.balance ?? userWallet ?? 0;
+            const rawHistory = globalWallets[ADMIN_EMAIL]?.history?.length
+              ? globalWallets[ADMIN_EMAIL].history
               : (walletHistory ?? []);
             const displayHistory = [...rawHistory].sort((a, b) => {
               const ms = (e) => e.createdAtMs || parseInt(((e.id || '').match(/\d{10,}/) || ['0'])[0], 10);
@@ -576,7 +592,7 @@ export default function AdminView() {
 
               // map uid → role label สำหรับ admin
               const roleLabel = (uid) => {
-                if (uid === ADMIN_UID) return { label: 'Admin', color: 'bg-red-100 text-red-700' };
+                if (uid === ADMIN_EMAIL) return { label: 'Admin', color: 'bg-red-100 text-red-700' };
                 return null;
               };
 
@@ -1300,15 +1316,26 @@ export default function AdminView() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
               {[
-                { key: 'orders',          label: 'ออเดอร์ทั้งหมด',              sub: 'localStorage orders',                          color: 'red' },
-                { key: 'walletEntries',   label: 'ประวัติเงินเข้า-ออกทั้งหมด',   sub: 'wallet entries (ไม่กระทบยอดเงินคงเหลือ)',      color: 'yellow' },
-                { key: 'pendingRequests', label: 'คำขอรอดำเนินการ',              sub: 'pending_requests (เติมเงิน/ถอน/สมัคร)',         color: 'purple' },
+                { key: 'orders',          label: 'ออเดอร์ทั้งหมด',                sub: 'ประวัติออเดอร์ทุกรายการ',                      color: 'red' },
+                { key: 'walletEntries',   label: 'ประวัติธุรกรรม Wallet',          sub: 'ลบประวัติเงินเข้า-ออก (ไม่กระทบยอดคงเหลือ)',  color: 'yellow' },
+                { key: 'wallets',         label: 'ยอดเงิน + ประวัติทุก Wallet',   sub: 'ล้างกระเป๋าทั้งระบบ รวม UID เก่าทั้งหมด',     color: 'rose' },
+                { key: 'pendingRequests', label: 'คำขอรอดำเนินการ',                sub: 'เติมเงิน / ถอน / สมัครร้านค้า / ไรเดอร์',     color: 'purple' },
+                { key: 'restaurants',     label: 'ร้านค้าทั้งหมด',                sub: 'ลบร้านค้าและเมนูอาหารทั้งหมด',                color: 'orange' },
+                { key: 'riders',          label: 'ไรเดอร์ทั้งหมด',                sub: 'ลบข้อมูลไรเดอร์ทุกคน',                        color: 'blue' },
+                { key: 'users',           label: 'บัญชีผู้ใช้ทั้งหมด',            sub: 'ลบ users + roles (แอดมินยังอยู่ในระบบ)',       color: 'gray' },
               ].map(({ key, label, sub, color }) => {
                 const colorMap = {
                   red:    'border-red-200 bg-red-50',
                   orange: 'border-orange-200 bg-orange-50',
                   yellow: 'border-yellow-200 bg-yellow-50',
+                  rose:   'border-rose-200 bg-rose-50',
                   purple: 'border-purple-200 bg-purple-50',
+                  blue:   'border-blue-200 bg-blue-50',
+                  gray:   'border-gray-200 bg-gray-50',
+                };
+                const textMap = {
+                  red: 'text-red-600', orange: 'text-orange-600', yellow: 'text-yellow-600',
+                  rose: 'text-rose-600', purple: 'text-purple-600', blue: 'text-blue-600', gray: 'text-gray-600',
                 };
                 const checked = purgeOptions[key];
                 return (
@@ -1318,7 +1345,7 @@ export default function AdminView() {
                     className={`flex items-start gap-3 p-3 rounded-xl border-2 text-left transition-all ${checked ? colorMap[color] : 'border-gray-100 bg-gray-50'}`}
                   >
                     {checked
-                      ? <CheckSquare size={18} className={`mt-0.5 shrink-0 text-${color}-600`} />
+                      ? <CheckSquare size={18} className={`mt-0.5 shrink-0 ${textMap[color]}`} />
                       : <Square size={18} className="mt-0.5 shrink-0 text-gray-300" />
                     }
                     <div>
@@ -1340,6 +1367,12 @@ export default function AdminView() {
                 className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm shadow hover:bg-red-700 transition-colors"
               >
                 <Trash2 size={15} /> ล้างข้อมูลที่เลือก
+              </button>
+              <button
+                onClick={() => setShowResetAllModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm shadow hover:bg-black transition-colors"
+              >
+                <DatabaseZap size={15} /> รีเซ็ตระบบทั้งหมด
               </button>
               {purgeResult && (
                 <span className={`text-sm px-3 py-1.5 rounded-lg border ${purgeResult.ok ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
@@ -1366,8 +1399,12 @@ export default function AdminView() {
 
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-5 space-y-1.5">
               {purgeOptions.orders          && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ออเดอร์ทั้งหมด</p>}
-              {purgeOptions.walletEntries   && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ประวัติเงินเข้า-ออกทั้งหมด</p>}
+              {purgeOptions.walletEntries   && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ประวัติธุรกรรม Wallet</p>}
+              {purgeOptions.wallets         && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ยอดเงิน + ประวัติทุก Wallet</p>}
               {purgeOptions.pendingRequests && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> คำขอรอดำเนินการทั้งหมด</p>}
+              {purgeOptions.restaurants     && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ร้านค้าทั้งหมด</p>}
+              {purgeOptions.riders          && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> ไรเดอร์ทั้งหมด</p>}
+              {purgeOptions.users           && <p className="text-sm text-red-700 flex items-center gap-2"><Trash2 size={13} /> บัญชีผู้ใช้ทั้งหมด</p>}
             </div>
 
             <div className="flex gap-2">
@@ -1388,6 +1425,32 @@ export default function AdminView() {
                 ) : (
                   <><Trash2 size={15} /> ยืนยันลบถาวร</>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showResetAllModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-gray-900 rounded-full"><DatabaseZap size={22} className="text-white" /></div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">รีเซ็ตระบบทั้งหมด</h3>
+                <p className="text-xs text-red-500 font-medium">ข้อมูลทั้งหมดจะถูกลบถาวร กู้คืนไม่ได้</p>
+              </div>
+            </div>
+            <div className="bg-gray-900 rounded-xl p-3 mb-5 space-y-1.5">
+              {['ออเดอร์ทั้งหมด','ยอดเงิน + ประวัติทุก Wallet','คำขอรอดำเนินการ','ร้านค้าทั้งหมด','ไรเดอร์ทั้งหมด','บัญชีผู้ใช้ทั้งหมด'].map(t => (
+                <p key={t} className="text-sm text-red-300 flex items-center gap-2"><Trash2 size={13} /> {t}</p>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mb-4 text-center">แอดมินจะยังคง Login อยู่ แต่ข้อมูลทั้งหมดในระบบจะหายไป</p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowResetAllModal(false)} disabled={purgeLoading} className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-200 transition-colors">ยกเลิก</button>
+              <button onClick={() => handlePurge(true)} disabled={purgeLoading} className="flex-1 bg-gray-900 text-white py-2.5 rounded-xl font-bold hover:bg-black transition-colors flex items-center justify-center gap-2">
+                {purgeLoading ? <><span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> กำลังรีเซ็ต...</> : <><DatabaseZap size={15} /> ยืนยันรีเซ็ตทั้งหมด</>}
               </button>
             </div>
           </div>

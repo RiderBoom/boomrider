@@ -1,5 +1,5 @@
 import { generateId, formatDateTime, r2, safeLocalSet } from '../../utils';
-import { ADMIN_UID, USER_LOCATION } from '../../constants';
+import { ADMIN_EMAIL, USER_LOCATION } from '../../constants';
 
 export function useOrderActions(deps) {
   const {
@@ -244,19 +244,19 @@ export function useOrderActions(deps) {
           const gpNote = foodGP > 0 ? ` (หัก GP ฿${foodGP})` : '';
           processTransaction('income', merchantIncome, `รายได้ร้าน ${restName} #${shortId}${gpNote}`);
         }
-        if (ADMIN_UID    && ADMIN_UID    === myUidNow && gpAmount       > 0) {
+        if (ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL && gpAmount > 0) {
           processTransaction('income', gpAmount, `GP ${restName} #${shortId}`);
         }
         if (riderUid     && riderIncome    > 0) creditWallet(riderUid,     riderIncome,    `ค่าส่ง ${restName} #${shortId}`);
         if (shopOwnerUid && merchantIncome > 0) creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน #${shortId}`);
-        if (ADMIN_UID    && gpAmount       > 0) creditWallet(ADMIN_UID,    gpAmount,        `GP #${shortId}`);
+        if (ADMIN_EMAIL  && gpAmount       > 0) creditWallet(ADMIN_EMAIL,  gpAmount,        `GP #${shortId}`);
       } else if (!targetOrder.cashSettled) {
         const shortId_ = targetOrder.id.slice(-6);
         const gpAmount = typeof targetOrder.adminGP === 'number' ? targetOrder.adminGP : 0;
         const restName = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
         setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, cashSettled: true } : o));
         if (riderUid && gpAmount > 0) creditWallet(riderUid, -gpAmount, `หัก GP(สด) ${restName} #${shortId_}`);
-        if (ADMIN_UID && gpAmount > 0) creditWallet(ADMIN_UID, gpAmount, `GP(สด) ${restName} #${shortId_}`);
+        if (ADMIN_EMAIL && gpAmount > 0) creditWallet(ADMIN_EMAIL, gpAmount, `GP(สด) ${restName} #${shortId_}`);
       }
     }
   };

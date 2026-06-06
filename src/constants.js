@@ -41,7 +41,7 @@ export const STATUS_LABELS = {
 };
 
 // ===== Admin Config =====
-export const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
+export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || '';
 
 export const ADMIN_PERMISSIONS = {
   viewDashboard:    true,

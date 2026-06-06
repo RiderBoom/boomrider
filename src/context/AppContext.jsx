@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
-  USER_LOCATION, ADMIN_UID,
+  USER_LOCATION, ADMIN_EMAIL,
 } from '../constants';
 import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime, r2, safeLocalSet } from '../utils';
 
@@ -114,7 +114,7 @@ export function AppProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
   // --- Admin Derived ---
-  const isAdmin = !!ADMIN_UID && currentUser?.id === ADMIN_UID;
+  const isAdmin = !!ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL;
 
   // --- Refs ---
   const restaurantsRef = React.useRef(INITIAL_RESTAURANTS);
@@ -336,7 +336,7 @@ export function AppProvider({ children }) {
     if (!uid) return;
     const latestRoles = globalUserRoles[uid];
     if (!latestRoles || latestRoles.length === 0) return;
-    const withAdmin = ADMIN_UID && uid === ADMIN_UID
+    const withAdmin = ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL
       ? [...new Set([...latestRoles, 'admin'])]
       : latestRoles;
     setUserRoles(prev => {
@@ -389,7 +389,7 @@ export function AppProvider({ children }) {
       const user = JSON.parse(savedUser);
       const allRoles = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
       const latestRoles = allRoles[user.id] || allRoles[user.profile?.id] || user.roles || ['customer'];
-      const mergedRoles = ADMIN_UID && (user.id === ADMIN_UID || user.profile?.id === ADMIN_UID)
+      const mergedRoles = ADMIN_EMAIL && (user.email === ADMIN_EMAIL || user.profile?.email === ADMIN_EMAIL)
         ? [...new Set([...latestRoles, 'admin'])]
         : latestRoles;
       setCurrentUser({ ...user, roles: mergedRoles });
@@ -707,7 +707,7 @@ export function AppProvider({ children }) {
     const allRoles = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
     const latest   = allRoles[uid];
     if (latest && latest.length > 0) {
-      const withAdmin = ADMIN_UID && uid === ADMIN_UID ? [...new Set([...latest, 'admin'])] : latest;
+      const withAdmin = ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL ? [...new Set([...latest, 'admin'])] : latest;
       setUserRoles(withAdmin);
     }
     const savedPending = JSON.parse(localStorage.getItem('boomrider_pending_requests') || '[]');
@@ -867,7 +867,7 @@ export function AppProvider({ children }) {
     clearWalletHistory,
     tempProfile, setTempProfile,
     isAdmin,
-    globalWallets,
+    globalWallets, setGlobalWallets,
 
     // Cart & Orders
     cart, setCart,

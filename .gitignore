@@ -8,4 +8,6 @@ functions/.env
 .vercel/
 .firebase/
 # android/ ← เปิดให้ track เพื่อ GitHub Actions build APK
+**/google-services.json
+*.log
 seed.html

@@ -1,5 +1,5 @@
 import { generateId, formatDateTime } from '../../utils';
-import { USER_LOCATION, ADMIN_UID } from '../../constants';
+import { USER_LOCATION } from '../../constants';
 
 export function useAdminActions(deps) {
   const {
