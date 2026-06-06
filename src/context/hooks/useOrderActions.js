@@ -310,6 +310,7 @@ export function useOrderActions(deps) {
     };
     setPendingRequests(prev => [newReq, ...prev]);
     notifySystem('ส่งคำขอแล้ว ✅', 'คำขอยกเลิกส่งถึง Admin เรียบร้อย รอการอนุมัติ', 'info');
+    notifyAdmin('❌ ขอยกเลิกออเดอร์', `${userProfile.name || 'ลูกค้า'} ขอยกเลิก #${order.id.slice(-6)} — ${reason?.trim() || 'ไม่ระบุเหตุผล'}`, 'warning');
   };
 
   const requestCancelByRole = (orderId, reason, role) => {
@@ -334,6 +335,7 @@ export function useOrderActions(deps) {
     };
     setPendingRequests(prev => [newReq, ...prev]);
     notifySystem('ส่งคำขอแล้ว ✅', 'ส่งคำขอยกเลิกถึง Admin เรียบร้อย รอการอนุมัติ', 'info');
+    notifyAdmin(`❌ ${roleName}ขอยกเลิก`, `${userProfile.name || roleName} ขอยกเลิก #${order.id.slice(-6)} — ${reason?.trim() || 'ไม่ระบุเหตุผล'}`, 'warning');
   };
 
   const forceRefresh = () => {
