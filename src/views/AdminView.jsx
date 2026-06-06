@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, ADMIN_EMAIL } from '../constants';
-import { formatDateTimeFromMs } from '../utils';
+import { formatDateTimeFromMs, hashPassword } from '../utils';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function StatCard({ label, value, color = 'green', icon: Icon }) {
@@ -93,6 +93,8 @@ export default function AdminView() {
   const [adjustUserId, setAdjustUserId] = useState(null);
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustDesc, setAdjustDesc] = useState('');
+  const [resetPwdUserId, setResetPwdUserId] = useState(null);
+  const [resetPwdValue, setResetPwdValue] = useState('');
   const [userWalletEntries, setUserWalletEntries] = useState({});
   const [userWalletLoading, setUserWalletLoading] = useState({});
 
@@ -289,6 +291,19 @@ export default function AdminView() {
     if (wallets[userId]) { wallets[userId] = { ...wallets[userId], history: [] }; localStorage.setItem('boomrider_wallets', JSON.stringify(wallets)); }
     setUserWalletEntries(prev => ({ ...prev, [userId]: [] }));
     notifySystem('Admin', `ล้างประวัติกระเป๋าของ ${userName} แล้ว`, 'success');
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPwdUserId || resetPwdValue.length < 6) {
+      return notifySystem('ผิดพลาด', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error');
+    }
+    const hashed = await hashPassword(resetPwdValue);
+    const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
+    const updated = users.map(u => u.id === resetPwdUserId ? { ...u, password: hashed } : u);
+    localStorage.setItem('boomrider_users', JSON.stringify(updated));
+    setResetPwdUserId(null);
+    setResetPwdValue('');
+    notifySystem('สำเร็จ', 'รีเซ็ตรหัสผ่านเรียบร้อยแล้ว', 'success');
   };
 
   const handleAdjust = () => {
@@ -845,8 +860,32 @@ export default function AdminView() {
                         >
                           {user.banned ? 'ปลดแบน' : 'แบน'}
                         </button>
+                        <button
+                          onClick={() => { setResetPwdUserId(resetPwdUserId === user.id ? null : user.id); setResetPwdValue(''); }}
+                          className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg font-bold hover:bg-purple-200"
+                        >รีเซ็ต PW</button>
                       </div>
                     </div>
+
+                    {/* Reset password panel */}
+                    {resetPwdUserId === user.id && (
+                      <div className="mt-3 bg-purple-50 p-3 rounded-lg border border-purple-200 animate-fade-in">
+                        <p className="text-xs font-bold text-purple-700 mb-2">รีเซ็ตรหัสผ่านของ {user.name}</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="password"
+                            placeholder="รหัสผ่านใหม่ (6 ตัวขึ้นไป)"
+                            value={resetPwdValue}
+                            onChange={e => setResetPwdValue(e.target.value)}
+                            className="flex-1 border p-2 rounded text-sm"
+                          />
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => { setResetPwdUserId(null); setResetPwdValue(''); }} className="flex-1 bg-gray-200 py-2 rounded text-sm">ยกเลิก</button>
+                          <button onClick={handleResetPassword} className="flex-1 bg-purple-600 text-white py-2 rounded text-sm font-bold">ยืนยัน</button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Wallet adjust panel */}
                     {adjustUserId === user.id && (

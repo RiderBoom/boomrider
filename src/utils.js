@@ -76,6 +76,16 @@ export const playNotificationSound = (type = 'order') => {
   } catch {}
 };
 
+export const hashPassword = async (plain) => {
+  try {
+    const enc = new TextEncoder();
+    const buf = await crypto.subtle.digest('SHA-256', enc.encode(plain + 'br26'));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return plain;
+  }
+};
+
 export const deg2rad = (deg) => deg * (Math.PI / 180);
 
 export const safeLocalSet = (key, value) => {

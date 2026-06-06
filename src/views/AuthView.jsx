@@ -1,5 +1,4 @@
-import React from 'react';
-import { Phone, Mail } from 'lucide-react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import ToastContainer from '../components/ToastContainer';
 
@@ -8,9 +7,10 @@ export default function AuthView() {
     authMode, setAuthMode,
     loginForm, setLoginForm,
     registerForm, setRegisterForm,
-    handleLogin, handleLoginWithGoogle, handleRegister,
+    handleLogin, handleRegister,
     toasts, removeToast,
   } = useApp();
+  const [showForgot, setShowForgot] = useState(false);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(160deg, #fff7ed 0%, #fff 40%, #eff6ff 100%)' }}>
@@ -75,6 +75,11 @@ export default function AuthView() {
               onClick={handleLogin}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-orange-200 active:scale-95 transition-transform mt-2"
             >เข้าสู่ระบบ</button>
+            <button
+              type="button"
+              onClick={() => setShowForgot(true)}
+              className="w-full text-center text-xs text-orange-500 font-medium mt-1 py-1"
+            >ลืมรหัสผ่าน?</button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -104,23 +109,33 @@ export default function AuthView() {
           </div>
         )}
 
-        <div className="mt-4 text-center">
-          <p className="text-xs text-gray-400 mb-2">หรือเข้าสู่ระบบด้วย</p>
-          <div className="flex gap-2">
-            <button className="flex-1 flex items-center justify-center gap-2 border border-gray-200 bg-gray-50 rounded-xl py-2.5 text-sm font-medium text-gray-600 active:bg-gray-100 transition-colors">
-              <Phone size={16} className="text-green-600" /> เบอร์โทร
-            </button>
-            <button onClick={handleLoginWithGoogle} className="flex-1 flex items-center justify-center gap-2 border border-gray-200 bg-gray-50 rounded-xl py-2.5 text-sm font-medium text-gray-600 active:bg-gray-100 transition-colors">
-              <Mail size={16} className="text-red-500" /> Google
-            </button>
-          </div>
-        </div>
-
         <p className="text-center text-[11px] text-gray-400 mt-4">
           การเข้าสู่ระบบแสดงว่าคุณยอมรับ
           <span className="text-orange-500 font-medium"> นโยบายความเป็นส่วนตัว</span> ของเรา
         </p>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgot && (
+        <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50" onClick={() => setShowForgot(false)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md px-6 pt-6 pb-10 animate-slide-in-from-bottom" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
+            <h2 className="text-lg font-bold text-gray-900 mb-2">ลืมรหัสผ่าน?</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              ระบบนี้ไม่มีการรีเซ็ตรหัสผ่านอัตโนมัติ<br />
+              กรุณาติดต่อผู้ดูแลระบบเพื่อรีเซ็ตรหัสผ่านให้คุณ
+            </p>
+            <div className="bg-orange-50 rounded-2xl p-4 mb-5">
+              <p className="text-xs font-semibold text-orange-700 mb-1">ช่องทางติดต่อผู้ดูแล</p>
+              <p className="text-sm text-orange-600 font-medium">boomzalnw2@gmail.com</p>
+            </div>
+            <button
+              onClick={() => setShowForgot(false)}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-2xl font-bold text-sm"
+            >รับทราบ</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

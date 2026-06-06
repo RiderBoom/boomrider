@@ -3,7 +3,7 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, ADMIN_EMAIL,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime, r2, safeLocalSet } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime, r2, safeLocalSet, hashPassword } from '../utils';
 
 import { useWalletActions }  from './hooks/useWalletActions';
 import { useOrderActions }   from './hooks/useOrderActions';
@@ -712,14 +712,23 @@ export function AppProvider({ children }) {
   }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Auth Functions ---
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!loginForm.phone && !loginForm.email) return notifySystem('ผิดพลาด', 'กรุณากรอกเบอร์โทรหรืออีเมล', 'error');
     if (!loginForm.password) return notifySystem('ผิดพลาด', 'กรุณากรอกรหัสผ่าน', 'error');
     const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
     const user  = users.find(u => (u.phone === loginForm.phone && loginForm.phone) || (u.email === loginForm.email && loginForm.email));
-    if (!user || user.password !== loginForm.password) return notifySystem('ผิดพลาด', 'เบอร์โทร/อีเมล หรือรหัสผ่านไม่ถูกต้อง', 'error');
+    if (!user) return notifySystem('ผิดพลาด', 'เบอร์โทร/อีเมล หรือรหัสผ่านไม่ถูกต้อง', 'error');
+    const hashedInput = await hashPassword(loginForm.password);
+    const passwordMatch = user.password === hashedInput || user.password === loginForm.password;
+    if (!passwordMatch) return notifySystem('ผิดพลาด', 'เบอร์โทร/อีเมล หรือรหัสผ่านไม่ถูกต้อง', 'error');
     if (user.banned) return notifySystem('ผิดพลาด', 'บัญชีนี้ถูกระงับการใช้งาน', 'error');
-    const allRolesLocal  = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
+    // migrate plain-text password to hashed on first login
+    if (user.password === loginForm.password) {
+      const migrated = users.map(u => u.id === user.id ? { ...u, password: hashedInput } : u);
+      localStorage.setItem('boomrider_users', JSON.stringify(migrated));
+      user.password = hashedInput;
+    }
+    const allRolesLocal = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
     const finalRoles = allRolesLocal[user.profile?.id || user.id] || allRolesLocal[user.id] || user.roles || ['customer'];
     const updatedUser = { ...user, roles: finalRoles };
     localStorage.setItem('boomrider_user', JSON.stringify(updatedUser));
@@ -728,11 +737,7 @@ export function AppProvider({ children }) {
     notifySystem('สำเร็จ', 'เข้าสู่ระบบเรียบร้อย!', 'success');
   };
 
-  const handleLoginWithGoogle = () => {
-    notifySystem('แจ้งเตือน', 'ขณะนี้ระบบรองรับเฉพาะการล็อกอินด้วยเบอร์โทร/อีเมล', 'warning');
-  };
-
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!registerForm.name) return notifySystem('ผิดพลาด', 'กรุณากรอกชื่อ-นามสกุล', 'error');
     if (!registerForm.phone && !registerForm.email) return notifySystem('ผิดพลาด', 'กรุณากรอกเบอร์โทรหรืออีเมล', 'error');
     if (!registerForm.password) return notifySystem('ผิดพลาด', 'กรุณากรอกรหัสผ่าน', 'error');
@@ -742,9 +747,10 @@ export function AppProvider({ children }) {
     const existingUser = users.find(u => (u.phone === registerForm.phone && registerForm.phone) || (u.email === registerForm.email && registerForm.email));
     if (existingUser) return notifySystem('ผิดพลาด', 'เบอร์โทรหรืออีเมลนี้ถูกใช้งานแล้ว', 'error');
     const newUserId = generateId();
-    const newUser   = {
+    const hashedPassword = await hashPassword(registerForm.password);
+    const newUser = {
       id: newUserId, name: registerForm.name, phone: registerForm.phone, email: registerForm.email,
-      password: registerForm.password,
+      password: hashedPassword,
       profile: { id: newUserId, name: registerForm.name, phone: registerForm.phone, email: registerForm.email, location: USER_LOCATION, image: null },
       roles: ['customer'], wallet: 0, walletHistory: [],
       addresses: [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }],
@@ -850,7 +856,6 @@ export function AppProvider({ children }) {
     registerForm, setRegisterForm,
     authMode, setAuthMode,
     handleLogin,
-    handleLoginWithGoogle,
     handleRegister,
     handleLogout,
 
