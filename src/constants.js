@@ -16,14 +16,8 @@ export const INITIAL_CONFIG = {
   adminPromptPayId: ""
 };
 
-export const GP_RATES = {
-  food: 0.30,      // GP 30%
-  delivery: 0.15,  // GP 15%
-};
-
 export const USER_LOCATION = { lat: 13.7563, lng: 100.5018 };
 
-// ── ข้อมูลจริงโหลดจาก Firestore — ไม่มี demo data เพื่อป้องกันสับสน ──
 export const INITIAL_RESTAURANTS = [];
 export const INITIAL_RIDERS = [];
 export const INITIAL_MENU_ITEMS = {};
@@ -43,13 +37,3 @@ export const STATUS_LABELS = {
 // ===== Admin Config =====
 export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || '';
 
-export const ADMIN_PERMISSIONS = {
-  viewDashboard:    true,
-  approveRequests:  true,
-  manageRestaurants:true,
-  manageRiders:     true,
-  manageOrders:     true,
-  editSystemConfig: true,
-  viewMessages:     true,
-  approveTopups:    true,
-};

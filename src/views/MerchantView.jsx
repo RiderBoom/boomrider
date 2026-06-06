@@ -729,8 +729,7 @@ function OrderCard({ order, updateOrderStatus, onCancel, highlight }) {
 
       {/* รายการสินค้า */}
       <div className="mb-3 text-sm bg-gray-50 rounded-lg p-2">
-        {/* normalize items: รองรับทั้ง Array และ Object {0:x,1:y} จาก Firestore เก่า */}
-        {(Array.isArray(order.items) ? order.items : Object.values(order.items || {})).map((item, idx) => (
+        {(order.items || []).map((item, idx) => (
           <div key={idx} className="flex justify-between text-xs">
             <span>{item?.qty}× {item?.name}</span>
             <span className="text-gray-500">฿{((item?.price ?? 0) * (item?.qty ?? 0)).toFixed(0)}</span>

@@ -73,7 +73,6 @@ export default function RiderView() {
     return localStorage.getItem(key) !== 'false';
   });
 
-  // ── GPS Real-time Tracking → Firestore ────────────────────────────────────
   // 'idle' | 'tracking' | 'denied' | 'unavailable' | 'timeout'
   const [riderGPS,   setRiderGPS]   = useState(null);
   const [gpsStatus,  setGpsStatus]  = useState('idle');
@@ -108,7 +107,6 @@ export default function RiderView() {
     }
 
     const GEO_OPTS  = { enableHighAccuracy: true, maximumAge: 4000, timeout: 20000 };
-    const THROTTLE  = 5000; // ms — เขียน Firestore ได้ทุก 5 วินาทีสูงสุด
 
     const onSuccess = (pos) => {
       const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };

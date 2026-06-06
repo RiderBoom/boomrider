@@ -51,7 +51,6 @@ export function useAdminActions(deps) {
       setRestaurants(prev => [newRest, ...prev]);
       grantRole(req.userId, 'merchant');
       setMenuItems(prev => ({ ...prev, [newId]: [] }));
-      try { localStorage.setItem('boomrider_restaurants', JSON.stringify([newRest, ...restaurants])); } catch {}
       notifySystem('Admin', 'อนุมัติร้านค้าเรียบร้อย', 'success');
 
     } else if (req.type === 'rider_reg') {
@@ -69,7 +68,6 @@ export function useAdminActions(deps) {
         location: USER_LOCATION,
       };
       setRiders(prev => [newRider, ...prev]);
-      try { localStorage.setItem('boomrider_riders', JSON.stringify([newRider, ...riders])); } catch {}
       grantRole(req.userId, 'rider');
       notifySystem('Admin', 'อนุมัติไรเดอร์เรียบร้อย', 'success');
 

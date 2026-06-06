@@ -318,7 +318,7 @@ export function useOrderActions(deps) {
     const roleName = role === 'merchant' ? 'ร้านค้า' : role === 'rider' ? 'ไรเดอร์' : 'ผู้ใช้';
     const newReq = {
       id: generateId(), type: 'cancel_order',
-      userId: userProfile.id || currentUser?.uid || '',
+      userId: userProfile.id || currentUser?.id || '',
       user: `${roleName}: ${userProfile.name || ''}`,
       timestamp: formatDateTime(),
       data: {

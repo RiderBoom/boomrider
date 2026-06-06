@@ -8,6 +8,12 @@ const CACHE_KEYS = [
   'boomrider_restaurants',
   'boomrider_menu_items',
   'boomrider_appconfig',
+  'boomrider_wallets',
+  'boomrider_user_roles',
+  'boomrider_chats',
+  'boomrider_promo_codes',
+  'boomrider_admin_notifs',
+  'boomrider_admin_last_check',
 ];
 
 function clearCacheAndReload() {

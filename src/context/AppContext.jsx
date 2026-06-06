@@ -156,11 +156,7 @@ export function AppProvider({ children }) {
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 5000);
-    try {
-      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-      audio.volume = 0.5;
-      audio.play().catch(() => {});
-    } catch {}
+    playNotificationSound('order');
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
   };
 
@@ -405,7 +401,7 @@ export function AppProvider({ children }) {
 
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── In-app order notifications (replaces Firestore subscription callbacks) ──
+  // ── In-app order notifications ──
   useEffect(() => {
     const prev = prevOrdersRef.current;
     const uid = currentUser?.id;
