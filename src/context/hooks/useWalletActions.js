@@ -35,7 +35,7 @@ export function useWalletActions(deps) {
         },
       };
     });
-    if (currentUser?.id === userId) {
+    if (currentUser?.id === userId || currentUser?.email === userId) {
       setUserWallet(prev => r2(prev + amount));
       setWalletAllEntries(prev => [
         { id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: formatDateTime(), desc, createdAtMs: Date.now() },

@@ -236,27 +236,30 @@ export function useOrderActions(deps) {
         const deliveryFeeGP  = targetOrder.deliveryFee > 0 ? Math.round(targetOrder.deliveryFee - riderIncome)    : 0;
         const foodGP         = targetOrder.foodTotal   > 0 ? Math.round(targetOrder.foodTotal   - merchantIncome) : 0;
 
-        if (riderUid     && riderUid     === myUidNow && riderIncome    > 0) {
+        if (riderUid && riderIncome > 0) {
           const gpNote = deliveryFeeGP > 0 ? ` (หัก GP ฿${deliveryFeeGP})` : '';
-          processTransaction('income', riderIncome, `ค่าส่ง ${restName} #${shortId}${gpNote}`);
+          creditWallet(riderUid, riderIncome, `ค่าส่ง ${restName} #${shortId}${gpNote}`);
         }
-        if (shopOwnerUid && shopOwnerUid === myUidNow && merchantIncome > 0) {
+        if (shopOwnerUid && merchantIncome > 0) {
           const gpNote = foodGP > 0 ? ` (หัก GP ฿${foodGP})` : '';
-          processTransaction('income', merchantIncome, `รายได้ร้าน ${restName} #${shortId}${gpNote}`);
+          creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน ${restName} #${shortId}${gpNote}`);
         }
-        if (ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL && gpAmount > 0) {
-          processTransaction('income', gpAmount, `GP ${restName} #${shortId}`);
+        if (ADMIN_EMAIL && gpAmount > 0) {
+          creditWallet(ADMIN_EMAIL, gpAmount, `GP ${restName} #${shortId}`);
         }
-        if (riderUid     && riderIncome    > 0) creditWallet(riderUid,     riderIncome,    `ค่าส่ง ${restName} #${shortId}`);
-        if (shopOwnerUid && merchantIncome > 0) creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน #${shortId}`);
-        if (ADMIN_EMAIL  && gpAmount       > 0) creditWallet(ADMIN_EMAIL,  gpAmount,        `GP #${shortId}`);
       } else if (!targetOrder.cashSettled) {
-        const shortId_ = targetOrder.id.slice(-6);
-        const gpAmount = typeof targetOrder.adminGP === 'number' ? targetOrder.adminGP : 0;
-        const restName = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
+        const shortId_       = targetOrder.id.slice(-6);
+        const gpAmount       = typeof targetOrder.adminGP        === 'number' ? targetOrder.adminGP        : 0;
+        const riderIncomeCash    = typeof targetOrder.riderIncome    === 'number' ? targetOrder.riderIncome    : 0;
+        const merchantIncomeCash = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
+        const restName       = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
         setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, cashSettled: true } : o));
-        if (riderUid && gpAmount > 0) creditWallet(riderUid, -gpAmount, `หัก GP(สด) ${restName} #${shortId_}`);
-        if (ADMIN_EMAIL && gpAmount > 0) creditWallet(ADMIN_EMAIL, gpAmount, `GP(สด) ${restName} #${shortId_}`);
+        // ไรเดอร์รับเงินสดทั้งหมด — หักส่วนที่ต้องโอนให้คนอื่น
+        if (riderUid && gpAmount > 0)             creditWallet(riderUid, -gpAmount,             `หัก GP(สด) ${restName} #${shortId_}`);
+        if (riderUid && merchantIncomeCash > 0)   creditWallet(riderUid, -merchantIncomeCash,   `หัก ยอดร้าน(สด) ${restName} #${shortId_}`);
+        // โอนให้ผู้รับที่ถูกต้อง
+        if (shopOwnerUid && merchantIncomeCash > 0) creditWallet(shopOwnerUid, merchantIncomeCash, `รายได้ร้าน(สด) ${restName} #${shortId_}`);
+        if (ADMIN_EMAIL && gpAmount > 0)             creditWallet(ADMIN_EMAIL,  gpAmount,            `GP(สด) ${restName} #${shortId_}`);
       }
     }
   };
