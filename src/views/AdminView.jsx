@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, ADMIN_EMAIL } from '../constants';
-import { formatDateTimeFromMs, hashPassword } from '../utils';
+import { formatDateTimeFromMs } from '../utils';
+import { supabase } from '../lib/supabase';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function StatCard({ label, value, color = 'green', icon: Icon }) {
@@ -111,40 +112,65 @@ export default function AdminView() {
   const [txLoading, setTxLoading] = useState(false);
   const [txRefreshKey, setTxRefreshKey] = useState(0);
 
-  useEffect(() => {
-    if (adminTab !== 'users') return;
-    const users   = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-    const roles   = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-    setAllUsers(users.map(u => ({
-      ...u,
-      walletBalance: wallets[u.id]?.balance ?? globalWallets[u.id]?.balance ?? u.wallet ?? 0,
-      roles: roles[u.id] || u.roles || ['customer'],
+  const loadAllUsers = async () => {
+    const [profilesResult, walletsResult, rolesResult] = await Promise.all([
+      supabase.from('profiles').select('*'),
+      supabase.from('wallets').select('user_id, balance'),
+      supabase.from('user_roles').select('user_id, role'),
+    ]);
+    const walletsMap = {};
+    walletsResult.data?.forEach(w => { walletsMap[w.user_id] = w.balance; });
+    const rolesMap = {};
+    rolesResult.data?.forEach(r => {
+      if (!rolesMap[r.user_id]) rolesMap[r.user_id] = [];
+      rolesMap[r.user_id].push(r.role);
+    });
+    setAllUsers((profilesResult.data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      phone: p.phone,
+      banned: p.banned,
+      walletBalance: walletsMap[p.id] ?? globalWallets[p.id]?.balance ?? 0,
+      roles: rolesMap[p.id] || ['customer'],
     })));
-  }, [adminTab, globalWallets]); // eslint-disable-line react-hooks/exhaustive-deps
+  };
 
-  // Build transaction list from globalWallets when on ledger tab
+  useEffect(() => {
+    if (adminTab === 'users') loadAllUsers();
+  }, [adminTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Build transaction list from Supabase wallets when on ledger tab
   useEffect(() => {
     if (adminTab !== 'ledger') return;
-    const { globalWallets: gw } = { globalWallets };
-    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-    const users   = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-    const entries = [];
-    Object.entries(wallets).forEach(([uid, w]) => {
-      const uname = users.find(u => u.id === uid)?.name || uid.slice(0, 8);
-      (w.history || []).forEach(e => entries.push({ ...e, userId: uid, userName: uname }));
-    });
-    entries.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
-    setTxList(entries);
+    const loadLedger = async () => {
+      setTxLoading(true);
+      const [walletsResult, profilesResult] = await Promise.all([
+        supabase.from('wallets').select('user_id, history'),
+        supabase.from('profiles').select('id, name'),
+      ]);
+      const nameMap = {};
+      profilesResult.data?.forEach(p => { nameMap[p.id] = p.name; });
+      const entries = [];
+      walletsResult.data?.forEach(w => {
+        const uname = nameMap[w.user_id] || w.user_id.slice(0, 8);
+        (w.history || []).forEach(e => entries.push({ ...e, userId: w.user_id, userName: uname }));
+      });
+      entries.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+      setTxList(entries);
+      setTxLoading(false);
+    };
+    loadLedger();
   }, [adminTab, txRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleClearTransactions = () => {
-    if (!window.confirm('ล้างประวัติธุรกรรมทั้งระบบออกจาก localStorage ใช่หรือไม่?')) return;
-    try {
-      const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-      Object.keys(wallets).forEach(uid => { wallets[uid] = { ...wallets[uid], history: [] }; });
-      localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
-    } catch {}
+  const handleClearTransactions = async () => {
+    if (!window.confirm('ล้างประวัติธุรกรรมทั้งระบบใช่หรือไม่?')) return;
+    const { data: wallets } = await supabase.from('wallets').select('user_id, balance');
+    if (wallets?.length) {
+      await Promise.all(wallets.map(w =>
+        supabase.from('wallets').update({ history: [] }).eq('user_id', w.user_id),
+      ));
+    }
     setTxList([]);
     setTxRefreshKey(k => k + 1);
     notifySystem('ล้างข้อมูล', 'ล้างบันทึกธุรกรรมเรียบร้อยแล้ว', 'success');
@@ -167,26 +193,26 @@ export default function AdminView() {
 
   const togglePurge = (key) => setPurgeOptions(prev => ({ ...prev, [key]: !prev[key] }));
 
-  const handlePurge = (isResetAll = false) => {
+  const handlePurge = async (isResetAll = false) => {
     const opts = isResetAll
-      ? { orders: true, walletEntries: true, pendingRequests: true, restaurants: true, riders: true, users: true, wallets: true }
+      ? { orders: true, walletEntries: true, pendingRequests: true, restaurants: true, riders: true, wallets: true }
       : purgeOptions;
     setPurgeLoading(true);
     setPurgeResult(null);
     try {
-      if (opts.orders)          { localStorage.removeItem('boomrider_orders');           setOrders([]); }
-      if (opts.pendingRequests) { localStorage.removeItem('boomrider_pending_requests'); setPendingRequests([]); }
-      if (opts.restaurants)     { localStorage.removeItem('boomrider_restaurants');      setRestaurants([]); }
-      if (opts.riders)          { localStorage.removeItem('boomrider_riders');           setRiders([]); }
-      if (opts.users)           { localStorage.removeItem('boomrider_users'); localStorage.removeItem('boomrider_user_roles'); setAllUsers([]); }
+      const tasks = [];
+      if (opts.orders)          { tasks.push(supabase.from('orders').delete().neq('id', '')); setOrders([]); }
+      if (opts.pendingRequests) { tasks.push(supabase.from('pending_requests').delete().neq('id', '')); setPendingRequests([]); }
+      if (opts.restaurants)     { tasks.push(supabase.from('restaurants').delete().neq('id', '')); setRestaurants([]); }
+      if (opts.riders)          { tasks.push(supabase.from('riders').delete().neq('id', '')); setRiders([]); }
       if (opts.wallets) {
-        localStorage.removeItem('boomrider_wallets');
+        tasks.push(supabase.from('wallets').delete().neq('user_id', ''));
         setGlobalWallets({});
       } else if (opts.walletEntries) {
-        const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-        Object.keys(wallets).forEach(uid => { wallets[uid] = { ...wallets[uid], history: [] }; });
-        localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
+        const { data: wals } = await supabase.from('wallets').select('user_id, balance');
+        if (wals?.length) tasks.push(...wals.map(w => supabase.from('wallets').update({ history: [] }).eq('user_id', w.user_id)));
       }
+      await Promise.all(tasks);
       setPurgeResult({ ok: true, summary: 'เสร็จสิ้น' });
       notifySystem('ล้างข้อมูล ✅', 'ลบข้อมูลที่เลือกออกจากระบบเรียบร้อยแล้ว', 'success');
     } catch (err) {
@@ -279,51 +305,44 @@ export default function AdminView() {
   ];
 
   // ── Wallet adjust ─────────────────────────────────────────────────────────
-  const loadUserWalletEntries = (userId) => {
+  const loadUserWalletEntries = async (userId) => {
     if (!userId) return;
-    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-    setUserWalletEntries(prev => ({ ...prev, [userId]: wallets[userId]?.history || [] }));
+    setUserWalletLoading(prev => ({ ...prev, [userId]: true }));
+    const { data } = await supabase.from('wallets').select('history').eq('user_id', userId).single();
+    setUserWalletEntries(prev => ({ ...prev, [userId]: data?.history || [] }));
+    setUserWalletLoading(prev => ({ ...prev, [userId]: false }));
   };
 
-  const handleClearUserWalletHistory = (userId, userName) => {
+  const handleClearUserWalletHistory = async (userId, userName) => {
     if (!window.confirm(`ล้างประวัติกระเป๋าของ ${userName} ใช่หรือไม่?\n(รายการจะถูกซ่อน — ยอดเงินคงเดิม)`)) return;
-    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-    if (wallets[userId]) { wallets[userId] = { ...wallets[userId], history: [] }; localStorage.setItem('boomrider_wallets', JSON.stringify(wallets)); }
+    await supabase.from('wallets').update({ history: [] }).eq('user_id', userId);
     setUserWalletEntries(prev => ({ ...prev, [userId]: [] }));
     notifySystem('Admin', `ล้างประวัติกระเป๋าของ ${userName} แล้ว`, 'success');
   };
 
   const handleResetPassword = async () => {
-    if (!resetPwdUserId || resetPwdValue.length < 6) {
-      return notifySystem('ผิดพลาด', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error');
-    }
-    const hashed = await hashPassword(resetPwdValue);
-    const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-    const updated = users.map(u => u.id === resetPwdUserId ? { ...u, password: hashed } : u);
-    localStorage.setItem('boomrider_users', JSON.stringify(updated));
+    if (!resetPwdUserId) return;
+    const user = allUsers.find(u => u.id === resetPwdUserId);
+    if (!user?.email) return notifySystem('ผิดพลาด', 'ไม่พบอีเมลของผู้ใช้', 'error');
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: `${import.meta.env.VITE_APP_URL || window.location.origin}/reset-password`,
+    });
+    if (error) return notifySystem('ผิดพลาด', error.message, 'error');
     setResetPwdUserId(null);
     setResetPwdValue('');
-    notifySystem('สำเร็จ', 'รีเซ็ตรหัสผ่านเรียบร้อยแล้ว', 'success');
+    notifySystem('สำเร็จ', `ส่งอีเมลรีเซ็ตรหัสผ่านไปยัง ${user.email} แล้ว`, 'success');
   };
 
-  const handleAdjust = () => {
+  const handleAdjust = async () => {
     const amt = parseFloat(adjustAmount);
     if (!adjustUserId || isNaN(amt) || amt === 0 || !adjustDesc) {
       return notifySystem('ผิดพลาด', 'กรุณากรอกข้อมูลให้ครบ', 'error');
     }
-    adminAdjustWallet(adjustUserId, amt, adjustDesc);
+    await adminAdjustWallet(adjustUserId, amt, adjustDesc);
     setAdjustUserId(null);
     setAdjustAmount('');
     setAdjustDesc('');
-    // Reload user list
-    const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-    const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-    const roles = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-    setAllUsers(users.map(u => ({
-      ...u,
-      walletBalance: wallets[u.id]?.balance ?? u.wallet ?? 0,
-      roles: roles[u.id] || u.roles || ['customer'],
-    })));
+    await loadAllUsers();
   };
 
   // ── Create promo ──────────────────────────────────────────────────────────

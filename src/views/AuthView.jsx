@@ -8,6 +8,7 @@ export default function AuthView() {
     loginForm, setLoginForm,
     registerForm, setRegisterForm,
     handleLogin, handleRegister,
+    authLoading,
     toasts, removeToast,
   } = useApp();
   const [showForgot, setShowForgot] = useState(false);
@@ -73,8 +74,9 @@ export default function AuthView() {
             </div>
             <button
               onClick={handleLogin}
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-orange-200 active:scale-95 transition-transform mt-2"
-            >เข้าสู่ระบบ</button>
+              disabled={authLoading}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-orange-200 active:scale-95 transition-transform mt-2 disabled:opacity-60"
+            >{authLoading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}</button>
             <button
               type="button"
               onClick={() => setShowForgot(true)}
@@ -85,7 +87,7 @@ export default function AuthView() {
           <div className="space-y-3">
             {[
               { label: 'ชื่อ-นามสกุล *', type: 'text', field: 'name', placeholder: 'ชื่อจริง นามสกุล', autoComplete: 'name' },
-              { label: 'อีเมล (ไม่บังคับ)', type: 'email', field: 'email', placeholder: 'email@example.com', autoComplete: 'email' },
+              { label: 'อีเมล *', type: 'email', field: 'email', placeholder: 'email@example.com', autoComplete: 'email' },
               { label: 'เบอร์โทรศัพท์ (ไม่บังคับ)', type: 'tel', field: 'phone', placeholder: '081-xxx-xxxx', autoComplete: 'tel' },
               { label: 'รหัสผ่าน * (6 ตัวขึ้นไป)', type: 'password', field: 'password', placeholder: '••••••••', autoComplete: 'new-password' },
               { label: 'ยืนยันรหัสผ่าน *', type: 'password', field: 'confirmPassword', placeholder: '••••••••', autoComplete: 'new-password' },
@@ -104,8 +106,9 @@ export default function AuthView() {
             ))}
             <button
               onClick={handleRegister}
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-orange-200 active:scale-95 transition-transform mt-2"
-            >สมัครใช้งานฟรี</button>
+              disabled={authLoading}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-orange-200 active:scale-95 transition-transform mt-2 disabled:opacity-60"
+            >{authLoading ? 'กำลังสมัคร...' : 'สมัครใช้งานฟรี'}</button>
           </div>
         )}
 

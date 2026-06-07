@@ -1,10 +1,8 @@
 import { useState, useCallback } from 'react';
 import { generateId } from '../../utils';
 
-export function usePromoActions({ notifySystem }) {
-  const [promoCodes, setPromoCodes] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('boomrider_promo_codes') || '[]'); } catch { return []; }
-  });
+export function usePromoActions({ notifySystem, supabase }) {
+  const [promoCodes, setPromoCodes] = useState([]);
 
   const validatePromoCode = useCallback((code, orderTotal) => {
     const promo = promoCodes.find(p => p.code.toUpperCase() === code.toUpperCase() && p.active);
@@ -17,28 +15,38 @@ export function usePromoActions({ notifySystem }) {
     return { valid: true, discount: Math.round(discount), promo };
   }, [promoCodes]);
 
-  const _save = (next) => {
-    try { localStorage.setItem('boomrider_promo_codes', JSON.stringify(next)); } catch {}
-    return next;
-  };
-
   const usePromoCode = useCallback((code) => {
-    setPromoCodes(prev => _save(prev.map(p => p.code.toUpperCase() === code.toUpperCase() ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p)));
-  }, []);
+    setPromoCodes(prev => {
+      const next = prev.map(p => p.code.toUpperCase() === code.toUpperCase()
+        ? { ...p, usedCount: (p.usedCount || 0) + 1 }
+        : p,
+      );
+      const updated = next.find(p => p.code.toUpperCase() === code.toUpperCase());
+      if (updated) supabase.from('promo_codes').upsert({ id: updated.id, data: updated }).then(() => {});
+      return next;
+    });
+  }, [supabase]);
 
   const createPromoCode = useCallback((data) => {
     const newCode = { id: generateId(), ...data, code: data.code.toUpperCase(), usedCount: 0, active: true, createdAt: new Date().toISOString() };
-    setPromoCodes(prev => _save([newCode, ...prev]));
+    setPromoCodes(prev => [newCode, ...prev]);
+    supabase.from('promo_codes').insert({ id: newCode.id, data: newCode }).then(() => {});
     notifySystem('สำเร็จ', `สร้างโค้ด "${data.code.toUpperCase()}" เรียบร้อย`, 'success');
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [supabase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const togglePromoCode = useCallback((id) => {
-    setPromoCodes(prev => _save(prev.map(p => p.id === id ? { ...p, active: !p.active } : p)));
-  }, []);
+    setPromoCodes(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, active: !p.active } : p);
+      const updated = next.find(p => p.id === id);
+      if (updated) supabase.from('promo_codes').upsert({ id: updated.id, data: updated }).then(() => {});
+      return next;
+    });
+  }, [supabase]);
 
   const deletePromoCode = useCallback((id) => {
-    setPromoCodes(prev => _save(prev.filter(p => p.id !== id)));
-  }, []);
+    setPromoCodes(prev => prev.filter(p => p.id !== id));
+    supabase.from('promo_codes').delete().eq('id', id).then(() => {});
+  }, [supabase]);
 
   return { promoCodes, setPromoCodes, validatePromoCode, usePromoCode, createPromoCode, togglePromoCode, deletePromoCode };
 }

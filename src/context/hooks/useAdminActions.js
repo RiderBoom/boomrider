@@ -14,23 +14,23 @@ export function useAdminActions(deps) {
     setShowRejectModal,
     creditWallet, grantRole,
     notifySystem,
+    supabase,
   } = deps;
 
   const handleApproveRequest = async (req) => {
     if (req.type === 'topup') {
-      const amt       = Number(req.data.amount);
-      const topupDesc = `เติมเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`;
-      creditWallet(req.userId, amt, topupDesc);
+      const amt = Number(req.data.amount);
+      await creditWallet(req.userId, amt, `เติมเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`);
       notifySystem('Admin ✅', `อนุมัติเติมเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
 
     } else if (req.type === 'withdraw') {
-      const amt          = Number(req.data.amount);
-      const withdrawDesc = `ถอนเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`;
-      const liveBalance  = globalWallets[req.userId]?.balance ?? 0;
+      const amt = Number(req.data.amount);
+      const { data: walletData } = await supabase.from('wallets').select('balance').eq('user_id', req.userId).single();
+      const liveBalance = walletData?.balance ?? globalWallets[req.userId]?.balance ?? 0;
       if (liveBalance < amt) {
         return notifySystem('ผิดพลาด', `${req.user} มียอดเงินไม่พอ (มี ฿${liveBalance.toLocaleString()}, ต้องการ ฿${amt.toLocaleString()})`, 'error');
       }
-      creditWallet(req.userId, -amt, withdrawDesc);
+      await creditWallet(req.userId, -amt, `ถอนเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`);
       notifySystem('Admin ✅', `อนุมัติถอนเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
 
     } else if (req.type === 'merchant_reg') {
@@ -51,6 +51,10 @@ export function useAdminActions(deps) {
       setRestaurants(prev => [newRest, ...prev]);
       grantRole(req.userId, 'merchant');
       setMenuItems(prev => ({ ...prev, [newId]: [] }));
+      await Promise.all([
+        supabase.from('restaurants').insert({ id: newId, owner_id: req.userId, data: newRest }),
+        supabase.from('menu_items').insert({ restaurant_id: newId, items: [] }),
+      ]);
       notifySystem('Admin', 'อนุมัติร้านค้าเรียบร้อย', 'success');
 
     } else if (req.type === 'rider_reg') {
@@ -69,21 +73,21 @@ export function useAdminActions(deps) {
       };
       setRiders(prev => [newRider, ...prev]);
       grantRole(req.userId, 'rider');
+      await supabase.from('riders').insert({ id: newId, user_id: req.userId, data: newRider });
       notifySystem('Admin', 'อนุมัติไรเดอร์เรียบร้อย', 'success');
 
     } else if (req.type === 'cancel_order') {
       const targetOrder = orders.find(o => o.id === req.data.orderId);
-      const requestedBy = req.data.requestedBy;
-      const roleName    = requestedBy === 'rider' ? 'ไรเดอร์' : requestedBy === 'merchant' ? 'ร้านค้า' : 'ลูกค้า';
+      const roleName = req.data.requestedBy === 'rider' ? 'ไรเดอร์' : req.data.requestedBy === 'merchant' ? 'ร้านค้า' : 'ลูกค้า';
       const cancelReason = `${roleName}ขอยกเลิก: ${req.data.reason}`;
       if (targetOrder && !['cancelled', 'completed'].includes(targetOrder.status)) {
         const cancelledOrder = { ...targetOrder, status: 'cancelled', cancelReason };
         setOrders(prev => prev.map(o => o.id === req.data.orderId ? cancelledOrder : o));
+        await supabase.from('orders').update({ status: 'cancelled', data: cancelledOrder }).eq('id', req.data.orderId);
       }
       if (req.data.paymentMethod === 'wallet' && req.data.grandTotal > 0) {
-        const refundTo   = targetOrder?.customerId || req.data.customerId || req.userId;
-        const refundDesc = `คืนเงิน: ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)} (Admin อนุมัติ)`;
-        creditWallet(refundTo, req.data.grandTotal, refundDesc);
+        const refundTo = targetOrder?.customerId || req.data.customerId || req.userId;
+        await creditWallet(refundTo, req.data.grandTotal, `คืนเงิน: ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)} (Admin อนุมัติ)`);
       }
       const refundNote = req.data.paymentMethod === 'wallet'
         ? ` — คืนเงิน ฿${(req.data.grandTotal || 0).toLocaleString()} แล้ว`
@@ -92,6 +96,7 @@ export function useAdminActions(deps) {
     }
 
     setPendingRequests(prev => prev.filter(r => r.id !== req.id));
+    await supabase.from('pending_requests').delete().eq('id', req.id);
   };
 
   const initiateRejectRequest = (id) => {
@@ -99,26 +104,24 @@ export function useAdminActions(deps) {
     setShowRejectModal(true);
   };
 
-  const confirmRejectRequest = () => {
-    if (selectedRequestToReject) {
-      const req = pendingRequests.find(r => r.id === selectedRequestToReject);
-      setPendingRequests(prev => prev.filter(r => r.id !== selectedRequestToReject));
-      setShowRejectModal(false);
-      setSelectedRequestToReject(null);
-      if (req?.type === 'cancel_order') {
-        notifySystem('Admin', `ปฏิเสธคำขอยกเลิก #${req.data.orderId.slice(-6)} — ออเดอร์ดำเนินต่อปกติ`, 'info');
-      } else {
-        notifySystem('Admin', 'ปฏิเสธคำขอเรียบร้อย', 'info');
-      }
+  const confirmRejectRequest = async () => {
+    if (!selectedRequestToReject) return;
+    const req = pendingRequests.find(r => r.id === selectedRequestToReject);
+    setPendingRequests(prev => prev.filter(r => r.id !== selectedRequestToReject));
+    await supabase.from('pending_requests').delete().eq('id', selectedRequestToReject);
+    setShowRejectModal(false);
+    setSelectedRequestToReject(null);
+    if (req?.type === 'cancel_order') {
+      notifySystem('Admin', `ปฏิเสธคำขอยกเลิก #${req.data.orderId.slice(-6)} — ออเดอร์ดำเนินต่อปกติ`, 'info');
+    } else {
+      notifySystem('Admin', 'ปฏิเสธคำขอเรียบร้อย', 'info');
     }
   };
 
-  const adminBanUser = (userId) => {
-    const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-    const target = users.find(u => u.id === userId);
-    const newBanned = !(target?.banned);
-    const updated = users.map(u => u.id === userId ? { ...u, banned: newBanned } : u);
-    localStorage.setItem('boomrider_users', JSON.stringify(updated));
+  const adminBanUser = async (userId) => {
+    const { data: profile } = await supabase.from('profiles').select('banned').eq('id', userId).single();
+    const newBanned = !profile?.banned;
+    await supabase.from('profiles').update({ banned: newBanned }).eq('id', userId);
     notifySystem('Admin', `${newBanned ? 'ระงับ' : 'ปลดระงับ'}บัญชีเรียบร้อย`, 'success');
   };
 
@@ -133,19 +136,11 @@ export function useAdminActions(deps) {
   };
 
   const toggleRiderBan = (id) => {
-    setRiders(prev => prev.map(r => {
-      if (r.id !== id) return r;
-      return { ...r, status: r.status === 'banned' ? 'active' : 'banned' };
-    }));
+    setRiders(prev => prev.map(r => r.id === id ? { ...r, status: r.status === 'banned' ? 'active' : 'banned' } : r));
   };
 
   const saveShopEdit = () => {
-    let savedRest = null;
-    setRestaurants(prev => prev.map(r => {
-      if (r.id !== editingShop) return r;
-      savedRest = { ...r, ...shopEditForm };
-      return savedRest;
-    }));
+    setRestaurants(prev => prev.map(r => r.id === editingShop ? { ...r, ...shopEditForm } : r));
     setEditingShop(null);
     notifySystem('สำเร็จ', 'บันทึกข้อมูลร้านค้าเรียบร้อย', 'success');
   };

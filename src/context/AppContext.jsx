@@ -3,7 +3,8 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, ADMIN_EMAIL,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime, r2, safeLocalSet, hashPassword } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime, r2, safeLocalSet } from '../utils';
+import { supabase } from '../lib/supabase';
 
 import { useWalletActions }  from './hooks/useWalletActions';
 import { useOrderActions }   from './hooks/useOrderActions';
@@ -35,7 +36,7 @@ export function AppProvider({ children }) {
   const [riders, setRiders] = useState(INITIAL_RIDERS);
   const [menuItems, setMenuItems] = useState(INITIAL_MENU_ITEMS);
   const [pendingRequests, setPendingRequests] = useState([]);
-  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
   // --- Auth State ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -43,6 +44,7 @@ export function AppProvider({ children }) {
   const [loginForm, setLoginForm] = useState({ phone: '', email: '', password: '' });
   const [registerForm, setRegisterForm] = useState({ phone: '', email: '', password: '', confirmPassword: '', name: '' });
   const [authMode, setAuthMode] = useState('login');
+  const [authLoading, setAuthLoading] = useState(false);
 
   // --- User Profile State ---
   const [userProfile, setUserProfile] = useState({
@@ -98,12 +100,7 @@ export function AppProvider({ children }) {
 
   // --- Chat State ---
   const [activeChat, setActiveChat] = useState(null);
-  const [chats, setChats] = useState(() => {
-    try {
-      const saved = localStorage.getItem('boomrider_chats');
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
+  const [chats, setChats] = useState({});
 
   // --- Parcel Map State ---
   const [parcelMapTarget, setParcelMapTarget] = useState(null);
@@ -122,59 +119,39 @@ export function AppProvider({ children }) {
   useEffect(() => { restaurantsRef.current = restaurants; }, [restaurants]);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
-  const seenOrderIdsRef        = React.useRef(new Set());
-  const subInitializedRef      = React.useRef(false);
-  const placingOrderRef        = React.useRef(false);
+  const seenOrderIdsRef         = React.useRef(new Set());
+  const placingOrderRef         = React.useRef(false);
   const pendingLocalOrderIdsRef = React.useRef(new Set());
-  const lastChatCountsRef      = React.useRef({});
-  const chatSubInitializedRef  = React.useRef(false);
-  const prevOrdersRef          = React.useRef([]);
-  const gpsSessionRef          = React.useRef('');
+  const lastChatCountsRef       = React.useRef({});
+  const prevOrdersRef           = React.useRef([]);
+  const gpsSessionRef           = React.useRef('');
 
-  // --- Global Wallet Store ---
-  const [globalWallets, setGlobalWallets] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('boomrider_wallets') || '{}'); } catch { return {}; }
-  });
+  // --- Global Wallet Store (in-memory cache for all wallets) ---
+  const [globalWallets, setGlobalWallets] = useState({});
 
   // --- Global User Roles Store ---
-  const [globalUserRoles, setGlobalUserRoles] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}'); } catch { return {}; }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('boomrider_user_roles', JSON.stringify(globalUserRoles));
-  }, [globalUserRoles]);
-
-  useEffect(() => {
-    localStorage.setItem('boomrider_wallets', JSON.stringify(globalWallets));
-  }, [globalWallets]);
+  const [globalUserRoles, setGlobalUserRoles] = useState({});
 
   // --- Toast / Notification ---
   const notifySystem = (title, message, type = 'info') => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, title, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 5000);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
     playNotificationSound('order');
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
   };
 
-  const removeToast = (id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
 
-  // --- Admin notification ---
+  // --- Admin notification → Supabase insert ---
   const notifyAdmin = useCallback((title, message, type = 'warning') => {
     const notif = { id: Date.now(), title, message, type, at: formatDateTime() };
-    const queue = JSON.parse(localStorage.getItem('boomrider_admin_notifs') || '[]');
-    queue.unshift(notif);
-    localStorage.setItem('boomrider_admin_notifs', JSON.stringify(queue.slice(0, 50)));
+    supabase.from('admin_notifs').insert(notif).then(() => {});
     if (isAdmin) notifySystem(title, message, type);
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Role grant ---
-  const grantRole = (userId, role) => {
+  const grantRole = useCallback((userId, role) => {
     setGlobalUserRoles(prev => {
       const cur = prev[userId] || ['customer'];
       if (cur.includes(role)) return prev;
@@ -183,7 +160,8 @@ export function AppProvider({ children }) {
     if (currentUser?.id === userId || userProfile?.id === userId) {
       setUserRoles(prev => prev.includes(role) ? prev : [...prev, role]);
     }
-  };
+    supabase.from('user_roles').upsert({ user_id: userId, role }).then(() => {});
+  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Wallet hook ─────────────────────────────────────────────────────────────
   const { creditWallet, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet } = useWalletActions({
@@ -193,6 +171,7 @@ export function AppProvider({ children }) {
     setShowTopUpModal, setTopUpSlip,
     setWithdrawAmount, setWithdrawBank, setWithdrawAccount, setWithdrawName, setWithdrawMode,
     notifySystem, notifyAdmin,
+    supabase,
   });
 
   // ── Order hook ──────────────────────────────────────────────────────────────
@@ -219,6 +198,7 @@ export function AppProvider({ children }) {
     creditWallet, processTransaction, setUserWallet,
     seenOrderIdsRef,
     notifySystem, notifyAdmin,
+    supabase,
   });
 
   // ── Admin hook ──────────────────────────────────────────────────────────────
@@ -237,6 +217,7 @@ export function AppProvider({ children }) {
     setShowRejectModal,
     creditWallet, grantRole,
     notifySystem,
+    supabase,
   });
 
   // ── Photo handlers hook ─────────────────────────────────────────────────
@@ -262,86 +243,224 @@ export function AppProvider({ children }) {
     setPendingRequests,
     grantRole,
     notifySystem, notifyAdmin,
+    supabase,
   });
 
   // ── Promo actions hook ──────────────────────────────────────────────────
   const {
     promoCodes, setPromoCodes,
     validatePromoCode, usePromoCode, createPromoCode, togglePromoCode, deletePromoCode,
-  } = usePromoActions({ notifySystem });
+  } = usePromoActions({ notifySystem, supabase });
 
-  // --- Load from localStorage on mount ---
+  // ── Load app data from Supabase on mount ────────────────────────────────
   useEffect(() => {
-    const savedRestaurants = localStorage.getItem('boomrider_restaurants');
-    if (savedRestaurants) { try { setRestaurants(JSON.parse(savedRestaurants)); } catch {} }
-    const savedRiders = localStorage.getItem('boomrider_riders');
-    if (savedRiders) { try { setRiders(JSON.parse(savedRiders)); } catch {} }
-    const savedOrders = localStorage.getItem('boomrider_orders');
-    if (savedOrders) { try { setOrders(JSON.parse(savedOrders)); } catch {} }
-    const savedMenuItems = localStorage.getItem('boomrider_menu_items');
-    if (savedMenuItems) { try { setMenuItems(JSON.parse(savedMenuItems)); } catch {} }
-    const savedConfig = localStorage.getItem('boomrider_appconfig');
-    if (savedConfig) { try { const c = JSON.parse(savedConfig); setAppConfig(c); setEditConfig(c); } catch {} }
-    const savedPending = localStorage.getItem('boomrider_pending_requests');
-    if (savedPending) { try { setPendingRequests(JSON.parse(savedPending)); } catch {} }
-  }, []);
+    const loadData = async () => {
+      setIsDataLoading(true);
+      try {
+        const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
+          supabase.from('restaurants').select('id, data'),
+          supabase.from('menu_items').select('restaurant_id, items'),
+          supabase.from('riders').select('id, data'),
+          supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
+          supabase.from('pending_requests').select('id, data'),
+          supabase.from('app_config').select('data').eq('id', 1).single(),
+          supabase.from('promo_codes').select('id, data'),
+        ]);
 
-  // ── Admin notifications: localStorage polling ──────────────────────────
-  useEffect(() => {
-    if (!isAdmin) return;
-    const check = () => {
-      const queue = JSON.parse(localStorage.getItem('boomrider_admin_notifs') || '[]');
-      const last  = parseInt(localStorage.getItem('boomrider_admin_last_check') || '0');
-      const newNotifs = queue.filter(n => n.id > last);
-      if (newNotifs.length > 0) {
-        newNotifs.forEach(n => notifySystem(n.title, n.message, n.type));
-        localStorage.setItem('boomrider_admin_last_check', String(Date.now()));
+        if (restsResult.data?.length) setRestaurants(restsResult.data.map(r => r.data));
+        if (menusResult.data?.length) {
+          const obj = {};
+          menusResult.data.forEach(m => { obj[m.restaurant_id] = m.items; });
+          setMenuItems(obj);
+        }
+        if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
+        if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
+        if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
+        if (configResult.data?.data) {
+          setAppConfig(configResult.data.data);
+          setEditConfig(configResult.data.data);
+        }
+        if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
+      } catch (e) {
+        console.error('loadData error', e);
+      } finally {
+        setIsDataLoading(false);
       }
     };
-    check();
-    const interval = setInterval(check, 5000);
-    return () => clearInterval(interval);
+    loadData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Supabase Auth session + onAuthStateChange ───────────────────────────
+  const loadUserSession = useCallback(async (authUser) => {
+    try {
+      const [profileResult, rolesResult, walletResult] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', authUser.id).single(),
+        supabase.from('user_roles').select('role').eq('user_id', authUser.id),
+        supabase.from('wallets').select('balance, history').eq('user_id', authUser.id).single(),
+      ]);
+
+      const profile = profileResult.data || {};
+      const roles   = rolesResult.data?.map(r => r.role) || ['customer'];
+      const wallet  = walletResult.data;
+
+      const mergedRoles = ADMIN_EMAIL && authUser.email === ADMIN_EMAIL
+        ? [...new Set([...roles, 'admin'])]
+        : roles;
+
+      const prof = {
+        id: authUser.id,
+        name: profile.name || '',
+        phone: profile.phone || '',
+        email: authUser.email || profile.email || '',
+        location: profile.location || USER_LOCATION,
+        image: profile.avatar || null,
+      };
+
+      setCurrentUser({ id: authUser.id, email: authUser.email, ...profile, roles: mergedRoles });
+      setUserProfile(prof);
+      setTempProfile(prof);
+      setUserRoles(mergedRoles);
+      setUserWallet(r2(wallet?.balance || 0));
+      setWalletAllEntries(wallet?.history || []);
+      setUserAddresses(profile.addresses || [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }]);
+      setGlobalWallets(prev => ({
+        ...prev,
+        [authUser.id]: { balance: r2(wallet?.balance || 0), history: wallet?.history || [] },
+      }));
+    } catch (e) {
+      console.error('loadUserSession error', e);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setIsLoggedIn(true);
+        loadUserSession(session.user);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setIsLoggedIn(true);
+        await loadUserSession(session.user);
+      } else {
+        setIsLoggedIn(false);
+        setCurrentUser(null);
+        setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
+        setTempProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
+        setUserRoles(['customer']);
+        setUserWallet(0);
+        setWalletAllEntries([]);
+        setUserAddresses([]);
+        setActiveRole('customer');
+        setActiveTab('home');
+        setProfileSubView('main');
+        prevOrdersRef.current = [];
+        lastChatCountsRef.current = {};
+        gpsSessionRef.current = '';
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Realtime: Orders ────────────────────────────────────────────────────
+  useEffect(() => {
+    const channel = supabase.channel('orders-rt')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
+        const o = payload.new?.data;
+        if (!o) return;
+        setOrders(prev => prev.some(x => x.id === o.id) ? prev : [o, ...prev]);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
+        const o = payload.new?.data;
+        if (!o) return;
+        setOrders(prev => prev.map(x => x.id === o.id ? o : x));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, (payload) => {
+        setOrders(prev => prev.filter(x => x.id !== payload.old?.id));
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  // ── Realtime: Pending Requests ──────────────────────────────────────────
+  useEffect(() => {
+    const channel = supabase.channel('pending-rt')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pending_requests' }, (payload) => {
+        const r = payload.new?.data;
+        if (!r) return;
+        setPendingRequests(prev => prev.some(x => x.id === r.id) ? prev : [r, ...prev]);
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'pending_requests' }, (payload) => {
+        setPendingRequests(prev => prev.filter(x => x.id !== payload.old?.id));
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  // ── Realtime: Admin notifications ───────────────────────────────────────
+  useEffect(() => {
+    if (!isAdmin) return;
+    const channel = supabase.channel('admin-notifs-rt')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_notifs' }, (payload) => {
+        const n = payload.new;
+        if (n) notifySystem(n.title, n.message, n.type || 'info');
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Auto-save to localStorage ---
-  useEffect(() => { safeLocalSet('boomrider_restaurants', restaurants); }, [restaurants]);
-  useEffect(() => { safeLocalSet('boomrider_riders', riders); }, [riders]);
-  useEffect(() => { safeLocalSet('boomrider_orders', orders); }, [orders]);
-  useEffect(() => { safeLocalSet('boomrider_menu_items', menuItems); }, [menuItems]);
-  useEffect(() => { safeLocalSet('boomrider_appconfig', appConfig); }, [appConfig]);
-  useEffect(() => { safeLocalSet('boomrider_pending_requests', pendingRequests); }, [pendingRequests]);
-
-
-  // Auto-grant merchant/rider role (recovery mechanism)
-  useEffect(() => {
-    if (!isLoggedIn || !userProfile?.id) return;
-    const uid = userProfile.id || currentUser?.id;
-    if (!uid) return;
-    if (restaurants.some(r => r.ownerId === uid) && !userRoles.includes('merchant')) {
-      grantRole(uid, 'merchant');
-    }
-    if (riders.some(r => r.userId === uid) && !userRoles.includes('rider')) {
-      grantRole(uid, 'rider');
-    }
-  }, [restaurants, riders, userProfile?.id, isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Sync userRoles from globalUserRoles when it changes
+  // ── Realtime: Chats ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!isLoggedIn) return;
-    const uid = currentUser?.id || userProfile?.id;
-    if (!uid) return;
-    const latestRoles = globalUserRoles[uid];
-    if (!latestRoles || latestRoles.length === 0) return;
-    const withAdmin = ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL
-      ? [...new Set([...latestRoles, 'admin'])]
-      : latestRoles;
-    setUserRoles(prev => {
-      if (withAdmin.length === prev.length && withAdmin.every(r => prev.includes(r))) return prev;
-      return withAdmin;
-    });
-  }, [globalUserRoles, isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+    const channel = supabase.channel('chats-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chats' }, (payload) => {
+        const row = payload.new;
+        if (!row) return;
+        setChats(prev => ({ ...prev, [row.order_id]: row.messages || [] }));
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [isLoggedIn]);
 
-  // ── Auto-capture GPS location on login ───────────────────────────────────
+  // ── Auto-save to Supabase on state changes ──────────────────────────────
+  const debounceRef = useRef({});
+  const debouncedUpsert = useCallback((key, fn, delay = 1500) => {
+    clearTimeout(debounceRef.current[key]);
+    debounceRef.current[key] = setTimeout(fn, delay);
+  }, []);
+
+  useEffect(() => {
+    if (!restaurants.length) return;
+    debouncedUpsert('restaurants', () => {
+      const rows = restaurants.map(r => ({ id: r.id, owner_id: r.ownerId || null, data: r }));
+      supabase.from('restaurants').upsert(rows).then(() => {});
+    });
+  }, [restaurants]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    debouncedUpsert('menu_items', () => {
+      const rows = Object.entries(menuItems).map(([rid, items]) => ({ restaurant_id: rid, items }));
+      if (rows.length) supabase.from('menu_items').upsert(rows).then(() => {});
+    });
+  }, [menuItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!riders.length) return;
+    debouncedUpsert('riders', () => {
+      const rows = riders.map(r => ({ id: r.id, user_id: r.userId || null, data: r }));
+      supabase.from('riders').upsert(rows).then(() => {});
+    });
+  }, [riders]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    debouncedUpsert('app_config', () => {
+      supabase.from('app_config').upsert({ id: 1, data: appConfig }).then(() => {});
+    }, 2000);
+  }, [appConfig]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-capture GPS location on login ──────────────────────────────────
   useEffect(() => {
     if (!isLoggedIn) { gpsSessionRef.current = ''; return; }
     const uid = currentUser?.id;
@@ -353,15 +472,11 @@ export function AppProvider({ children }) {
       async (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserProfile(prev => ({ ...prev, location: loc }));
-        try {
-          const sv = JSON.parse(localStorage.getItem('boomrider_user') || '{}');
-          if (sv?.profile) { sv.profile.location = loc; localStorage.setItem('boomrider_user', JSON.stringify(sv)); }
-          if (uid) localStorage.setItem(`boomrider_loc_${uid}`, JSON.stringify(loc));
-        } catch {}
+        supabase.from('profiles').update({ location: loc }).eq('id', uid).then(() => {});
         try {
           const r = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json&accept-language=th`,
-            { headers: { 'Accept-Language': 'th' } }
+            `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`,
+            { headers: { 'Accept-Language': 'th' } },
           );
           const d = await r.json();
           const parts = [d.address?.road, d.address?.neighbourhood || d.address?.suburb, d.address?.city || d.address?.town].filter(Boolean);
@@ -372,61 +487,53 @@ export function AppProvider({ children }) {
         }
       },
       (err) => {
-        if (err.code === 1) notifySystem('📍 ไม่สามารถดึงตำแหน่งได้', 'กรุณาอนุญาตสิทธิ์ GPS ในเบราว์เซอร์', 'warning');
+        if (err.code === 1) notifySystem('📍 ไม่สามารถดึงตำแหน่งได้', 'กรุณาอนุญาตสิทธิ์ GPS', 'warning');
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 },
     );
   }, [isLoggedIn, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Auth Session Restore ---
+  // ── Auto-grant merchant/rider role (recovery) ───────────────────────────
   useEffect(() => {
-    const savedUser = localStorage.getItem('boomrider_user');
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      const allRoles = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-      const latestRoles = allRoles[user.id] || allRoles[user.profile?.id] || user.roles || ['customer'];
-      const mergedRoles = ADMIN_EMAIL && (user.email === ADMIN_EMAIL || user.profile?.email === ADMIN_EMAIL)
-        ? [...new Set([...latestRoles, 'admin'])]
-        : latestRoles;
-      setCurrentUser({ ...user, roles: mergedRoles });
-      setIsLoggedIn(true);
-      setUserProfile(user.profile);
-      setTempProfile(user.profile);
-      setUserRoles(mergedRoles);
-      const gw = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}')[user.id];
-      setUserWallet(r2(gw?.balance ?? user.wallet ?? 0));
-      setWalletAllEntries(gw?.history ?? user.walletHistory ?? []);
-      setUserAddresses(user.addresses || []);
-    }
+    if (!isLoggedIn || !userProfile?.id) return;
+    const uid = userProfile.id;
+    if (restaurants.some(r => r.ownerId === uid) && !userRoles.includes('merchant')) grantRole(uid, 'merchant');
+    if (riders.some(r => r.userId === uid) && !userRoles.includes('rider')) grantRole(uid, 'rider');
+  }, [restaurants, riders, userProfile?.id, isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Sync userRoles from globalUserRoles ─────────────────────────────────
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const uid = currentUser?.id || userProfile?.id;
+    if (!uid) return;
+    const latestRoles = globalUserRoles[uid];
+    if (!latestRoles || !latestRoles.length) return;
+    const withAdmin = ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL
+      ? [...new Set([...latestRoles, 'admin'])]
+      : latestRoles;
+    setUserRoles(prev => {
+      if (withAdmin.length === prev.length && withAdmin.every(r => prev.includes(r))) return prev;
+      return withAdmin;
+    });
+  }, [globalUserRoles, isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── In-app order notifications ──
+  // ── In-app order notifications ──────────────────────────────────────────
   useEffect(() => {
     const prev = prevOrdersRef.current;
     const uid = currentUser?.id;
-    if (!uid || prev.length === 0) {
-      prevOrdersRef.current = orders;
-      return;
-    }
+    if (!uid || prev.length === 0) { prevOrdersRef.current = orders; return; }
     const prevMap = new Map(prev.map(o => [o.id, o]));
-
     const myShop = restaurants.find(r => r.ownerId === uid);
     if (myShop) {
-      const newMerchantOrders = orders.filter(o =>
-        o.status === 'pending' && o.restaurantId === myShop.id && !prevMap.has(o.id),
-      );
+      const newMerchantOrders = orders.filter(o => o.status === 'pending' && o.restaurantId === myShop.id && !prevMap.has(o.id));
       if (newMerchantOrders.length > 0) {
         setMerchantTab('orders');
         playNotificationSound('order');
         notifySystem('🛎️ ออเดอร์ใหม่เข้าร้าน!', `มี ${newMerchantOrders.length} ออเดอร์ใหม่รอยืนยัน`, 'warning');
       }
     }
-
     if (userRoles.includes('rider')) {
-      const newJobs = orders.filter(o =>
-        o.status === 'ready_to_pickup' && !o.riderId && !prevMap.has(o.id),
-      );
+      const newJobs = orders.filter(o => o.status === 'ready_to_pickup' && !o.riderId && !prevMap.has(o.id));
       if (newJobs.length > 0) {
         setRiderTab('jobs');
         playNotificationSound('order');
@@ -437,7 +544,6 @@ export function AppProvider({ children }) {
         notifySystem('🛵 มีงานใหม่!', newJobs.length === 1 ? dest : `${newJobs.length} งานใหม่ — ${dest}`, 'warning');
       }
     }
-
     const justCompleted = orders.filter(o => {
       const p = prevMap.get(o.id);
       return o.status === 'completed' && o.customerId === uid && p && p.status !== 'completed';
@@ -447,7 +553,6 @@ export function AppProvider({ children }) {
       const label = justCompleted[0].type === 'parcel' ? 'พัสดุ' : 'อาหาร';
       notifySystem(`✅ จัดส่ง${label}สำเร็จ!`, `ออเดอร์ #${justCompleted[0].id.slice(-8)} ถึงมือคุณแล้ว 🎉`, 'success');
     }
-
     const justCancelled = orders.filter(o => {
       const p = prevMap.get(o.id);
       return o.status === 'cancelled' && o.customerId === uid && p && p.status !== 'cancelled';
@@ -456,26 +561,24 @@ export function AppProvider({ children }) {
       const reason = justCancelled[0].cancelReason ? `: ${justCancelled[0].cancelReason}` : '';
       notifySystem('❌ ออเดอร์ถูกยกเลิก', `#${justCancelled[0].id.slice(-8)}${reason}`, 'error');
     }
-
     prevOrdersRef.current = orders;
   }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Save user data to localStorage on change
+  // ── Save profile to Supabase on change ──────────────────────────────────
   useEffect(() => {
-    if (isLoggedIn && currentUser) {
-      const updatedUser = {
-        ...currentUser,
-        profile: userProfile,
-        roles: userRoles,
-        wallet: userWallet,
-        walletHistory: walletHistory,
+    if (!isLoggedIn || !currentUser?.id) return;
+    debouncedUpsert('profile', () => {
+      supabase.from('profiles').update({
+        name: userProfile.name,
+        phone: userProfile.phone,
+        avatar: userProfile.image || null,
+        location: userProfile.location,
         addresses: userAddresses,
-      };
-      localStorage.setItem('boomrider_user', JSON.stringify(updatedUser));
-    }
-  }, [userProfile, userRoles, userWallet, walletHistory, userAddresses]); // eslint-disable-line react-hooks/exhaustive-deps
+      }).eq('id', currentUser.id).then(() => {});
+    }, 2000);
+  }, [userProfile, userAddresses]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Real-time Rider Location Simulation ---
+  // ── Real-time Rider Location Simulation ─────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => {
       setOrders(prevOrders => prevOrders.map(order => {
@@ -495,7 +598,7 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Update Parcel Estimate
+  // ── Update Parcel Estimate ───────────────────────────────────────────────
   useEffect(() => {
     if (parcelDetails.pickupLocation && parcelDetails.dropoffLocation) {
       const d = getDistanceFromLatLonInKm(
@@ -507,13 +610,12 @@ export function AppProvider({ children }) {
     }
   }, [parcelDetails.pickupLocation, parcelDetails.dropoffLocation, appConfig]);
 
-  // --- Chat ---
-  useEffect(() => {
-    try { localStorage.setItem('boomrider_chats', JSON.stringify(chats)); } catch {}
-  }, [chats]);
-
+  // ── Chat ─────────────────────────────────────────────────────────────────
   const openChatWindow = (id, title, role) => {
-    setChats(prev => prev[id] ? prev : { ...prev, [id]: [] });
+    if (!chats[id]) {
+      setChats(prev => ({ ...prev, [id]: [] }));
+      supabase.from('chats').upsert({ order_id: id, messages: [] }).then(() => {});
+    }
     setActiveChat({ id, title, role });
   };
   const closeChatWindow = () => setActiveChat(null);
@@ -523,26 +625,26 @@ export function AppProvider({ children }) {
     const newMessage = {
       text: text.trim(),
       sender: activeRole,
-      senderName: activeRole === 'admin'    ? 'เจ้าหน้าที่'
-                : activeRole === 'rider'    ? 'ไรเดอร์'
-                : activeRole === 'merchant' ? 'ร้านค้า'
-                : userProfile?.name || 'ลูกค้า',
+      senderName: activeRole === 'admin' ? 'เจ้าหน้าที่'
+        : activeRole === 'rider' ? 'ไรเดอร์'
+        : activeRole === 'merchant' ? 'ร้านค้า'
+        : userProfile?.name || 'ลูกค้า',
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     };
-    setChats(prev => ({ ...prev, [activeChat.id]: [...(prev[activeChat.id] || []), newMessage] }));
+    setChats(prev => {
+      const next = { ...prev, [activeChat.id]: [...(prev[activeChat.id] || []), newMessage] };
+      supabase.from('chats').upsert({ order_id: activeChat.id, messages: next[activeChat.id], updated_at: new Date().toISOString() }).then(() => {});
+      return next;
+    });
   };
 
   const deleteChat = (chatId) => {
-    setChats(prev => {
-      const next = { ...prev };
-      delete next[chatId];
-      try { localStorage.setItem('boomrider_chats', JSON.stringify(next)); } catch {}
-      return next;
-    });
+    setChats(prev => { const next = { ...prev }; delete next[chatId]; return next; });
+    supabase.from('chats').delete().eq('order_id', chatId).then(() => {});
     if (activeChat?.id === chatId) setActiveChat(null);
   };
 
-  // --- Location helpers ---
+  // ── Location helpers ─────────────────────────────────────────────────────
   const reverseGeocode = useCallback(async (lat, lng) => {
     try {
       const res = await fetch(
@@ -580,9 +682,7 @@ export function AppProvider({ children }) {
       const addr = await reverseGeocode(loc.lat, loc.lng);
       setNewAddr(prev => ({ ...prev, location: loc, fullAddr: addr }));
       notifySystem('สำเร็จ', 'ดึงพิกัดปัจจุบันและที่อยู่เรียบร้อย!', 'success');
-    }, () => {
-      notifySystem('ผิดพลาด', 'ไม่สามารถดึงพิกัดได้ กรุณาเปิดสิทธิ์ GPS', 'error');
-    }, { enableHighAccuracy: true, timeout: 10000 });
+    }, () => notifySystem('ผิดพลาด', 'ไม่สามารถดึงพิกัดได้ กรุณาเปิดสิทธิ์ GPS', 'error'), { enableHighAccuracy: true, timeout: 10000 });
   };
 
   const getCurrentLocationForParcel = (target) => {
@@ -599,9 +699,7 @@ export function AppProvider({ children }) {
         setParcelMapTarget('dropoff');
       }
       notifySystem('สำเร็จ', `ตั้ง${target === 'pickup' ? 'จุดรับ' : 'จุดส่ง'}เป็นตำแหน่งปัจจุบันแล้ว`, 'success');
-    }, () => {
-      notifySystem('ผิดพลาด', 'ไม่สามารถดึงพิกัดได้ กรุณาเปิดสิทธิ์ GPS', 'error');
-    }, { enableHighAccuracy: true, timeout: 10000 });
+    }, () => notifySystem('ผิดพลาด', 'ไม่สามารถดึงพิกัดได้ กรุณาเปิดสิทธิ์ GPS', 'error'), { enableHighAccuracy: true, timeout: 10000 });
   };
 
   const handleSaveProfile = useCallback(() => {
@@ -610,7 +708,7 @@ export function AppProvider({ children }) {
     notifySystem('สำเร็จ', 'บันทึกข้อมูลโปรไฟล์เรียบร้อย', 'success');
   }, [tempProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Merchant Management ---
+  // ── Merchant Management ──────────────────────────────────────────────────
   const handleUpdateShopLocation = useCallback((restaurantId, location) => {
     if (!restaurantId || !location) return;
     setRestaurants(prev => prev.map(r => r.id === restaurantId ? { ...r, location } : r));
@@ -627,185 +725,151 @@ export function AppProvider({ children }) {
   };
 
   const handleAddMenuItem = (restaurantId, newItem) => {
-    setMenuItems(prev => ({
-      ...prev,
-      [restaurantId]: [...(prev[restaurantId] || []), { ...newItem, id: generateId(), available: true }],
-    }));
+    setMenuItems(prev => ({ ...prev, [restaurantId]: [...(prev[restaurantId] || []), { ...newItem, id: generateId(), available: true }] }));
     notifySystem('สำเร็จ', 'เพิ่มเมนูเรียบร้อย', 'success');
   };
 
   const handleEditMenuItem = (restaurantId, itemId, updatedItem) => {
-    setMenuItems(prev => ({
-      ...prev,
-      [restaurantId]: (prev[restaurantId] || []).map(item => item.id === itemId ? { ...item, ...updatedItem } : item),
-    }));
+    setMenuItems(prev => ({ ...prev, [restaurantId]: (prev[restaurantId] || []).map(item => item.id === itemId ? { ...item, ...updatedItem } : item) }));
     notifySystem('สำเร็จ', 'แก้ไขเมนูเรียบร้อย', 'success');
   };
 
   const handleDeleteMenuItem = (restaurantId, itemId) => {
     if (!window.confirm('ยืนยันการลบเมนูนี้?')) return;
-    setMenuItems(prev => ({
-      ...prev,
-      [restaurantId]: (prev[restaurantId] || []).filter(item => item.id !== itemId),
-    }));
+    setMenuItems(prev => ({ ...prev, [restaurantId]: (prev[restaurantId] || []).filter(item => item.id !== itemId) }));
     notifySystem('สำเร็จ', 'ลบเมนูเรียบร้อย', 'success');
   };
 
   const handleToggleItemAvailability = (restaurantId, itemId) => {
-    setMenuItems(prev => ({
-      ...prev,
-      [restaurantId]: (prev[restaurantId] || []).map(item => item.id === itemId ? { ...item, available: !item.available } : item),
-    }));
+    setMenuItems(prev => ({ ...prev, [restaurantId]: (prev[restaurantId] || []).map(item => item.id === itemId ? { ...item, available: !item.available } : item) }));
   };
 
-  // --- Address management ---
+  // ── Address management ───────────────────────────────────────────────────
   const handleUpdateUserLocation = useCallback(async (location) => {
     if (!location) return;
     const uid = currentUser?.id || userProfile?.id;
     setUserProfile(prev => ({ ...prev, location }));
-    try {
-      const saved = JSON.parse(localStorage.getItem('boomrider_user') || '{}');
-      if (saved && typeof saved === 'object') {
-        if (saved.profile) saved.profile.location = location;
-        localStorage.setItem('boomrider_user', JSON.stringify(saved));
-      }
-      if (uid) localStorage.setItem(`boomrider_loc_${uid}`, JSON.stringify(location));
-    } catch {}
+    if (uid) supabase.from('profiles').update({ location }).eq('id', uid).then(() => {});
     notifySystem('📍 บันทึกตำแหน่งแล้ว', 'ตำแหน่งหลักของคุณถูกอัปเดตเรียบร้อย', 'success');
   }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddAddress = (addr) => {
     const loc = addr.location || USER_LOCATION;
-    setUserAddresses([...userAddresses, { id: generateId(), label: addr.label, address: addr.fullAddr, location: loc }]);
+    setUserAddresses(prev => [...prev, { id: generateId(), label: addr.label, address: addr.fullAddr, location: loc }]);
     notifySystem('สำเร็จ', 'บันทึกที่อยู่เรียบร้อย', 'success');
   };
 
   const handleUpdateAddress = useCallback(async (id, location, label, fullAddr) => {
     const addr = fullAddr || await reverseGeocode(location.lat, location.lng).catch(() => `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`);
-    setUserAddresses(prev => prev.map(a =>
-      a.id === id ? { ...a, location, address: addr, ...(label ? { label } : {}) } : a,
-    ));
+    setUserAddresses(prev => prev.map(a => a.id === id ? { ...a, location, address: addr, ...(label ? { label } : {}) } : a));
     notifySystem('📍 อัปเดตหมุดแล้ว', 'บันทึกตำแหน่งที่อยู่ใหม่เรียบร้อย', 'success');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleDeleteAddress = (id) => setUserAddresses(userAddresses.filter(a => a.id !== id));
+  const handleDeleteAddress = (id) => setUserAddresses(prev => prev.filter(a => a.id !== id));
 
-  // --- Rider location update ---
+  // ── Rider location update ─────────────────────────────────────────────────
   const updateRiderWorkingLocation = useCallback((riderId, location) => {
     if (!riderId || !location) return;
     setRiders(prev => prev.map(r => r.id === riderId ? { ...r, location } : r));
   }, []);
 
-  // --- Manual role/pending sync ---
-  const syncRoles = useCallback(() => {
+  // ── Manual role/pending sync from Supabase ───────────────────────────────
+  const syncRoles = useCallback(async () => {
     const uid = currentUser?.id || userProfile?.id;
     if (!uid) return;
-    const allRoles = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-    const latest   = allRoles[uid];
-    if (latest && latest.length > 0) {
+    const [rolesResult, pendingResult] = await Promise.all([
+      supabase.from('user_roles').select('role').eq('user_id', uid),
+      supabase.from('pending_requests').select('id, data'),
+    ]);
+    const latest = rolesResult.data?.map(r => r.role) || [];
+    if (latest.length > 0) {
       const withAdmin = ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL ? [...new Set([...latest, 'admin'])] : latest;
       setUserRoles(withAdmin);
     }
-    const savedPending = JSON.parse(localStorage.getItem('boomrider_pending_requests') || '[]');
-    setPendingRequests(savedPending);
+    if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
     notifySystem('อัปเดต', 'โหลดข้อมูลล่าสุดแล้ว', 'success');
   }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Auth Functions ---
+  // ── Auth Functions ───────────────────────────────────────────────────────
   const handleLogin = async () => {
     if (!loginForm.phone && !loginForm.email) return notifySystem('ผิดพลาด', 'กรุณากรอกเบอร์โทรหรืออีเมล', 'error');
     if (!loginForm.password) return notifySystem('ผิดพลาด', 'กรุณากรอกรหัสผ่าน', 'error');
-    const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-    const user  = users.find(u => (u.phone === loginForm.phone && loginForm.phone) || (u.email === loginForm.email && loginForm.email));
-    if (!user) return notifySystem('ผิดพลาด', 'เบอร์โทร/อีเมล หรือรหัสผ่านไม่ถูกต้อง', 'error');
-    const hashedInput = await hashPassword(loginForm.password);
-    const passwordMatch = user.password === hashedInput || user.password === loginForm.password;
-    if (!passwordMatch) return notifySystem('ผิดพลาด', 'เบอร์โทร/อีเมล หรือรหัสผ่านไม่ถูกต้อง', 'error');
-    if (user.banned) return notifySystem('ผิดพลาด', 'บัญชีนี้ถูกระงับการใช้งาน', 'error');
-    // migrate plain-text password to hashed on first login
-    if (user.password === loginForm.password) {
-      const migrated = users.map(u => u.id === user.id ? { ...u, password: hashedInput } : u);
-      localStorage.setItem('boomrider_users', JSON.stringify(migrated));
-      user.password = hashedInput;
+    setAuthLoading(true);
+    try {
+      let email = loginForm.email;
+      if (!email && loginForm.phone) {
+        const { data: profile } = await supabase.from('profiles').select('email').eq('phone', loginForm.phone).single();
+        if (!profile?.email) return notifySystem('ผิดพลาด', 'ไม่พบบัญชีสำหรับเบอร์นี้', 'error');
+        email = profile.email;
+      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password: loginForm.password });
+      if (error) return notifySystem('ผิดพลาด', 'อีเมล/รหัสผ่านไม่ถูกต้อง', 'error');
+      const { data: profile } = await supabase.from('profiles').select('banned').eq('email', email).maybeSingle();
+      if (profile?.banned) {
+        await supabase.auth.signOut();
+        return notifySystem('ผิดพลาด', 'บัญชีนี้ถูกระงับการใช้งาน', 'error');
+      }
+      setLoginForm({ phone: '', email: '', password: '' });
+      notifySystem('สำเร็จ', 'เข้าสู่ระบบเรียบร้อย!', 'success');
+    } finally {
+      setAuthLoading(false);
     }
-    const allRolesLocal = JSON.parse(localStorage.getItem('boomrider_user_roles') || '{}');
-    const finalRoles = allRolesLocal[user.profile?.id || user.id] || allRolesLocal[user.id] || user.roles || ['customer'];
-    const updatedUser = { ...user, roles: finalRoles };
-    localStorage.setItem('boomrider_user', JSON.stringify(updatedUser));
-    setCurrentUser(updatedUser); setIsLoggedIn(true); setUserProfile(user.profile); setTempProfile(user.profile);
-    setUserRoles(finalRoles); setUserWallet(r2(user.wallet)); setWalletAllEntries(user.walletHistory ?? []); setUserAddresses(user.addresses);
-    notifySystem('สำเร็จ', 'เข้าสู่ระบบเรียบร้อย!', 'success');
   };
 
   const handleRegister = async () => {
     if (!registerForm.name) return notifySystem('ผิดพลาด', 'กรุณากรอกชื่อ-นามสกุล', 'error');
-    if (!registerForm.phone && !registerForm.email) return notifySystem('ผิดพลาด', 'กรุณากรอกเบอร์โทรหรืออีเมล', 'error');
+    if (!registerForm.email) return notifySystem('ผิดพลาด', 'กรุณากรอกอีเมล', 'error');
     if (!registerForm.password) return notifySystem('ผิดพลาด', 'กรุณากรอกรหัสผ่าน', 'error');
     if (registerForm.password.length < 6) return notifySystem('ผิดพลาด', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error');
     if (registerForm.password !== registerForm.confirmPassword) return notifySystem('ผิดพลาด', 'รหัสผ่านไม่ตรงกัน', 'error');
-    const users = JSON.parse(localStorage.getItem('boomrider_users') || '[]');
-    const existingUser = users.find(u => (u.phone === registerForm.phone && registerForm.phone) || (u.email === registerForm.email && registerForm.email));
-    if (existingUser) return notifySystem('ผิดพลาด', 'เบอร์โทรหรืออีเมลนี้ถูกใช้งานแล้ว', 'error');
-    const newUserId = generateId();
-    const hashedPassword = await hashPassword(registerForm.password);
-    const newUser = {
-      id: newUserId, name: registerForm.name, phone: registerForm.phone, email: registerForm.email,
-      password: hashedPassword,
-      profile: { id: newUserId, name: registerForm.name, phone: registerForm.phone, email: registerForm.email, location: USER_LOCATION, image: null },
-      roles: ['customer'], wallet: 0, walletHistory: [],
-      addresses: [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }],
-      createdAt: new Date().toISOString(),
-    };
-    users.push(newUser);
-    localStorage.setItem('boomrider_users', JSON.stringify(users));
-    localStorage.setItem('boomrider_user', JSON.stringify(newUser));
-    setCurrentUser(newUser); setIsLoggedIn(true); setUserProfile(newUser.profile); setTempProfile(newUser.profile);
-    setUserRoles(newUser.roles); setUserWallet(r2(newUser.wallet)); setWalletAllEntries(newUser.walletHistory ?? []); setUserAddresses(newUser.addresses);
-    notifySystem('สำเร็จ', 'สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ', 'success');
+    setAuthLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: registerForm.email,
+        password: registerForm.password,
+        options: { data: { name: registerForm.name } },
+      });
+      if (error) return notifySystem('ผิดพลาด', error.message, 'error');
+      if (!data.user) return notifySystem('ผิดพลาด', 'สมัครไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+      const uid = data.user.id;
+      await Promise.all([
+        supabase.from('profiles').insert({
+          id: uid,
+          name: registerForm.name,
+          phone: registerForm.phone || null,
+          email: registerForm.email,
+          location: USER_LOCATION,
+          addresses: [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }],
+        }),
+        supabase.from('wallets').insert({ user_id: uid, balance: 0, history: [] }),
+        supabase.from('user_roles').insert({ user_id: uid, role: 'customer' }),
+      ]);
+      setRegisterForm({ phone: '', email: '', password: '', confirmPassword: '', name: '' });
+      notifySystem('สำเร็จ', 'สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ 🎉', 'success');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
-  const handleLogout = () => {
-    lastChatCountsRef.current = {};
-    chatSubInitializedRef.current = false;
-    prevOrdersRef.current = [];
-    setIsLoggedIn(false);
-    setCurrentUser(null);
-    setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
-    setTempProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
-    setUserRoles(['customer']);
-    setUserWallet(0);
-    setWalletAllEntries([]);
-    setWalletClearedAt(null);
-    setUserAddresses([]);
-    localStorage.removeItem('boomrider_user');
-    setActiveRole('customer');
-    setActiveTab('home');
-    setProfileSubView('main');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
-  // --- Clear wallet history ---
-  const clearWalletHistory = useCallback(() => {
+  // ── Clear wallet history ──────────────────────────────────────────────────
+  const clearWalletHistory = useCallback(async () => {
     setWalletAllEntries([]);
     setWalletClearedAt(new Date());
-    try {
-      const wallets = JSON.parse(localStorage.getItem('boomrider_wallets') || '{}');
-      const uid = currentUser?.id || userProfile?.id;
-      if (uid && wallets[uid]) {
-        wallets[uid] = { ...wallets[uid], history: [] };
-        localStorage.setItem('boomrider_wallets', JSON.stringify(wallets));
-      }
-    } catch {}
+    const uid = currentUser?.id || userProfile?.id;
+    if (uid) {
+      const { data: w } = await supabase.from('wallets').select('balance').eq('user_id', uid).single();
+      await supabase.from('wallets').upsert({ user_id: uid, balance: w?.balance || 0, history: [] });
+    }
   }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Rating ---
-  const openRatingModal = useCallback((order) => {
-    setRatingOrderData(order);
-    setShowRatingModal(true);
-  }, []);
+  // ── Rating ────────────────────────────────────────────────────────────────
+  const openRatingModal  = useCallback((order) => { setRatingOrderData(order); setShowRatingModal(true); }, []);
 
-  const submitRating = useCallback(async ({ orderId, restaurantId, riderId, restaurantRating, riderRating, comment }) => {
-    const uid = currentUser?.id || userProfile?.id;
-
+  const submitRating = useCallback(async ({ orderId, restaurantId, riderId, restaurantRating, riderRating }) => {
     if (restaurantId && restaurantRating) {
       setRestaurants(prev => prev.map(r => {
         if (r.id !== restaurantId) return r;
@@ -825,10 +889,12 @@ export function AppProvider({ children }) {
       }));
     }
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, rated: true } : o));
+    const updated = orders.find(o => o.id === orderId);
+    if (updated) supabase.from('orders').update({ data: { ...updated, rated: true } }).eq('id', orderId).then(() => {});
     setShowRatingModal(false);
     setRatingOrderData(null);
     notifySystem('ขอบคุณ! 🌟', 'บันทึกรีวิวของคุณแล้ว', 'success');
-  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Context Value ---
   const value = {
@@ -848,6 +914,7 @@ export function AppProvider({ children }) {
     riders, setRiders,
     menuItems, setMenuItems,
     pendingRequests, setPendingRequests,
+    isDataLoading,
 
     // Auth
     isLoggedIn,
@@ -855,6 +922,7 @@ export function AppProvider({ children }) {
     loginForm, setLoginForm,
     registerForm, setRegisterForm,
     authMode, setAuthMode,
+    authLoading,
     handleLogin,
     handleRegister,
     handleLogout,
@@ -901,103 +969,96 @@ export function AppProvider({ children }) {
     shopEditForm, setShopEditForm,
     editForm, setEditForm,
     showCancelModal, setShowCancelModal,
-    selectedOrderToCancel, setSelectedOrderToCancel,
+    selectedOrderToCancel,
     cancelReasonInput, setCancelReasonInput,
-    showRejectModal, setShowRejectModal,
-    selectedRequestToReject, setSelectedRequestToReject,
+    showRejectModal,
     showImageModal, setShowImageModal,
-    previewImageUrl, setPreviewImageUrl,
+    previewImageUrl,
+
+    // TopUp & Wallet
     showTopUpModal, setShowTopUpModal,
     topUpSlip, setTopUpSlip,
+    creditWallet,
+    processTransaction,
+    requestTopUp,
+    requestWithdraw,
+    adminAdjustWallet,
+
+    // Rating
     showRatingModal, setShowRatingModal,
     ratingOrderData,
     openRatingModal,
     submitRating,
 
     // Chat
-    activeChat, setActiveChat,
-    chats, setChats,
+    activeChat,
+    chats,
     openChatWindow,
     closeChatWindow,
     sendMessage,
     deleteChat,
 
-    // Toast
-    toasts,
-    notifySystem,
-    removeToast,
+    // Location
+    handleMapLocationSelect,
+    handleParcelMapSelect,
+    getCurrentLocationForForm,
+    getCurrentLocationForParcel,
+    handleUpdateUserLocation,
 
-    // Photo handlers
-    handleProfilePhotoChange,
-    handleShopPhotoChange,
-    handleRegistrationPhotoSelect,
-    handleTopUpSlipSelect,
-    handleMenuPhotoSelect,
-    openImagePreview,
+    // Profile
     handleSaveProfile,
     profileUploading,
+    handleProfilePhotoChange,
 
-    // Merchant management
+    // Merchant
     handleUpdateShopLocation,
     handleToggleShopStatus,
     handleAddMenuItem,
     handleEditMenuItem,
     handleDeleteMenuItem,
     handleToggleItemAvailability,
-    saveShopEdit,
-    toggleRestaurantStatus,
-    toggleRiderBan,
+    handleShopPhotoChange,
+    handleRegistrationPhotoSelect,
+    handleTopUpSlipSelect,
+    handleMenuPhotoSelect,
+    openImagePreview,
 
-    // Address management
-    handleUpdateUserLocation,
+    // Address
     handleAddAddress,
     handleUpdateAddress,
     handleDeleteAddress,
-    getCurrentLocationForForm,
-    getCurrentLocationForParcel,
-    handleMapLocationSelect,
-    handleParcelMapSelect,
-    isPending,
 
-    // Request logic
-    requestTopUp,
-    requestWithdraw,
+    // Registration
     requestRegisterMerchant,
     requestRegisterRider,
 
-    // Admin logic
+    // Promo
+    promoCodes, setPromoCodes,
+    validatePromoCode, usePromoCode, createPromoCode, togglePromoCode, deletePromoCode,
+
+    // Admin
     handleApproveRequest,
     initiateRejectRequest,
     confirmRejectRequest,
+    adminBanUser,
+    toggleRestaurantStatus,
+    toggleRiderBan,
+    saveShopEdit,
+
+    // Misc
+    toasts, removeToast,
+    syncRoles,
+    updateRiderWorkingLocation,
+    isPending,
+    hasPendingCancelRequest,
     initiateCancelOrder,
     confirmCancelOrder,
     requestCancelOrder,
     requestCancelByRole,
-    hasPendingCancelRequest,
     forceRefresh,
-
-    // Wallet
-    processTransaction,
-    creditWallet,
-    grantRole,
-
-    // Rider location
-    updateRiderWorkingLocation,
-
-    isDataLoading,
-
-    // Sync
-    syncRoles,
-
-    // Promo codes
-    promoCodes, setPromoCodes,
-    validatePromoCode, usePromoCode, createPromoCode, togglePromoCode, deletePromoCode,
-
-    // Admin tools
-    adminAdjustWallet, adminBanUser,
+    walletAllEntries,
+    supabase,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
-
-export default AppContext;

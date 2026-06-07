@@ -19,35 +19,45 @@ export function useWalletActions(deps) {
     setWithdrawMode,
     notifySystem,
     notifyAdmin,
+    supabase,
   } = deps;
 
-  const creditWallet = (userId, amount, desc) => {
+  const _makeEntry = (amount, desc) => ({
+    id: generateId(),
+    type: amount > 0 ? 'deposit' : 'withdraw',
+    amount,
+    date: formatDateTime(),
+    desc,
+    createdAtMs: Date.now(),
+  });
+
+  const creditWallet = async (userId, amount, desc) => {
+    const entry = _makeEntry(amount, desc);
+
+    // Optimistic local update
     setGlobalWallets(prev => {
       const cur = prev[userId] || { balance: 0, history: [] };
-      return {
-        ...prev,
-        [userId]: {
-          balance: cur.balance + amount,
-          history: [
-            { id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: formatDateTime(), desc, createdAtMs: Date.now() },
-            ...cur.history,
-          ],
-        },
-      };
+      return { ...prev, [userId]: { balance: r2(cur.balance + amount), history: [entry, ...cur.history] } };
     });
     if (currentUser?.id === userId || currentUser?.email === userId) {
       setUserWallet(prev => r2(prev + amount));
-      setWalletAllEntries(prev => [
-        { id: generateId(), type: amount > 0 ? 'deposit' : 'withdraw', amount, date: formatDateTime(), desc, createdAtMs: Date.now() },
-        ...prev,
-      ]);
+      setWalletAllEntries(prev => [entry, ...prev]);
+    }
+
+    // Persist to Supabase
+    try {
+      const { data: current } = await supabase.from('wallets').select('balance, history').eq('user_id', userId).single();
+      const newBalance = r2((current?.balance || 0) + amount);
+      const newHistory = [entry, ...(current?.history || [])].slice(0, 500);
+      await supabase.from('wallets').upsert({ user_id: userId, balance: newBalance, history: newHistory });
+    } catch (e) {
+      console.error('creditWallet sync error', e);
     }
   };
 
   const processTransaction = (type, amount, description) => {
     setUserWallet(prev => r2(prev + amount));
-    const entry = { id: generateId(), type, amount, date: formatDateTime(), desc: description, createdAtMs: Date.now() };
-    setWalletAllEntries(prev => [entry, ...prev]);
+    setWalletAllEntries(prev => [_makeEntry(amount, description), ...prev]);
   };
 
   const requestTopUp = (amount, slipImage, _walletType = null, bankInfo = {}) => {
@@ -66,6 +76,7 @@ export function useWalletActions(deps) {
       timestamp: formatDateTime(),
     };
     setPendingRequests(prev => [newReq, ...prev]);
+    supabase.from('pending_requests').insert({ id: newReq.id, data: newReq }).then(() => {});
     setShowTopUpModal(false);
     setTopUpSlip(null);
     setWithdrawAmount('');
@@ -90,11 +101,9 @@ export function useWalletActions(deps) {
         'error',
       );
     }
-
     const bank          = bankInfo.bank          || bankInfo.bankName   || '';
     const accountName   = bankInfo.accountName   || bankInfo.name       || '';
     const accountNumber = bankInfo.accountNumber || bankInfo.account    || '';
-
     const newReq = {
       id: generateId(), type: 'withdraw',
       data: { amount: parsedAmount, bank, accountName, accountNumber, account: accountNumber, name: accountName },
@@ -102,6 +111,7 @@ export function useWalletActions(deps) {
       timestamp: formatDateTime(),
     };
     setPendingRequests(prev => [newReq, ...prev]);
+    supabase.from('pending_requests').insert({ id: newReq.id, data: newReq }).then(() => {});
     setWithdrawAmount(''); setWithdrawBank(''); setWithdrawAccount(''); setWithdrawName('');
     setWithdrawMode(false);
     notifySystem('ส่งคำขอแล้ว ✅', `แจ้งถอนกระเป๋าเงิน ฿${parsedAmount.toLocaleString()} — รอ Admin อนุมัติ`, 'success');
@@ -109,8 +119,7 @@ export function useWalletActions(deps) {
   };
 
   const adminAdjustWallet = (userId, amount, desc) => {
-    const fullDesc = `[Admin] ${desc}`;
-    creditWallet(userId, amount, fullDesc);
+    creditWallet(userId, amount, `[Admin] ${desc}`);
     notifySystem('Admin', `ปรับยอด ${amount > 0 ? '+' : ''}฿${amount} ให้ผู้ใช้เรียบร้อย`, 'success');
   };
 

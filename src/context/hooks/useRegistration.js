@@ -8,6 +8,7 @@ export function useRegistration({
   setPendingRequests,
   grantRole,
   notifySystem, notifyAdmin,
+  supabase,
 }) {
   const [merchantRegForm, setMerchantRegForm] = useState({
     shopName: '', category: 'Street Food', realName: '', idCard: '', phone: '',
@@ -34,7 +35,6 @@ export function useRegistration({
     if (isPending('merchant_reg')) return notifySystem('รออนุมัติ', 'คำขอสมัครร้านค้ากำลังรอการอนุมัติ', 'info');
     const uid = userProfile.id || currentUser?.id || '';
 
-    // compress images to base64 for local storage
     let idCardImage = data.idCardImage;
     let shopImage   = data.shopImage;
     if (data._idCardImageFile) {
@@ -53,6 +53,7 @@ export function useRegistration({
       timestamp: formatDateTime(),
     };
     setPendingRequests(prev => [newReq, ...prev]);
+    await supabase.from('pending_requests').insert({ id: newReq.id, data: newReq });
     notifySystem('สำเร็จ', 'ส่งใบสมัครร้านค้าเรียบร้อย รอแอดมินอนุมัติ', 'success');
     notifyAdmin('🏪 สมัครร้านค้าใหม่', `${userProfile.name} ส่งใบสมัครร้าน ${data.shopName}`, 'warning');
     return true;
@@ -82,15 +83,11 @@ export function useRegistration({
       timestamp: formatDateTime(),
     };
     setPendingRequests(prev => [newReq, ...prev]);
+    await supabase.from('pending_requests').insert({ id: newReq.id, data: newReq });
     notifySystem('สำเร็จ', 'ส่งใบสมัครไรเดอร์เรียบร้อย รอแอดมินอนุมัติ', 'success');
     notifyAdmin('🛵 สมัครไรเดอร์ใหม่', `${userProfile.name} ส่งใบสมัคร`, 'warning');
     return true;
   };
 
-  return {
-    merchantRegForm, setMerchantRegForm,
-    riderRegForm, setRiderRegForm,
-    requestRegisterMerchant,
-    requestRegisterRider,
-  };
+  return { merchantRegForm, setMerchantRegForm, riderRegForm, setRiderRegForm, requestRegisterMerchant, requestRegisterRider };
 }

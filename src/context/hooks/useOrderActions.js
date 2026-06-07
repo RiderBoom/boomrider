@@ -20,10 +20,11 @@ export function useOrderActions(deps) {
     seenOrderIdsRef,
     creditWallet, processTransaction, setUserWallet,
     notifySystem, notifyAdmin,
+    supabase,
   } = deps;
 
   const calculateDeliveryFee = (distance) => appConfig.baseFee + (Math.ceil(distance) * appConfig.perKmFee);
-  const calculateFoodTotal = () => cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const calculateFoodTotal   = () => cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const isPending = (type) => pendingRequests.some(r => r.type === type && r.userId === userProfile.id);
   const hasPendingCancelRequest = (orderId) =>
     pendingRequests.some(r => r.type === 'cancel_order' && r.data?.orderId === orderId);
@@ -44,302 +45,231 @@ export function useOrderActions(deps) {
     }
   };
 
-  const placeOrder = (promoDiscount = 0, notes = '') => {
+  const placeOrder = async (promoDiscount = 0, notes = '') => {
     if (placingOrderRef.current || cart.length === 0) return;
     placingOrderRef.current = true;
     setTimeout(() => { placingOrderRef.current = false; }, 3000);
 
-    const distance = cart[0].distance;
-    const foodTotal = calculateFoodTotal();
-    const deliveryFee = calculateDeliveryFee(distance);
-    const rawFoodGP     = foodTotal * (appConfig.gpFood / 100);
-    const rawDeliveryGP = deliveryFee * (appConfig.gpDelivery / 100);
-    const totalRawGP    = rawFoodGP + rawDeliveryGP;
-    const effectivePromo = Math.min(promoDiscount || 0, foodTotal + deliveryFee);
-    const grandTotal     = Math.max(0, foodTotal + deliveryFee - effectivePromo);
+    const foodTotal    = calculateFoodTotal();
+    const distance     = cart[0]?.distance || 1;
+    const deliveryFee  = calculateDeliveryFee(distance);
+    const grandTotal   = Math.max(0, foodTotal + deliveryFee - promoDiscount);
+    const restaurant   = restaurants.find(r => r.id === cart[0].restaurantId);
+
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
       placingOrderRef.current = false;
-      return notifySystem('ยอดเงินไม่พอ', 'กรุณาเติมเงินหรือเลือกชำระเงินสด', 'error');
-    }
-    const restaurantData = restaurants.find(r => r.id === cart[0].restaurantId);
-    const merchantUid    = restaurantData?.ownerId || null;
-    if (!merchantUid) {
-      placingOrderRef.current = false;
-      return notifySystem('ร้านยังไม่พร้อม', 'ร้านนี้ยังไม่มีเจ้าของในระบบ กรุณาติดต่อ Admin', 'error');
+      return notifySystem('ผิดพลาด', `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${userWallet} ต้องการ ฿${grandTotal})`, 'error');
     }
 
-    const adminGP        = Math.max(0, totalRawGP - effectivePromo);
-    const merchantIncome = foodTotal - rawFoodGP;
-    const riderIncome    = deliveryFee - rawDeliveryGP;
+    const uid  = currentUser?.id || userProfile?.id || '';
+    const addr = userAddresses?.[0] || { address: 'ที่อยู่ลูกค้า', location: USER_LOCATION };
+    const orderId = generateId();
+
     const newOrder = {
-      id: `OD-${generateId()}`,
+      id: orderId,
       type: 'food',
-      items: cart,
-      foodTotal, deliveryFee,
-      promoDiscount: effectivePromo, grandTotal,
-      paymentMethod, distance,
-      adminGP, merchantIncome, riderIncome,
+      status: 'pending',
+      customerId: uid,
+      customerName: userProfile.name || 'ลูกค้า',
       restaurantId: cart[0].restaurantId,
       restaurantName: cart[0].restaurantName,
-      restaurantPhone: restaurantData?.phone || '',
-      merchantUid,
-      notes: notes ? notes.trim().substring(0, 200) : '',
-      status: 'pending',
-      customerName: userProfile.name,
-      customerPhone: userProfile.phone,
-      customerId: userProfile.id,
-      address: userAddresses[0]?.address,
-      location: userProfile.location || userAddresses[0]?.location || USER_LOCATION,
-      pickupLocation: restaurants.find(r => r.id === cart[0].restaurantId)?.location || USER_LOCATION,
-      timestamp: formatDateTime(),
-      riderId: null, riderUid: null, riderLocation: null,
+      restaurantLocation: restaurant?.location || USER_LOCATION,
+      pickupLocation: restaurant?.location || USER_LOCATION,
+      location: addr.location || USER_LOCATION,
+      address: addr.address,
+      items: cart.map(({ id, name, price, qty }) => ({ id, name, price, qty })),
+      foodTotal,
+      deliveryFee,
+      promoDiscount,
+      grandTotal,
+      paymentMethod,
+      notes,
+      createdAt: formatDateTime(),
     };
-    pendingLocalOrderIdsRef.current.add(newOrder.id);
-    setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
+
+    pendingLocalOrderIdsRef.current.add(orderId);
+    setOrders(prev => [newOrder, ...prev]);
+    await supabase.from('orders').insert({ id: orderId, status: 'pending', data: newOrder });
+
+    if (paymentMethod === 'wallet') {
+      creditWallet(uid, -grandTotal, `ชำระค่าอาหาร ออเดอร์ #${orderId.slice(-6)}`);
+    }
+
+    notifyAdmin('🛎️ ออเดอร์ใหม่', `${userProfile.name} สั่ง ${cart[0].restaurantName} ฿${grandTotal}`, 'info');
     setCart([]);
-    if (paymentMethod === 'wallet') {
-      processTransaction('payment', -grandTotal, `ชำระค่าอาหาร (${cart[0].restaurantName})`);
-    }
-    setPaymentMethod('wallet');
-    notifySystem('สั่งซื้อสำเร็จ', 'ออเดอร์ถูกส่งไปยังร้านค้าแล้ว', 'success');
-    setActiveTab('activity');
     setSelectedRestaurant(null);
+    setActiveTab('orders');
+    notifySystem('สั่งอาหารสำเร็จ! 🎉', `ออเดอร์ #${orderId.slice(-6)} ส่งไปยังร้านแล้ว`, 'success');
   };
 
-  const placeParcelOrder = () => {
-    if (placingOrderRef.current) return;
+  const placeParcelOrder = async () => {
     if (!parcelDetails.pickup || !parcelDetails.dropoff) {
-      return notifySystem('ข้อมูลไม่ครบ', 'กรุณาระบุจุดรับและจุดส่ง', 'error');
+      return notifySystem('ผิดพลาด', 'กรุณาระบุจุดรับและจุดส่ง', 'error');
     }
-    placingOrderRef.current = true;
-    setTimeout(() => { placingOrderRef.current = false; }, 3000);
-
-    const hasLocations = !!(parcelDetails.pickupLocation && parcelDetails.dropoffLocation);
-    const distance    = hasLocations ? parcelDistance  : 0;
-    const deliveryFee = hasLocations ? Math.max(parcelEstimate, appConfig.baseFee) : appConfig.baseFee;
-    const grandTotal  = deliveryFee;
-
-    if (hasLocations && distance > appConfig.appRadius) {
-      placingOrderRef.current = false;
-      return notifySystem('นอกพื้นที่', `ระยะทาง (${distance} กม.) เกินขอบเขตให้บริการ`, 'error');
-    }
+    const grandTotal  = parcelEstimate;
+    const uid = currentUser?.id || userProfile?.id || '';
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
-      placingOrderRef.current = false;
-      return notifySystem('ยอดเงินไม่พอ', 'กรุณาเติมเงินหรือเลือกชำระเงินสด', 'error');
+      return notifySystem('ผิดพลาด', `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${userWallet} ต้องการ ฿${grandTotal})`, 'error');
     }
-
-    const adminGP    = deliveryFee * (appConfig.gpDelivery / 100);
-    const riderIncome = deliveryFee * (1 - (appConfig.gpDelivery / 100));
-
+    const orderId = generateId();
     const newOrder = {
-      id: `EX-${generateId()}`,
+      id: orderId,
       type: 'parcel',
-      pickup: parcelDetails.pickup, dropoff: parcelDetails.dropoff,
-      location: parcelDetails.dropoffLocation || userProfile.location,
-      pickupLocation: parcelDetails.pickupLocation || userProfile.location,
-      distance, weight: parcelDetails.weight,
-      foodTotal: 0, deliveryFee, grandTotal,
-      paymentMethod, adminGP, merchantIncome: 0, riderIncome,
-      status: 'ready_to_pickup',
-      customerName: userProfile.name, customerPhone: userProfile.phone,
-      customerId: userProfile.id || currentUser?.id,
-      receiverName: parcelDetails.receiverName || '', receiverPhone: parcelDetails.receiverPhone || '',
-      timestamp: formatDateTime(),
-      riderId: null, riderUid: null, riderLocation: null,
+      status: 'pending',
+      customerId: uid,
+      customerName: userProfile.name || 'ลูกค้า',
+      pickup: parcelDetails.pickup,
+      dropoff: parcelDetails.dropoff,
+      pickupLocation: parcelDetails.pickupLocation || USER_LOCATION,
+      location: parcelDetails.dropoffLocation || USER_LOCATION,
+      weight: parcelDetails.weight,
+      receiverName: parcelDetails.receiverName,
+      receiverPhone: parcelDetails.receiverPhone,
+      deliveryFee: grandTotal,
+      grandTotal,
+      paymentMethod,
+      createdAt: formatDateTime(),
     };
-
-    pendingLocalOrderIdsRef.current.add(newOrder.id);
-    setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
+    setOrders(prev => [newOrder, ...prev]);
+    await supabase.from('orders').insert({ id: orderId, status: 'pending', data: newOrder });
 
     if (paymentMethod === 'wallet') {
-      processTransaction('payment', -grandTotal, 'ชำระค่าส่งพัสดุ');
+      creditWallet(uid, -grandTotal, `ค่าส่งพัสดุ ออเดอร์ #${orderId.slice(-6)}`);
     }
-
-    notifySystem('เรียกรถสำเร็จ', `ค่าส่ง ฿${grandTotal} — กำลังค้นหาไรเดอร์...`, 'success');
-    setParcelDetails({ pickup: '', dropoff: '', weight: '1', distance: 0, pickupLocation: null, dropoffLocation: null, receiverName: '', receiverPhone: '' });
-    setParcelMapTarget(null);
-    setParcelEstimate(0);
+    notifyAdmin('📦 พัสดุใหม่', `${userProfile.name} ส่ง ${parcelDetails.pickup} → ${parcelDetails.dropoff}`, 'info');
+    setParcelDetails({ pickup: '', dropoff: '', weight: '1', distance: 0, receiverName: '', receiverPhone: '' });
     setParcelDistance(0);
-    setPaymentMethod('wallet');
-    setActiveTab('activity');
+    setParcelEstimate(0);
+    setParcelMapTarget(null);
+    setActiveTab('orders');
+    notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
   };
 
-  const acceptOrder = (orderId, riderId, riderLocation) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order || order.status !== 'ready_to_pickup' || order.riderId) {
-      notifySystem('เสียใจด้วย', 'งานนี้ถูกรับไปแล้ว 😔', 'error');
-      return false;
-    }
-    const riderUid   = currentUser?.id || null;
-    const riderInfo  = riders.find(r => r.id === riderId);
-    const riderPhone = riderInfo?.phone || '';
-    const riderName  = riderInfo?.name  || '';
+  const _updateOrder = async (orderId, patch) => {
+    let updated;
     setOrders(prev => prev.map(o => {
       if (o.id !== orderId) return o;
-      return { ...o, status: 'rider_accepted', riderId, riderUid, riderPhone, riderName, riderLocation: riderLocation || o.pickupLocation };
+      updated = { ...o, ...patch };
+      return updated;
     }));
-    notifySystem('รับงานสำเร็จ! 🎉', 'ออกรับงานได้เลย', 'success');
-    return true;
+    if (updated) {
+      await supabase.from('orders').update({ status: updated.status, data: updated }).eq('id', orderId);
+    }
   };
 
-  const updateOrderStatus = (orderId, newStatus, actorId = null, extraData = {}) => {
-    const targetOrder = orders.find(o => o.id === orderId);
-    const prevStatus  = targetOrder?.status;
-    if (!targetOrder) return;
+  const acceptOrder = async (orderId) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    const uid    = currentUser?.id || userProfile?.id || '';
+    const rider  = riders.find(r => r.userId === uid);
+    if (!rider) return notifySystem('ผิดพลาด', 'ไม่พบข้อมูลไรเดอร์ของคุณ', 'error');
+    await _updateOrder(orderId, {
+      riderId: rider.id,
+      riderName: rider.name,
+      riderPhone: rider.phone,
+      status: 'rider_accepted',
+      riderAcceptedAt: formatDateTime(),
+    });
+    notifySystem('รับงานแล้ว!', `ออเดอร์ #${orderId.slice(-6)} — ไปรับของที่ร้านได้เลย`, 'success');
+  };
 
-    let finalOrder = { ...targetOrder, status: newStatus, ...extraData };
-    if (newStatus === 'rider_accepted' && actorId) {
-      finalOrder.riderId       = actorId;
-      finalOrder.riderLocation = targetOrder.pickupLocation || null;
-    }
-    if (newStatus === 'completed' && !finalOrder.completedAt) {
-      finalOrder = { ...finalOrder, completedAt: new Date().toISOString() };
-    }
-    if (finalOrder.riderId && !finalOrder.riderUid) {
-      finalOrder = { ...finalOrder, riderUid: currentUser?.id || null };
-    }
+  const updateOrderStatus = async (orderId, newStatus) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
 
-    setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? finalOrder : o));
+    await _updateOrder(orderId, { status: newStatus });
 
-    if (prevStatus !== newStatus) {
-      const sid = orderId.slice(-6);
-      if (newStatus === 'preparing')       notifySystem('รับออเดอร์แล้ว ✅', `กำลังเตรียม #${sid}`, 'info');
-      if (newStatus === 'ready_to_pickup') notifySystem('พร้อมส่งแล้ว ✅', `ส่งออเดอร์ #${sid} ให้ไรเดอร์แล้ว`, 'success');
-      if (newStatus === 'rider_accepted')  notifySystem('รับงานแล้ว ✅', `กำลังออกเดินทาง #${sid}`, 'success');
-      if (newStatus === 'picking_up')      notifySystem('ถึงร้านแล้ว 🛵', `กำลังรับสินค้า #${sid}`, 'info');
-      if (newStatus === 'delivering')      notifySystem('รับสินค้าแล้ว 🛵', `กำลังนำส่ง #${sid}`, 'info');
-      if (newStatus === 'delivered')       notifySystem('ส่งถึงแล้ว! 📦', `รอลูกค้ายืนยันรับสินค้า #${sid}`, 'success');
-      if (newStatus === 'completed') {
-        seenOrderIdsRef?.current?.add(`${orderId}_completed`);
-        notifySystem('ยืนยันรับแล้ว ✅', `ออเดอร์ #${sid} เสร็จสิ้น 🎉`, 'success');
+    if (newStatus === 'completed') {
+      const uid     = currentUser?.id || userProfile?.id;
+      const gpRate  = appConfig.gpPercent || 0.1;
+      const gpAmount = r2(order.grandTotal * gpRate);
+      const merchantIncomeCash = r2(order.foodTotal || 0);
+      const riderUid = riders.find(r => r.id === order.riderId)?.userId;
+      const shopOwnerUid = restaurants.find(r => r.id === order.restaurantId)?.ownerId;
+
+      if (order.paymentMethod === 'cash') {
+        if (riderUid && gpAmount > 0)              creditWallet(riderUid, -gpAmount,           `หัก GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
+        if (riderUid && merchantIncomeCash > 0)    creditWallet(riderUid, -merchantIncomeCash, `หัก ยอดร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
+        if (shopOwnerUid && merchantIncomeCash > 0) creditWallet(shopOwnerUid, merchantIncomeCash, `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
+        if (ADMIN_EMAIL && gpAmount > 0)            creditWallet(ADMIN_EMAIL, gpAmount,         `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
+      } else {
+        const merchantIncome = r2((order.foodTotal || 0) * (1 - gpRate));
+        if (shopOwnerUid && merchantIncome > 0)   creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
+        if (ADMIN_EMAIL && gpAmount > 0)          creditWallet(ADMIN_EMAIL, gpAmount,        `GP ออเดอร์ #${orderId.slice(-6)}`);
+        if (riderUid && order.deliveryFee > 0)    creditWallet(riderUid, order.deliveryFee,  `ค่าส่ง ออเดอร์ #${orderId.slice(-6)}`);
       }
-      if (newStatus === 'cancelled') {
-        seenOrderIdsRef?.current?.add(`${orderId}_cancelled`);
-        notifySystem('ยกเลิกแล้ว', `#${sid} ถูกยกเลิก`, 'error');
-      }
-    }
-
-    if (newStatus === 'completed' && targetOrder && prevStatus !== 'completed') {
-      const restaurant   = targetOrder.type === 'food' ? restaurants.find(r => r.id === targetOrder.restaurantId) : null;
-      const riderProfile = riders.find(r => r.id === targetOrder.riderId);
-      const riderUid     = targetOrder.riderUid || riderProfile?.userId || null;
-      const shopOwnerUid = restaurant?.ownerId || null;
-      const isCashOrder  = targetOrder.paymentMethod === 'cash';
-
-      if (!isCashOrder) {
-        const shortId        = targetOrder.id.slice(-6);
-        const riderIncome    = typeof targetOrder.riderIncome    === 'number' ? targetOrder.riderIncome    : 0;
-        const merchantIncome = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
-        const gpAmount       = typeof targetOrder.adminGP        === 'number' ? targetOrder.adminGP        : 0;
-        const myUidNow       = userProfile.id || currentUser?.id;
-        const restName       = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
-        const deliveryFeeGP  = targetOrder.deliveryFee > 0 ? Math.round(targetOrder.deliveryFee - riderIncome)    : 0;
-        const foodGP         = targetOrder.foodTotal   > 0 ? Math.round(targetOrder.foodTotal   - merchantIncome) : 0;
-
-        if (riderUid && riderIncome > 0) {
-          const gpNote = deliveryFeeGP > 0 ? ` (หัก GP ฿${deliveryFeeGP})` : '';
-          creditWallet(riderUid, riderIncome, `ค่าส่ง ${restName} #${shortId}${gpNote}`);
-        }
-        if (shopOwnerUid && merchantIncome > 0) {
-          const gpNote = foodGP > 0 ? ` (หัก GP ฿${foodGP})` : '';
-          creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้าน ${restName} #${shortId}${gpNote}`);
-        }
-        if (ADMIN_EMAIL && gpAmount > 0) {
-          creditWallet(ADMIN_EMAIL, gpAmount, `GP ${restName} #${shortId}`);
-        }
-      } else if (!targetOrder.cashSettled) {
-        const shortId_       = targetOrder.id.slice(-6);
-        const gpAmount       = typeof targetOrder.adminGP        === 'number' ? targetOrder.adminGP        : 0;
-        const riderIncomeCash    = typeof targetOrder.riderIncome    === 'number' ? targetOrder.riderIncome    : 0;
-        const merchantIncomeCash = typeof targetOrder.merchantIncome === 'number' ? targetOrder.merchantIncome : 0;
-        const restName       = targetOrder.restaurantName || (targetOrder.type === 'parcel' ? 'พัสดุ' : '');
-        setOrders(prevOrders => prevOrders.map(o => o.id === orderId ? { ...o, cashSettled: true } : o));
-        // ไรเดอร์รับเงินสดทั้งหมด — หักส่วนที่ต้องโอนให้คนอื่น
-        if (riderUid && gpAmount > 0)             creditWallet(riderUid, -gpAmount,             `หัก GP(สด) ${restName} #${shortId_}`);
-        if (riderUid && merchantIncomeCash > 0)   creditWallet(riderUid, -merchantIncomeCash,   `หัก ยอดร้าน(สด) ${restName} #${shortId_}`);
-        // โอนให้ผู้รับที่ถูกต้อง
-        if (shopOwnerUid && merchantIncomeCash > 0) creditWallet(shopOwnerUid, merchantIncomeCash, `รายได้ร้าน(สด) ${restName} #${shortId_}`);
-        if (ADMIN_EMAIL && gpAmount > 0)             creditWallet(ADMIN_EMAIL,  gpAmount,            `GP(สด) ${restName} #${shortId_}`);
-      }
+      notifySystem('✅ ส่งของสำเร็จ!', `ออเดอร์ #${orderId.slice(-6)} เสร็จสมบูรณ์`, 'success');
     }
   };
 
   const initiateCancelOrder = (orderId) => {
     setSelectedOrderToCancel(orderId);
-    setCancelReasonInput('');
     setShowCancelModal(true);
   };
 
-  const confirmCancelOrder = () => {
-    if (!selectedOrderToCancel) return;
+  const confirmCancelOrder = async () => {
     const orderId = selectedOrderToCancel;
-    const reason  = cancelReasonInput.trim() || 'ร้านค้ายกเลิกออเดอร์';
-    const order   = orders.find(o => o.id === orderId);
-    if (!order || ['cancelled', 'delivered', 'completed'].includes(order.status)) {
-      setShowCancelModal(false);
-      setSelectedOrderToCancel(null);
-      return;
-    }
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'cancelled', cancelReason: reason } : o));
-    const isWalletOrder = order.paymentMethod === 'wallet' && order.grandTotal > 0;
-    if (isWalletOrder) {
-      creditWallet(order.customerId, order.grandTotal, `คืนเงิน: ยกเลิกออเดอร์ #${order.id.slice(-6)} (${reason})`);
-    }
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    const cancelled = { ...order, status: 'cancelled', cancelReason: cancelReasonInput || 'ลูกค้ายกเลิก' };
+    await _updateOrder(orderId, { status: 'cancelled', cancelReason: cancelReasonInput || 'ลูกค้ายกเลิก' });
     setShowCancelModal(false);
     setSelectedOrderToCancel(null);
-    notifySystem('ยกเลิกออเดอร์แล้ว', `#${orderId.slice(-6)} — ${isWalletOrder ? `คืนเงิน ฿${order.grandTotal} ให้ลูกค้าแล้ว` : 'ไม่มีการตัดเงิน'}`, 'info');
+    setCancelReasonInput('');
+    if (order.paymentMethod === 'wallet' && order.grandTotal > 0) {
+      const uid = currentUser?.id || userProfile?.id;
+      creditWallet(uid, order.grandTotal, `คืนเงิน: ยกเลิกออเดอร์ #${orderId.slice(-6)}`);
+    }
+    notifySystem('ยกเลิกออเดอร์แล้ว', `ออเดอร์ #${orderId.slice(-6)} ถูกยกเลิก`, 'info');
   };
 
   const requestCancelOrder = (orderId, reason) => {
+    const uid = currentUser?.id || userProfile?.id || '';
     const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-    if (hasPendingCancelRequest(orderId)) {
-      return notifySystem('รออนุมัติ', 'คำขอยกเลิกของออเดอร์นี้กำลังรอ Admin อนุมัติอยู่แล้ว', 'info');
-    }
-    const uid = userProfile.id || currentUser?.id || '';
     const newReq = {
       id: generateId(), type: 'cancel_order',
+      data: {
+        orderId, reason,
+        requestedBy: 'customer',
+        customerId: uid,
+        paymentMethod: order?.paymentMethod,
+        grandTotal: order?.grandTotal || 0,
+      },
       userId: uid, user: userProfile.name || 'ลูกค้า',
       timestamp: formatDateTime(),
-      data: {
-        orderId: order.id, orderType: order.type,
-        restaurantName: order.restaurantName || (order.type === 'parcel' ? 'ส่งพัสดุ' : '-'),
-        grandTotal: order.grandTotal || 0, paymentMethod: order.paymentMethod,
-        prevStatus: order.status, reason: reason?.trim() || 'ไม่ระบุเหตุผล',
-      },
     };
     setPendingRequests(prev => [newReq, ...prev]);
-    notifySystem('ส่งคำขอแล้ว ✅', 'คำขอยกเลิกส่งถึง Admin เรียบร้อย รอการอนุมัติ', 'info');
-    notifyAdmin('❌ ขอยกเลิกออเดอร์', `${userProfile.name || 'ลูกค้า'} ขอยกเลิก #${order.id.slice(-6)} — ${reason?.trim() || 'ไม่ระบุเหตุผล'}`, 'warning');
+    supabase.from('pending_requests').insert({ id: newReq.id, data: newReq }).then(() => {});
+    notifySystem('ส่งคำขอยกเลิกแล้ว', 'Admin จะพิจารณาคำขอของคุณ', 'info');
+    notifyAdmin('⚠️ ขอยกเลิกออเดอร์', `ลูกค้า ${userProfile.name} ขอยกเลิก #${orderId.slice(-6)}: ${reason}`, 'warning');
   };
 
   const requestCancelByRole = (orderId, reason, role) => {
+    const uid = currentUser?.id || userProfile?.id || '';
     const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-    if (hasPendingCancelRequest(orderId)) {
-      return notifySystem('รออนุมัติ', 'คำขอยกเลิกกำลังรอ Admin อนุมัติอยู่แล้ว', 'info');
-    }
-    const roleName = role === 'merchant' ? 'ร้านค้า' : role === 'rider' ? 'ไรเดอร์' : 'ผู้ใช้';
+    const roleName = role === 'rider' ? 'ไรเดอร์' : 'ร้านค้า';
     const newReq = {
       id: generateId(), type: 'cancel_order',
-      userId: userProfile.id || currentUser?.id || '',
-      user: `${roleName}: ${userProfile.name || ''}`,
-      timestamp: formatDateTime(),
       data: {
-        orderId: order.id, orderType: order.type,
-        restaurantName: order.restaurantName || (order.type === 'parcel' ? 'ส่งพัสดุ' : '-'),
-        grandTotal: order.grandTotal || 0, paymentMethod: order.paymentMethod,
-        prevStatus: order.status, reason: reason?.trim() || 'ไม่ระบุเหตุผล',
-        requestedBy: role, customerId: order.customerId || '', customerName: order.customerName || 'ลูกค้า',
+        orderId, reason,
+        requestedBy: role,
+        customerId: order?.customerId,
+        paymentMethod: order?.paymentMethod,
+        grandTotal: order?.grandTotal || 0,
       },
+      userId: uid, user: userProfile.name || roleName,
+      timestamp: formatDateTime(),
     };
     setPendingRequests(prev => [newReq, ...prev]);
-    notifySystem('ส่งคำขอแล้ว ✅', 'ส่งคำขอยกเลิกถึง Admin เรียบร้อย รอการอนุมัติ', 'info');
-    notifyAdmin(`❌ ${roleName}ขอยกเลิก`, `${userProfile.name || roleName} ขอยกเลิก #${order.id.slice(-6)} — ${reason?.trim() || 'ไม่ระบุเหตุผล'}`, 'warning');
+    supabase.from('pending_requests').insert({ id: newReq.id, data: newReq }).then(() => {});
+    notifySystem('ส่งคำขอยกเลิกแล้ว', 'Admin จะพิจารณาคำขอของคุณ', 'info');
+    notifyAdmin(`⚠️ ${roleName}ขอยกเลิก`, `${userProfile.name} ขอยกเลิก #${orderId.slice(-6)}: ${reason}`, 'warning');
   };
 
-  const forceRefresh = () => {
-    notifySystem('รีเฟรช', 'โหลดข้อมูลจาก localStorage แล้ว', 'info');
+  const forceRefresh = async () => {
+    const { data } = await supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200);
+    if (data?.length) setOrders(data.map(o => o.data));
+    notifySystem('รีเฟรชแล้ว', 'โหลดออเดอร์ล่าสุดแล้ว', 'success');
   };
 
   return {
