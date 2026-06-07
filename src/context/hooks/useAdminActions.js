@@ -131,16 +131,27 @@ export function useAdminActions(deps) {
       let updated = r;
       if (action === 'toggle_open') updated = { ...r, status: r.status === 'open' ? 'closed' : 'open' };
       if (action === 'ban')         updated = { ...r, status: r.status === 'banned' ? 'open' : 'banned' };
+      supabase.from('restaurants').update({ data: updated }).eq('id', id).then(() => {});
       return updated;
     }));
   };
 
   const toggleRiderBan = (id) => {
-    setRiders(prev => prev.map(r => r.id === id ? { ...r, status: r.status === 'banned' ? 'active' : 'banned' } : r));
+    setRiders(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, status: r.status === 'banned' ? 'active' : 'banned' };
+      supabase.from('riders').update({ data: updated }).eq('id', id).then(() => {});
+      return updated;
+    }));
   };
 
   const saveShopEdit = () => {
-    setRestaurants(prev => prev.map(r => r.id === editingShop ? { ...r, ...shopEditForm } : r));
+    setRestaurants(prev => prev.map(r => {
+      if (r.id !== editingShop) return r;
+      const updated = { ...r, ...shopEditForm };
+      supabase.from('restaurants').update({ data: updated }).eq('id', editingShop).then(() => {});
+      return updated;
+    }));
     setEditingShop(null);
     notifySystem('สำเร็จ', 'บันทึกข้อมูลร้านค้าเรียบร้อย', 'success');
   };

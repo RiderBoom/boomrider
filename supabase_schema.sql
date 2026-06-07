@@ -1,6 +1,14 @@
 -- BoomRider Database Schema
 -- Run this in Supabase SQL Editor: https://supabase.com/dashboard/project/mlkbrnvvdcicadvvzmev/sql
 
+-- ── Drop existing policies (safe to re-run) ───────────────────────────────────
+do $$ declare pol record;
+begin
+  for pol in select policyname, tablename from pg_policies where schemaname = 'public' loop
+    execute format('drop policy if exists %I on public.%I', pol.policyname, pol.tablename);
+  end loop;
+end $$;
+
 -- ── Profiles ──────────────────────────────────────────────────────────────────
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -28,7 +36,7 @@ alter table public.user_roles enable row level security;
 create policy "user_roles_select" on public.user_roles for select using (true);
 create policy "user_roles_all" on public.user_roles for all using (auth.role() = 'authenticated');
 
--- ── Wallets (user_id TEXT to support admin email keying) ───────────────────────
+-- ── Wallets (user_id TEXT to support admin email keying) ─────────────────────
 create table if not exists public.wallets (
   user_id text primary key,
   balance numeric default 0,
@@ -75,7 +83,7 @@ create table if not exists public.riders (
 alter table public.riders enable row level security;
 create policy "riders_all" on public.riders for all using (auth.role() = 'authenticated');
 
--- ── Pending Requests ─────────────────────────────────────────────────────────
+-- ── Pending Requests ──────────────────────────────────────────────────────────
 create table if not exists public.pending_requests (
   id text primary key,
   data jsonb not null,

@@ -285,6 +285,7 @@ export function AppProvider({ children }) {
         console.error('loadData error', e);
       } finally {
         setIsDataLoading(false);
+        dataLoadedRef.current = true;
       }
     };
     loadData();
@@ -426,13 +427,14 @@ export function AppProvider({ children }) {
 
   // ── Auto-save to Supabase on state changes ──────────────────────────────
   const debounceRef = useRef({});
+  const dataLoadedRef = useRef(false);
   const debouncedUpsert = useCallback((key, fn, delay = 1500) => {
     clearTimeout(debounceRef.current[key]);
     debounceRef.current[key] = setTimeout(fn, delay);
   }, []);
 
   useEffect(() => {
-    if (!restaurants.length) return;
+    if (!dataLoadedRef.current || !restaurants.length) return;
     debouncedUpsert('restaurants', () => {
       const rows = restaurants.map(r => ({ id: r.id, owner_id: r.ownerId || null, data: r }));
       supabase.from('restaurants').upsert(rows).then(() => {});
@@ -440,6 +442,7 @@ export function AppProvider({ children }) {
   }, [restaurants]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!dataLoadedRef.current) return;
     debouncedUpsert('menu_items', () => {
       const rows = Object.entries(menuItems).map(([rid, items]) => ({ restaurant_id: rid, items }));
       if (rows.length) supabase.from('menu_items').upsert(rows).then(() => {});
@@ -447,7 +450,7 @@ export function AppProvider({ children }) {
   }, [menuItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!riders.length) return;
+    if (!dataLoadedRef.current || !riders.length) return;
     debouncedUpsert('riders', () => {
       const rows = riders.map(r => ({ id: r.id, user_id: r.userId || null, data: r }));
       supabase.from('riders').upsert(rows).then(() => {});
@@ -455,6 +458,7 @@ export function AppProvider({ children }) {
   }, [riders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!dataLoadedRef.current) return;
     debouncedUpsert('app_config', () => {
       supabase.from('app_config').upsert({ id: 1, data: appConfig }).then(() => {});
     }, 2000);
@@ -792,13 +796,14 @@ export function AppProvider({ children }) {
 
   // ── Auth Functions ───────────────────────────────────────────────────────
   const handleLogin = async () => {
-    if (!loginForm.phone && !loginForm.email) return notifySystem('ผิดพลาด', 'กรุณากรอกเบอร์โทรหรืออีเมล', 'error');
+    const input = (loginForm.email || loginForm.phone || '').trim();
+    if (!input) return notifySystem('ผิดพลาด', 'กรุณากรอกเบอร์โทรหรืออีเมล', 'error');
     if (!loginForm.password) return notifySystem('ผิดพลาด', 'กรุณากรอกรหัสผ่าน', 'error');
     setAuthLoading(true);
     try {
-      let email = loginForm.email;
-      if (!email && loginForm.phone) {
-        const { data: profile } = await supabase.from('profiles').select('email').eq('phone', loginForm.phone).single();
+      let email = input;
+      if (!input.includes('@')) {
+        const { data: profile } = await supabase.from('profiles').select('email').eq('phone', input).single();
         if (!profile?.email) return notifySystem('ผิดพลาด', 'ไม่พบบัญชีสำหรับเบอร์นี้', 'error');
         email = profile.email;
       }

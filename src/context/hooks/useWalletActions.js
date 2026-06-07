@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { generateId, formatDateTime, r2 } from '../../utils';
 
 export function useWalletActions(deps) {
@@ -22,6 +23,9 @@ export function useWalletActions(deps) {
     supabase,
   } = deps;
 
+  // Serial queue per userId — prevents concurrent reads from corrupting balance
+  const walletQueues = useRef({});
+
   const _makeEntry = (amount, desc) => ({
     id: generateId(),
     type: amount > 0 ? 'deposit' : 'withdraw',
@@ -31,10 +35,10 @@ export function useWalletActions(deps) {
     createdAtMs: Date.now(),
   });
 
-  const creditWallet = async (userId, amount, desc) => {
+  const creditWallet = (userId, amount, desc) => {
     const entry = _makeEntry(amount, desc);
 
-    // Optimistic local update
+    // Optimistic local update (immediate)
     setGlobalWallets(prev => {
       const cur = prev[userId] || { balance: 0, history: [] };
       return { ...prev, [userId]: { balance: r2(cur.balance + amount), history: [entry, ...cur.history] } };
@@ -44,15 +48,19 @@ export function useWalletActions(deps) {
       setWalletAllEntries(prev => [entry, ...prev]);
     }
 
-    // Persist to Supabase
-    try {
-      const { data: current } = await supabase.from('wallets').select('balance, history').eq('user_id', userId).single();
-      const newBalance = r2((current?.balance || 0) + amount);
-      const newHistory = [entry, ...(current?.history || [])].slice(0, 500);
-      await supabase.from('wallets').upsert({ user_id: userId, balance: newBalance, history: newHistory });
-    } catch (e) {
-      console.error('creditWallet sync error', e);
-    }
+    // Serial queue per userId — prevents concurrent writes from corrupting balance
+    const queue = walletQueues.current;
+    const prev = queue[userId] || Promise.resolve();
+    queue[userId] = prev.then(async () => {
+      try {
+        const { data: current } = await supabase.from('wallets').select('balance, history').eq('user_id', userId).single();
+        const newBalance = r2((current?.balance || 0) + amount);
+        const newHistory = [entry, ...(current?.history || [])].slice(0, 500);
+        await supabase.from('wallets').upsert({ user_id: userId, balance: newBalance, history: newHistory });
+      } catch (e) {
+        console.error('creditWallet sync error', e);
+      }
+    });
   };
 
   const processTransaction = (type, amount, description) => {

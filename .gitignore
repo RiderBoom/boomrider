@@ -11,3 +11,4 @@ functions/.env
 **/google-services.json
 *.log
 seed.html
+.vercel
