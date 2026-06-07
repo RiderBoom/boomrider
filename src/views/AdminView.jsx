@@ -106,6 +106,7 @@ export default function AdminView() {
   });
 
   const [searchLedger, setSearchLedger] = useState('');
+  const [approvingId, setApprovingId] = useState(null);
 
   // Transaction log state
   const [txList, setTxList] = useState([]);
@@ -821,8 +822,18 @@ export default function AdminView() {
                       })()}
                     </div>
                     <div className="flex flex-col gap-2 shrink-0">
-                      <button onClick={() => handleApproveRequest(req)} className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 text-sm"><Check size={16} /> อนุมัติ</button>
-                      <button onClick={() => initiateRejectRequest(req.id)} className="flex items-center gap-1 bg-gray-200 text-gray-600 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 text-sm"><XCircle size={16} /> ปฏิเสธ</button>
+                      <button
+                        onClick={async () => {
+                          if (approvingId) return;
+                          setApprovingId(req.id);
+                          try { await handleApproveRequest(req); } finally { setApprovingId(null); }
+                        }}
+                        disabled={!!approvingId}
+                        className={`flex items-center gap-1 px-4 py-2 rounded-lg font-bold text-sm ${approvingId === req.id ? 'bg-green-300 text-white cursor-not-allowed' : approvingId ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                      >
+                        {approvingId === req.id ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> กำลังอนุมัติ...</> : <><Check size={16} /> อนุมัติ</>}
+                      </button>
+                      <button onClick={() => initiateRejectRequest(req.id)} disabled={!!approvingId} className={`flex items-center gap-1 px-4 py-2 rounded-lg font-bold text-sm ${approvingId ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}><XCircle size={16} /> ปฏิเสธ</button>
                     </div>
                   </div>
                 </div>

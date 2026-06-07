@@ -125,6 +125,7 @@ export function AppProvider({ children }) {
   const lastChatCountsRef       = React.useRef({});
   const prevOrdersRef           = React.useRef([]);
   const gpsSessionRef           = React.useRef('');
+  const shownAdminNotifIds      = React.useRef(new Set());
 
   // --- Global Wallet Store (in-memory cache for all wallets) ---
   const [globalWallets, setGlobalWallets] = useState({});
@@ -145,9 +146,12 @@ export function AppProvider({ children }) {
 
   // --- Admin notification → Supabase insert ---
   const notifyAdmin = useCallback((title, message, type = 'warning') => {
-    const notif = { id: Date.now(), title, message, type, at: formatDateTime() };
-    supabase.from('admin_notifs').insert(notif).then(() => {});
-    if (isAdmin) notifySystem(title, message, type);
+    const id = Date.now();
+    supabase.from('admin_notifs').insert({ id, title, message, type, at: formatDateTime() }).then(() => {});
+    if (isAdmin) {
+      shownAdminNotifIds.current.add(id);
+      notifySystem(title, message, type);
+    }
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Role grant ---
@@ -369,15 +373,24 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!isLoggedIn) return;
     const channel = supabase.channel('orders-rt')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
         const o = payload.new?.data;
-        if (!o) return;
-        setOrders(prev => prev.some(x => x.id === o.id) ? prev : [o, ...prev]);
+        if (o) {
+          setOrders(prev => prev.some(x => x.id === o.id) ? prev : [o, ...prev]);
+        } else if (payload.new?.id) {
+          const { data: row } = await supabase.from('orders').select('id, data').eq('id', payload.new.id).single();
+          if (row?.data) setOrders(prev => prev.some(x => x.id === row.data.id) ? prev : [row.data, ...prev]);
+        }
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async (payload) => {
         const o = payload.new?.data;
-        if (!o) return;
-        setOrders(prev => prev.map(x => x.id === o.id ? o : x));
+        if (o) {
+          setOrders(prev => prev.map(x => x.id === o.id ? o : x));
+        } else if (payload.new?.id) {
+          // payload.new.data null when Supabase RLS filters row data — fetch directly
+          const { data: row } = await supabase.from('orders').select('id, data').eq('id', payload.new.id).single();
+          if (row?.data) setOrders(prev => prev.map(x => x.id === row.data.id ? row.data : x));
+        }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, (payload) => {
         setOrders(prev => prev.filter(x => x.id !== payload.old?.id));
@@ -390,10 +403,22 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!isLoggedIn) return;
     const channel = supabase.channel('pending-rt')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pending_requests' }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pending_requests' }, async (payload) => {
         const r = payload.new?.data;
-        if (!r) return;
-        setPendingRequests(prev => prev.some(x => x.id === r.id) ? prev : [r, ...prev]);
+        if (r) {
+          setPendingRequests(prev => prev.some(x => x.id === r.id) ? prev : [r, ...prev]);
+        } else {
+          // payload.new.data may be null if Supabase RLS filters row-level data in Realtime
+          // Fall back to a direct fetch for the specific row (or full list if id missing)
+          const rowId = payload.new?.id;
+          if (rowId) {
+            const { data: row } = await supabase.from('pending_requests').select('id, data').eq('id', rowId).single();
+            if (row?.data) setPendingRequests(prev => prev.some(x => x.id === row.data.id) ? prev : [row.data, ...prev]);
+          } else {
+            const { data: rows } = await supabase.from('pending_requests').select('id, data');
+            if (rows) setPendingRequests(rows.map(row => row.data).filter(Boolean));
+          }
+        }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'pending_requests' }, (payload) => {
         setPendingRequests(prev => prev.filter(x => x.id !== payload.old?.id));
@@ -408,7 +433,13 @@ export function AppProvider({ children }) {
     const channel = supabase.channel('admin-notifs-rt')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_notifs' }, (payload) => {
         const n = payload.new;
-        if (n) notifySystem(n.title, n.message, n.type || 'info');
+        if (!n) return;
+        // Skip if this device already showed it via notifyAdmin direct call
+        if (shownAdminNotifIds.current.has(n.id)) {
+          shownAdminNotifIds.current.delete(n.id);
+          return;
+        }
+        notifySystem(n.title, n.message, n.type || 'info');
       })
       .subscribe();
     return () => supabase.removeChannel(channel);

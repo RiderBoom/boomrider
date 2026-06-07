@@ -34,28 +34,35 @@ export function useAdminActions(deps) {
       notifySystem('Admin ✅', `อนุมัติถอนเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
 
     } else if (req.type === 'merchant_reg') {
-      const newId = `rest_${Date.now()}`;
-      const shopImageUrl = req.data.shopImage?.startsWith('http') ? req.data.shopImage : null;
-      const newRest = {
-        id: newId,
-        ownerId: req.userId,
-        name: req.data.shopName,
-        phone: req.data.phone,
-        rating: 5.0,
-        time: '20-30 min',
-        image: shopImageUrl || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=500&q=60',
-        category: req.data.category,
-        status: 'open',
-        location: req.data.location || USER_LOCATION,
-      };
-      setRestaurants(prev => [newRest, ...prev]);
-      grantRole(req.userId, 'merchant');
-      setMenuItems(prev => ({ ...prev, [newId]: [] }));
-      await Promise.all([
-        supabase.from('restaurants').insert({ id: newId, owner_id: req.userId, data: newRest }),
-        supabase.from('menu_items').insert({ restaurant_id: newId, items: [] }),
-      ]);
-      notifySystem('Admin', 'อนุมัติร้านค้าเรียบร้อย', 'success');
+      // Guard: don't create a duplicate restaurant if one already exists for this user
+      const existingShop = restaurants.find(r => r.ownerId === req.userId);
+      if (existingShop) {
+        grantRole(req.userId, 'merchant');
+        notifySystem('Admin', 'อนุมัติร้านค้าเรียบร้อย (พบร้านในระบบแล้ว)', 'success');
+      } else {
+        const newId = `rest_${Date.now()}`;
+        const shopImageUrl = req.data.shopImage?.startsWith('http') ? req.data.shopImage : null;
+        const newRest = {
+          id: newId,
+          ownerId: req.userId,
+          name: req.data.shopName,
+          phone: req.data.phone,
+          rating: 5.0,
+          time: '20-30 min',
+          image: shopImageUrl || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=500&q=60',
+          category: req.data.category,
+          status: 'open',
+          location: req.data.location || USER_LOCATION,
+        };
+        setRestaurants(prev => [newRest, ...prev]);
+        grantRole(req.userId, 'merchant');
+        setMenuItems(prev => ({ ...prev, [newId]: [] }));
+        await Promise.all([
+          supabase.from('restaurants').insert({ id: newId, owner_id: req.userId, data: newRest }),
+          supabase.from('menu_items').insert({ restaurant_id: newId, items: [] }),
+        ]);
+        notifySystem('Admin', 'อนุมัติร้านค้าเรียบร้อย', 'success');
+      }
 
     } else if (req.type === 'rider_reg') {
       const newId = `rider_${Date.now()}`;
