@@ -3,7 +3,7 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, ADMIN_EMAIL,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, playNotificationSound, formatDateTime, r2, safeLocalSet } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, playNotificationSound, playOrderNotificationSound, formatDateTime, r2, safeLocalSet } from '../utils';
 import { supabase } from '../lib/supabase';
 
 import { useWalletActions }  from './hooks/useWalletActions';
@@ -530,14 +530,18 @@ export function AppProvider({ children }) {
     if (!uid || prev.length === 0) { prevOrdersRef.current = orders; return; }
     const prevMap = new Map(prev.map(o => [o.id, o]));
     const myShop = restaurants.find(r => r.ownerId === uid);
+
+    // ── Merchant: new pending orders ──────────────────────────────────────
     if (myShop) {
       const newMerchantOrders = orders.filter(o => o.status === 'pending' && o.restaurantId === myShop.id && !prevMap.has(o.id));
       if (newMerchantOrders.length > 0) {
         setMerchantTab('orders');
-        playNotificationSound('order');
-        notifySystem('🛎️ ออเดอร์ใหม่เข้าร้าน!', `มี ${newMerchantOrders.length} ออเดอร์ใหม่รอยืนยัน`, 'warning');
+        playOrderNotificationSound();
+        notifySystem('🛎️ ออเดอร์ใหม่เข้าร้าน!', `Order เข้า ${newMerchantOrders.length} ครั้ง`, 'warning');
       }
     }
+
+    // ── Rider: new available jobs ─────────────────────────────────────────
     if (userRoles.includes('rider')) {
       const newJobs = orders.filter(o => o.status === 'ready_to_pickup' && !o.riderId && !prevMap.has(o.id));
       if (newJobs.length > 0) {
@@ -550,23 +554,48 @@ export function AppProvider({ children }) {
         notifySystem('🛵 มีงานใหม่!', newJobs.length === 1 ? dest : `${newJobs.length} งานใหม่ — ${dest}`, 'warning');
       }
     }
-    const justCompleted = orders.filter(o => {
+
+    // ── Status-change notifications for all parties ───────────────────────
+    orders.forEach(o => {
       const p = prevMap.get(o.id);
-      return o.status === 'completed' && o.customerId === uid && p && p.status !== 'completed';
+      if (!p || p.status === o.status) return;
+
+      // Customer notifications — every step of their order
+      if (o.customerId === uid) {
+        switch (o.status) {
+          case 'preparing':
+            notifySystem('👨‍🍳 ร้านกำลังเตรียมอาหาร', `ออเดอร์ #${o.id.slice(-6)} กำลังเตรียม`, 'info'); break;
+          case 'ready_to_pickup':
+            notifySystem('✅ อาหารพร้อมแล้ว!', `กำลังหาไรเดอร์ ออเดอร์ #${o.id.slice(-6)}`, 'info'); break;
+          case 'rider_accepted':
+            notifySystem('🛵 ไรเดอร์รับงานแล้ว!', `${o.riderName || 'ไรเดอร์'} กำลังมารับอาหาร`, 'info'); break;
+          case 'picking_up':
+            notifySystem('📦 ไรเดอร์รับอาหารแล้ว!', `ออเดอร์ #${o.id.slice(-6)} กำลังออกเดินทาง`, 'info'); break;
+          case 'delivering':
+            notifySystem('🚀 กำลังส่งอาหาร!', `ออเดอร์ #${o.id.slice(-6)} กำลังมาถึงคุณ`, 'info'); break;
+          case 'completed':
+            playNotificationSound('success');
+            notifySystem(`✅ จัดส่ง${o.type === 'parcel' ? 'พัสดุ' : 'อาหาร'}สำเร็จ!`, `ออเดอร์ #${o.id.slice(-8)} ถึงมือคุณแล้ว 🎉`, 'success'); break;
+          case 'cancelled':
+            notifySystem('❌ ออเดอร์ถูกยกเลิก', `#${o.id.slice(-8)}${o.cancelReason ? `: ${o.cancelReason}` : ''}`, 'error'); break;
+          default: break;
+        }
+      }
+
+      // Merchant notifications — track their shop's order progress
+      if (myShop && o.restaurantId === myShop.id) {
+        switch (o.status) {
+          case 'rider_accepted':
+            notifySystem('🛵 ไรเดอร์รับงานแล้ว', `${o.riderName || 'ไรเดอร์'} มารับออเดอร์ #${o.id.slice(-6)}`, 'info'); break;
+          case 'picking_up':
+            notifySystem('📦 ไรเดอร์รับออเดอร์แล้ว', `ออเดอร์ #${o.id.slice(-6)} กำลังส่งถึงลูกค้า`, 'success'); break;
+          case 'completed':
+            notifySystem('💰 ออเดอร์สำเร็จ!', `ออเดอร์ #${o.id.slice(-6)} จัดส่งสำเร็จ — รายได้เข้ากระเป๋าแล้ว`, 'success'); break;
+          default: break;
+        }
+      }
     });
-    if (justCompleted.length > 0) {
-      playNotificationSound('order');
-      const label = justCompleted[0].type === 'parcel' ? 'พัสดุ' : 'อาหาร';
-      notifySystem(`✅ จัดส่ง${label}สำเร็จ!`, `ออเดอร์ #${justCompleted[0].id.slice(-8)} ถึงมือคุณแล้ว 🎉`, 'success');
-    }
-    const justCancelled = orders.filter(o => {
-      const p = prevMap.get(o.id);
-      return o.status === 'cancelled' && o.customerId === uid && p && p.status !== 'cancelled';
-    });
-    if (justCancelled.length > 0) {
-      const reason = justCancelled[0].cancelReason ? `: ${justCancelled[0].cancelReason}` : '';
-      notifySystem('❌ ออเดอร์ถูกยกเลิก', `#${justCancelled[0].id.slice(-8)}${reason}`, 'error');
-    }
+
     prevOrdersRef.current = orders;
   }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -101,6 +101,32 @@ export const safeLocalSet = (key, value) => {
   }
 };
 
+const _NOTIF_SOUND_KEY = 'boomrider_merchant_notif_sound';
+
+export const getMerchantNotifSound = () => {
+  try { return localStorage.getItem(_NOTIF_SOUND_KEY); } catch { return null; }
+};
+
+export const setMerchantNotifSound = (base64OrNull) => {
+  try {
+    if (base64OrNull) localStorage.setItem(_NOTIF_SOUND_KEY, base64OrNull);
+    else localStorage.removeItem(_NOTIF_SOUND_KEY);
+  } catch {}
+};
+
+export const playOrderNotificationSound = () => {
+  try {
+    const custom = getMerchantNotifSound();
+    if (custom) {
+      const audio = new Audio(custom);
+      audio.volume = 1.0;
+      audio.play().catch(() => playNotificationSound('order'));
+      return;
+    }
+  } catch {}
+  playNotificationSound('order');
+};
+
 export const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);

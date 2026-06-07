@@ -71,6 +71,7 @@ export function useOrderActions(deps) {
       status: 'pending',
       customerId: uid,
       customerName: userProfile.name || 'ลูกค้า',
+      customerPhone: userProfile.phone || null,
       restaurantId: cart[0].restaurantId,
       restaurantName: cart[0].restaurantName,
       restaurantLocation: restaurant?.location || USER_LOCATION,

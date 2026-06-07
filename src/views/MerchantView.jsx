@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import {
   ChefHat, LogOut, Camera, ToggleRight, ToggleLeft,
-  Plus, Edit, Trash2, Save,
-  Image as ImageIcon, Check, MapPin, Loader, Bell,
+  Plus, Edit, Trash2,
+  Image as ImageIcon, MapPin, Loader, Bell,
   Clock, CheckCircle, History, X, XCircle, Wallet,
   TrendingUp, BarChart2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS } from '../constants';
-import { formatDateTimeFromMs } from '../utils';
+import { formatDateTimeFromMs, getMerchantNotifSound, setMerchantNotifSound, playOrderNotificationSound } from '../utils';
 import InteractiveMap from '../components/InteractiveMap';
 
 export default function MerchantView() {
@@ -43,6 +43,27 @@ export default function MerchantView() {
 
   const [pendingShopLocation, setPendingShopLocation] = useState(null);
   const [savingShopLocation, setSavingShopLocation] = useState(false);
+  const [showSoundPanel, setShowSoundPanel] = useState(false);
+  const [customSoundName, setCustomSoundName] = useState(() => {
+    const s = getMerchantNotifSound();
+    return s ? 'เสียงที่เลือกไว้' : null;
+  });
+
+  const handleSoundFilePick = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      notifySystem('ไฟล์ใหญ่เกิน', 'กรุณาเลือกไฟล์เสียงขนาดไม่เกิน 2MB', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setMerchantNotifSound(ev.target.result);
+      setCustomSoundName(file.name);
+      notifySystem('บันทึกเสียงแล้ว ✅', file.name, 'success');
+    };
+    reader.readAsDataURL(file);
+  };
 
   const myShop = restaurants.find(r => r.ownerId === userProfile.id || r.ownerId === currentUser?.id);
 
@@ -95,8 +116,51 @@ export default function MerchantView() {
       <header className="bg-white shadow p-4 mb-4 sticky top-0 z-30">
         <div className="flex justify-between items-center mb-3">
           <h1 className="text-xl font-bold flex items-center"><ChefHat className="mr-2 text-green-600" /> จัดการร้านค้า</h1>
-          <button onClick={() => setActiveRole('customer')} className="flex items-center text-sm bg-gray-200 px-3 py-1 rounded-full hover:bg-gray-300"><LogOut size={14} className="mr-1" /> ออก</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSoundPanel(v => !v)}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full transition-colors ${showSoundPanel ? 'bg-orange-100 text-orange-600 border border-orange-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+              title="ตั้งค่าเสียงแจ้งเตือน"
+            >
+              <Bell size={13} className={customSoundName ? 'text-orange-500' : ''} />
+              {customSoundName ? <span className="text-orange-600">•</span> : null}
+            </button>
+            <button onClick={() => setActiveRole('customer')} className="flex items-center text-sm bg-gray-200 px-3 py-1 rounded-full hover:bg-gray-300"><LogOut size={14} className="mr-1" /> ออก</button>
+          </div>
         </div>
+
+        {/* Sound settings panel */}
+        {showSoundPanel && (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3">
+            <div className="flex justify-between items-center mb-2">
+              <h4 className="font-bold text-sm text-gray-700 flex items-center gap-1.5">
+                <Bell size={14} className="text-orange-500" /> เสียงแจ้งเตือนออเดอร์ใหม่
+              </h4>
+              <button onClick={() => setShowSoundPanel(false)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+            </div>
+            <div className="flex items-center gap-2 mb-2 px-2.5 py-1.5 rounded-lg text-xs bg-white border border-gray-200">
+              <Bell size={12} className={customSoundName ? 'text-orange-500' : 'text-gray-400'} />
+              <span className="flex-1 truncate text-gray-700">{customSoundName || 'เสียงเริ่มต้น (Beep)'}</span>
+              {customSoundName && (
+                <button
+                  onClick={() => { setMerchantNotifSound(null); setCustomSoundName(null); notifySystem('ลบเสียงแล้ว', 'ใช้เสียงเริ่มต้น', 'info'); }}
+                  className="text-red-400 hover:text-red-600 font-bold"
+                >ลบ</button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <label className="flex-1 flex items-center justify-center gap-1 py-2 bg-orange-500 text-white rounded-lg cursor-pointer hover:bg-orange-600 active:scale-95 transition-all text-xs font-bold">
+                <Bell size={13} /> เลือกเสียงจากเครื่อง
+                <input type="file" accept="audio/*" className="hidden" onChange={handleSoundFilePick} />
+              </label>
+              <button
+                onClick={() => { playOrderNotificationSound(); notifySystem('🔊 ทดสอบเสียง', 'กำลังเล่น...', 'info'); }}
+                className="px-3 py-2 bg-white border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 active:scale-95 transition-all text-xs font-bold"
+              >🔊 ทดสอบ</button>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1.5">รองรับไฟล์ .mp3 .wav .ogg ขนาดไม่เกิน 2MB • บันทึกไว้บนเครื่องนี้เท่านั้น</p>
+          </div>
+        )}
 
         {/* รูปหน้าร้าน */}
         <div className="relative h-36 w-full rounded-xl overflow-hidden mb-3 group">
