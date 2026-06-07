@@ -15,6 +15,14 @@ import { usePromoActions }   from './hooks/usePromoActions';
 
 const AppContext = createContext(null);
 
+// Forward-only guard: never let polling/realtime regress an order's status
+const ORDER_STATUS_RANK = { pending:0, preparing:1, ready_to_pickup:2, rider_accepted:3, picking_up:4, delivering:5, delivered:6, completed:7, cancelled:99 };
+const canApplyOrderUpdate = (existing, incoming) => {
+  if (!existing) return true;
+  if (incoming.status === 'cancelled') return existing.status !== 'completed';
+  return (ORDER_STATUS_RANK[incoming.status] ?? -1) >= (ORDER_STATUS_RANK[existing.status] ?? -1);
+};
+
 export function useApp() {
   return useContext(AppContext);
 }
@@ -208,7 +216,7 @@ export function AppProvider({ children }) {
   // ── Admin hook ──────────────────────────────────────────────────────────────
   const {
     handleApproveRequest, initiateRejectRequest, confirmRejectRequest,
-    adminBanUser, toggleRestaurantStatus, toggleRiderBan, saveShopEdit,
+    adminBanUser, toggleRestaurantStatus, toggleRiderBan, saveShopEdit, deleteRestaurant,
   } = useAdminActions({
     orders, setOrders,
     riders, setRiders,
@@ -384,12 +392,14 @@ export function AppProvider({ children }) {
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async (payload) => {
         const o = payload.new?.data;
+        const applyUpdate = (incoming) =>
+          setOrders(prev => prev.map(x => x.id === incoming.id && canApplyOrderUpdate(x, incoming) ? incoming : x));
         if (o) {
-          setOrders(prev => prev.map(x => x.id === o.id ? o : x));
+          applyUpdate(o);
         } else if (payload.new?.id) {
           // payload.new.data null when Supabase RLS filters row data — fetch directly
           const { data: row } = await supabase.from('orders').select('id, data').eq('id', payload.new.id).single();
-          if (row?.data) setOrders(prev => prev.map(x => x.id === row.data.id ? row.data : x));
+          if (row?.data) applyUpdate(row.data);
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, (payload) => {
@@ -604,6 +614,9 @@ export function AppProvider({ children }) {
             notifySystem('📦 ไรเดอร์รับอาหารแล้ว!', `ออเดอร์ #${o.id.slice(-6)} กำลังออกเดินทาง`, 'info'); break;
           case 'delivering':
             notifySystem('🚀 กำลังส่งอาหาร!', `ออเดอร์ #${o.id.slice(-6)} กำลังมาถึงคุณ`, 'info'); break;
+          case 'delivered':
+            playNotificationSound('order');
+            notifySystem('📬 ถึงแล้ว! กรุณายืนยันรับสินค้า', `ออเดอร์ #${o.id.slice(-6)} — กด "ยืนยันรับอาหาร" เพื่อเสร็จสิ้น`, 'warning'); break;
           case 'completed':
             playNotificationSound('success');
             notifySystem(`✅ จัดส่ง${o.type === 'parcel' ? 'พัสดุ' : 'อาหาร'}สำเร็จ!`, `ออเดอร์ #${o.id.slice(-8)} ถึงมือคุณแล้ว 🎉`, 'success'); break;
@@ -663,6 +676,35 @@ export function AppProvider({ children }) {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // ── Polling fallback for active orders (every 10s) ─────────────────────
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const poll = setInterval(async () => {
+      const activeStatuses = ['pending','preparing','ready_to_pickup','rider_accepted','picking_up','delivering','delivered'];
+      const { data } = await supabase
+        .from('orders')
+        .select('id, status, data')
+        .in('status', activeStatuses)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (!data?.length) return;
+      setOrders(prev => {
+        const incoming = data.map(r => r.data).filter(Boolean);
+        const map = new Map(prev.map(o => [o.id, o]));
+        let changed = false;
+        incoming.forEach(o => {
+          const existing = map.get(o.id);
+          if (canApplyOrderUpdate(existing, o) && (!existing || existing.status !== o.status)) {
+            map.set(o.id, o);
+            changed = true;
+          }
+        });
+        return changed ? Array.from(map.values()) : prev;
+      });
+    }, 10000);
+    return () => clearInterval(poll);
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Update Parcel Estimate ───────────────────────────────────────────────
   useEffect(() => {
@@ -1111,6 +1153,7 @@ export function AppProvider({ children }) {
     toggleRestaurantStatus,
     toggleRiderBan,
     saveShopEdit,
+    deleteRestaurant,
 
     // Misc
     toasts, removeToast,

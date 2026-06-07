@@ -178,7 +178,10 @@ export function useOrderActions(deps) {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
 
-    await _updateOrder(orderId, { status: newStatus });
+    const patch = newStatus === 'completed'
+      ? { status: newStatus, completedAt: new Date().toISOString() }
+      : { status: newStatus };
+    await _updateOrder(orderId, patch);
 
     if (newStatus === 'completed') {
       const uid     = currentUser?.id || userProfile?.id;

@@ -163,8 +163,17 @@ export function useAdminActions(deps) {
     notifySystem('สำเร็จ', 'บันทึกข้อมูลร้านค้าเรียบร้อย', 'success');
   };
 
+  const deleteRestaurant = async (id) => {
+    setRestaurants(prev => prev.filter(r => r.id !== id));
+    await Promise.all([
+      supabase.from('restaurants').delete().eq('id', id),
+      supabase.from('menu_items').delete().eq('restaurant_id', id),
+    ]);
+    notifySystem('ลบร้านค้าแล้ว', 'ลบร้านค้าออกจากระบบเรียบร้อย', 'success');
+  };
+
   return {
     handleApproveRequest, initiateRejectRequest, confirmRejectRequest,
-    adminBanUser, toggleRestaurantStatus, toggleRiderBan, saveShopEdit,
+    adminBanUser, toggleRestaurantStatus, toggleRiderBan, saveShopEdit, deleteRestaurant,
   };
 }

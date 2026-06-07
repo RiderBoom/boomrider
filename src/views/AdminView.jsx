@@ -76,7 +76,7 @@ export default function AdminView() {
     initiateRejectRequest, confirmRejectRequest,
     initiateCancelOrder, confirmCancelOrder,
     saveShopEdit,
-    toggleRestaurantStatus, toggleRiderBan,
+    toggleRestaurantStatus, toggleRiderBan, deleteRestaurant,
     openChatWindow, openImagePreview,
     notifySystem,
     deleteChat,
@@ -1038,6 +1038,7 @@ export default function AdminView() {
                         <button onClick={() => { setEditingShop(rest.id); setShopEditForm({ name: rest.name, phone: rest.phone, category: rest.category, time: rest.time }); }} className="p-1.5 bg-blue-100 text-blue-600 rounded" title="แก้ไข"><Edit size={14} /></button>
                         <button onClick={() => toggleRestaurantStatus(rest.id, 'toggle_open')} className={`p-1.5 rounded ${rest.status === 'open' ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-600'}`} title="เปิด/ปิด"><Power size={14} /></button>
                         <button onClick={() => toggleRestaurantStatus(rest.id, 'ban')} className={`p-1.5 rounded ${rest.status === 'banned' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600'}`} title="แบน"><Ban size={14} /></button>
+                        <button onClick={() => { if (window.confirm(`ลบร้าน "${rest.name}" ออกจากระบบถาวร?`)) deleteRestaurant(rest.id); }} className="p-1.5 bg-gray-800 text-white rounded hover:bg-red-700 transition-colors" title="ลบร้านค้า"><Trash2 size={14} /></button>
                       </div>
                     </div>
                   )}
