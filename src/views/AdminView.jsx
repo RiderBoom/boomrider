@@ -138,6 +138,11 @@ export default function AdminView() {
 
   useEffect(() => {
     if (adminTab === 'users') loadAllUsers();
+    if (adminTab === 'approvals') {
+      supabase.from('pending_requests').select('id, data').then(({ data }) => {
+        if (data) setPendingRequests(data.map(r => r.data));
+      });
+    }
   }, [adminTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build transaction list from Supabase wallets when on ledger tab

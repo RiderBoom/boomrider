@@ -367,6 +367,7 @@ export function AppProvider({ children }) {
 
   // ── Realtime: Orders ────────────────────────────────────────────────────
   useEffect(() => {
+    if (!isLoggedIn) return;
     const channel = supabase.channel('orders-rt')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
         const o = payload.new?.data;
@@ -383,10 +384,11 @@ export function AppProvider({ children }) {
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, []);
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: Pending Requests ──────────────────────────────────────────
   useEffect(() => {
+    if (!isLoggedIn) return;
     const channel = supabase.channel('pending-rt')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pending_requests' }, (payload) => {
         const r = payload.new?.data;
@@ -398,7 +400,7 @@ export function AppProvider({ children }) {
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, []);
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: Admin notifications ───────────────────────────────────────
   useEffect(() => {
