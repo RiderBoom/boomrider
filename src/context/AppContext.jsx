@@ -808,7 +808,11 @@ export function AppProvider({ children }) {
         email = profile.email;
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password: loginForm.password });
-      if (error) return notifySystem('ผิดพลาด', 'อีเมล/รหัสผ่านไม่ถูกต้อง', 'error');
+      if (error) {
+        const msg = error.message?.toLowerCase() || '';
+        if (msg.includes('email not confirmed')) return notifySystem('ผิดพลาด', 'บัญชีนี้ยังไม่ยืนยัน email กรุณาติดต่อ Admin', 'error');
+        return notifySystem('ผิดพลาด', 'อีเมล/รหัสผ่านไม่ถูกต้อง', 'error');
+      }
       const { data: profile } = await supabase.from('profiles').select('banned').eq('email', email).maybeSingle();
       if (profile?.banned) {
         await supabase.auth.signOut();
@@ -837,6 +841,7 @@ export function AppProvider({ children }) {
       if (error) return notifySystem('ผิดพลาด', error.message, 'error');
       if (!data.user) return notifySystem('ผิดพลาด', 'สมัครไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
       const uid = data.user.id;
+      // Insert profile data BEFORE onAuthStateChange fires to avoid loadUserSession reading empty data
       await Promise.all([
         supabase.from('profiles').insert({
           id: uid,
@@ -849,6 +854,11 @@ export function AppProvider({ children }) {
         supabase.from('wallets').insert({ user_id: uid, balance: 0, history: [] }),
         supabase.from('user_roles').insert({ user_id: uid, role: 'customer' }),
       ]);
+      // If auto-confirm is on, session is ready — load user data and set logged in
+      if (data.session) {
+        setIsLoggedIn(true);
+        await loadUserSession(data.user);
+      }
       setRegisterForm({ phone: '', email: '', password: '', confirmPassword: '', name: '' });
       notifySystem('สำเร็จ', 'สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ 🎉', 'success');
     } finally {
