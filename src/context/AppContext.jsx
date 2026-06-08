@@ -386,19 +386,28 @@ export function AppProvider({ children }) {
         if (o) {
           setOrders(prev => prev.some(x => x.id === o.id) ? prev : [o, ...prev]);
         } else if (payload.new?.id) {
-          const { data: row } = await supabase.from('orders').select('id, data').eq('id', payload.new.id).single();
+          const { data: row } = await supabase.from('orders').select('id, data').eq('id', payload.new.id).maybeSingle();
           if (row?.data) setOrders(prev => prev.some(x => x.id === row.data.id) ? prev : [row.data, ...prev]);
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async (payload) => {
+        const applyUpdate = (incoming) => {
+          if (!incoming?.id) return;
+          setOrders(prev => {
+            const idx = prev.findIndex(x => x.id === incoming.id);
+            if (idx === -1) return [...prev, incoming]; // order not yet in state — add it
+            if (!canApplyOrderUpdate(prev[idx], incoming)) return prev;
+            const next = [...prev];
+            next[idx] = incoming;
+            return next;
+          });
+        };
         const o = payload.new?.data;
-        const applyUpdate = (incoming) =>
-          setOrders(prev => prev.map(x => x.id === incoming.id && canApplyOrderUpdate(x, incoming) ? incoming : x));
         if (o) {
           applyUpdate(o);
         } else if (payload.new?.id) {
-          // payload.new.data null when Supabase RLS filters row data — fetch directly
-          const { data: row } = await supabase.from('orders').select('id, data').eq('id', payload.new.id).single();
+          // REPLICA IDENTITY DEFAULT — data column not in payload; fetch directly
+          const { data: row } = await supabase.from('orders').select('id, data').eq('id', payload.new.id).maybeSingle();
           if (row?.data) applyUpdate(row.data);
         }
       })
@@ -677,7 +686,7 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Polling fallback for active orders (every 10s) ─────────────────────
+  // ── Polling fallback for active orders (every 4s) ──────────────────────
   useEffect(() => {
     if (!isLoggedIn) return;
     const poll = setInterval(async () => {
@@ -695,14 +704,18 @@ export function AppProvider({ children }) {
         let changed = false;
         incoming.forEach(o => {
           const existing = map.get(o.id);
-          if (canApplyOrderUpdate(existing, o) && (!existing || existing.status !== o.status)) {
-            map.set(o.id, o);
-            changed = true;
+          if (canApplyOrderUpdate(existing, o)) {
+            const rank    = ORDER_STATUS_RANK[o.status] ?? -1;
+            const oldRank = ORDER_STATUS_RANK[existing?.status] ?? -1;
+            if (rank > oldRank || JSON.stringify(existing) !== JSON.stringify(o)) {
+              map.set(o.id, o);
+              changed = true;
+            }
           }
         });
         return changed ? Array.from(map.values()) : prev;
       });
-    }, 10000);
+    }, 4000);
     return () => clearInterval(poll);
   }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
