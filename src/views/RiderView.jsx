@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import {
   Bike, User, MessageSquare, AlertCircle,
   ToggleLeft, ToggleRight, TrendingUp, Clock, DollarSign, Star, Loader, MapPin,
-  XCircle, X, Wallet, CreditCard, ArrowUpCircle, ArrowDownCircle, Camera,
+  XCircle, X, Wallet, CreditCard, ArrowUpCircle, ArrowDownCircle, Camera, Bell,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
 import { getDistanceFromLatLonInKm, formatDateTimeFromMs, formatDateTime, compressImage } from '../utils';
 import { USER_LOCATION } from '../constants';
+import { useJobOffer } from '../context/hooks/useJobOffer';
 
 export default function RiderView() {
   const {
@@ -28,7 +29,18 @@ export default function RiderView() {
     requestTopUp,
     requestWithdraw,
     isDataLoading,
+    supabase,
   } = useApp();
+
+  // ── Grab Auto-Dispatch: listen for incoming job offers ─────────────────────
+  // (uses _uid which is declared below at line ~98 in the original sync block —
+  //  useState/useEffect order is stable so we can reference it here via closure)
+  const { offer: jobOffer, countdown: offerCountdown, accepting: offerAccepting,
+    acceptOffer, rejectOffer } = useJobOffer({
+    supabase,
+    riderUserId: userProfile?.id || currentUser?.id,
+    onAccepted: () => setRiderTab('active'),
+  });
 
   // ── state สำหรับปุ่ม "รับงาน" ──────────────────────────────────────────────
   const [acceptingId, setAcceptingId] = useState(null);
@@ -212,6 +224,94 @@ export default function RiderView() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white pt-14 pb-20">
+
+      {/* ══ Grab Auto-Dispatch: Job Offer Popup ══════════════════════════════ */}
+      {jobOffer && (() => {
+        const offerOrder = orders.find(o => o.id === jobOffer.order_id);
+        return (
+          <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm flex items-end justify-center">
+            <div className="bg-gray-900 border-2 border-green-500 w-full max-w-md rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up">
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center animate-pulse">
+                  <Bell size={20} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-white font-black text-base">🛵 มีงานใหม่เข้ามา!</p>
+                  <p className="text-gray-400 text-xs">กรุณาตอบรับภายใน {offerCountdown} วินาที</p>
+                </div>
+                {/* Countdown ring */}
+                <div className="ml-auto text-center">
+                  <div className={`text-3xl font-black ${offerCountdown <= 5 ? 'text-red-400 animate-pulse' : 'text-green-400'}`}>
+                    {offerCountdown}
+                  </div>
+                  <div className="text-[10px] text-gray-500">วินาที</div>
+                </div>
+              </div>
+
+              {/* Countdown bar */}
+              <div className="w-full bg-gray-700 rounded-full h-1.5 mb-4 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ${offerCountdown <= 5 ? 'bg-red-500' : 'bg-green-500'}`}
+                  style={{ width: `${(offerCountdown / 25) * 100}%` }}
+                />
+              </div>
+
+              {/* Order detail */}
+              {offerOrder && (
+                <div className="bg-gray-800 rounded-xl p-3 mb-4 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-white font-bold text-sm">
+                      {offerOrder.type === 'parcel' ? '📦 ส่งพัสดุ' : offerOrder.restaurantName}
+                    </span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      offerOrder.paymentMethod === 'cash'
+                        ? 'bg-yellow-900/60 text-yellow-300'
+                        : 'bg-green-900/60 text-green-300'
+                    }`}>
+                      {offerOrder.paymentMethod === 'cash' ? '💰 เงินสด' : '👛 Wallet'}
+                    </span>
+                  </div>
+                  {offerOrder.type === 'food' && offerOrder.address && (
+                    <p className="text-xs text-gray-400">📍 ส่งที่: {offerOrder.address}</p>
+                  )}
+                  {offerOrder.type === 'parcel' && (
+                    <p className="text-xs text-gray-400">📦 {offerOrder.pickup} → {offerOrder.dropoff}</p>
+                  )}
+                  <div className="flex gap-3 pt-1 text-xs text-gray-300">
+                    <span>💵 ฿{(offerOrder.grandTotal || 0).toLocaleString()}</span>
+                    <span>🛵 ค่าส่ง ฿{(offerOrder.deliveryFee || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => rejectOffer(jobOffer.id, offerOrder)}
+                  disabled={offerAccepting}
+                  className="flex-1 py-3 rounded-xl border border-red-700 text-red-400 font-bold text-sm hover:bg-red-900/20 active:scale-95 transition-all disabled:opacity-40"
+                >
+                  ✕ ปฏิเสธ
+                </button>
+                <button
+                  onClick={async () => {
+                    const ok = await acceptOffer(jobOffer.id);
+                    if (ok && offerOrder) acceptOrder(offerOrder.id);
+                  }}
+                  disabled={offerAccepting}
+                  className="flex-2 flex-grow py-3 rounded-xl bg-green-500 text-white font-black text-base hover:bg-green-400 active:scale-95 transition-all shadow-lg shadow-green-900/50 disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {offerAccepting
+                    ? <><Loader size={16} className="animate-spin" /> กำลังรับ...</>
+                    : '✅ รับงาน!'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="p-4 bg-gray-800 shadow-lg">
         <div className="flex justify-between items-center mb-3">
           <h1 className="text-xl font-bold flex items-center"><Bike className="mr-2 text-green-400" /> BoomRider</h1>
@@ -872,10 +972,13 @@ export default function RiderView() {
 
                         <button
                           disabled={!!proofUploading[job.id]}
-                          onClick={() => updateOrderStatus(
-                            job.id, 'delivered', null,
-                            proofPhotos[job.id] ? { deliveryProofUrl: proofPhotos[job.id] } : {},
-                          )}
+                          onClick={async () => {
+                            await updateOrderStatus(
+                              job.id, 'delivered', null,
+                              proofPhotos[job.id] ? { deliveryProofUrl: proofPhotos[job.id] } : {},
+                            );
+                            setProofPhotos(prev => { const n = { ...prev }; delete n[job.id]; return n; });
+                          }}
                           className={`w-full py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-green-900/50 ${
                             proofUploading[job.id]
                               ? 'bg-gray-600 text-gray-400 cursor-not-allowed'

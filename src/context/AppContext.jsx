@@ -632,7 +632,7 @@ export function AppProvider({ children }) {
           case 'rider_accepted':
             notifySystem('🛵 ไรเดอร์รับงานแล้ว', `${o.riderName || 'ไรเดอร์'} มารับออเดอร์ #${o.id.slice(-6)}`, 'info'); break;
           case 'picking_up':
-            notifySystem('📦 ไรเดอร์รับออเดอร์แล้ว', `ออเดอร์ #${o.id.slice(-6)} กำลังส่งถึงลูกค้า`, 'success'); break;
+            notifySystem('✅ ไรเดอร์รับอาหารออกจากร้านแล้ว', `ออเดอร์ #${o.id.slice(-6)} ออกจากหน้าจอทำงานของคุณแล้ว`, 'success'); break;
           case 'completed':
             notifySystem('💰 ออเดอร์สำเร็จ!', `ออเดอร์ #${o.id.slice(-6)} จัดส่งสำเร็จ — รายได้เข้ากระเป๋าแล้ว`, 'success'); break;
           default: break;
@@ -978,28 +978,36 @@ export function AppProvider({ children }) {
   // ── Rating ────────────────────────────────────────────────────────────────
   const openRatingModal  = useCallback((order) => { setRatingOrderData(order); setShowRatingModal(true); }, []);
 
-  const submitRating = useCallback(async ({ orderId, restaurantId, riderId, restaurantRating, riderRating }) => {
+  const submitRating = useCallback(async ({ orderId, restaurantId, riderId, restaurantRating, riderRating, comment }) => {
+    const orderToRate = orders.find(o => o.id === orderId);
+    if (!orderToRate) return;
     if (restaurantId && restaurantRating) {
+      let updatedRest;
       setRestaurants(prev => prev.map(r => {
         if (r.id !== restaurantId) return r;
         const prevCount = r.ratingCount || 0;
         const count = prevCount + 1;
         const avg = parseFloat((((r.rating || 5) * prevCount + restaurantRating) / count).toFixed(1));
-        return { ...r, rating: avg, ratingCount: count };
+        updatedRest = { ...r, rating: avg, ratingCount: count };
+        return updatedRest;
       }));
+      if (updatedRest) supabase.from('restaurants').update({ data: updatedRest }).eq('id', restaurantId).then(() => {});
     }
     if (riderId && riderRating) {
+      let updatedRider;
       setRiders(prev => prev.map(r => {
         if (r.id !== riderId) return r;
         const prevCount = r.ratingCount || 0;
         const count = prevCount + 1;
         const avg = parseFloat((((r.avgRating || 5) * prevCount + riderRating) / count).toFixed(1));
-        return { ...r, avgRating: avg, ratingCount: count };
+        updatedRider = { ...r, avgRating: avg, ratingCount: count };
+        return updatedRider;
       }));
+      if (updatedRider) supabase.from('riders').update({ data: updatedRider }).eq('id', riderId).then(() => {});
     }
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, rated: true } : o));
-    const updated = orders.find(o => o.id === orderId);
-    if (updated) supabase.from('orders').update({ data: { ...updated, rated: true } }).eq('id', orderId).then(() => {});
+    const ratedOrder = { ...orderToRate, rated: true, ratingComment: comment };
+    setOrders(prev => prev.map(o => o.id === orderId ? ratedOrder : o));
+    supabase.from('orders').update({ data: ratedOrder }).eq('id', orderId).then(() => {});
     setShowRatingModal(false);
     setRatingOrderData(null);
     notifySystem('ขอบคุณ! 🌟', 'บันทึกรีวิวของคุณแล้ว', 'success');

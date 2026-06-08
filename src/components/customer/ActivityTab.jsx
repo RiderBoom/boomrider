@@ -207,6 +207,15 @@ export default function ActivityTab() {
 
                 {order.status === 'delivered' && (
                   <div className="px-3 pt-2 pb-3">
+                    {order.deliveryProofUrl && (
+                      <div className="mb-3 rounded-xl overflow-hidden border-2 border-teal-200">
+                        <img src={order.deliveryProofUrl} alt="หลักฐานการส่ง" className="w-full object-cover max-h-48" />
+                        <div className="bg-teal-50 px-3 py-1.5 flex items-center gap-1.5">
+                          <CheckCircle size={13} className="text-teal-600" />
+                          <span className="text-xs text-teal-700 font-semibold">รูปหลักฐานการส่งจากไรเดอร์</span>
+                        </div>
+                      </div>
+                    )}
                     <button
                       onClick={() => { updateOrderStatus(order.id, 'completed'); openRatingModal(order); }}
                       className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-teal-400 active:scale-95 transition-all shadow-lg shadow-teal-900/20 animate-pulse"

@@ -1,5 +1,6 @@
 import { generateId, formatDateTime, r2, safeLocalSet } from '../../utils';
 import { ADMIN_EMAIL, USER_LOCATION } from '../../constants';
+import { autoDispatch } from './useAutoDispatch';
 
 export function useOrderActions(deps) {
   const {
@@ -74,6 +75,7 @@ export function useOrderActions(deps) {
       customerPhone: userProfile.phone || null,
       restaurantId: cart[0].restaurantId,
       restaurantName: cart[0].restaurantName,
+      restaurantOwnerId: restaurant?.ownerId || null,   // ← for settlement RPC
       restaurantLocation: restaurant?.location || USER_LOCATION,
       pickupLocation: restaurant?.location || USER_LOCATION,
       location: addr.location || USER_LOCATION,
@@ -144,6 +146,9 @@ export function useOrderActions(deps) {
     setParcelMapTarget(null);
     setActiveTab('orders');
     notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
+
+    // Auto-dispatch parcel to nearest rider immediately
+    autoDispatch(supabase, newOrder);
   };
 
   const _updateOrder = async (orderId, patch) => {
@@ -166,43 +171,83 @@ export function useOrderActions(deps) {
     if (!rider) return notifySystem('ผิดพลาด', 'ไม่พบข้อมูลไรเดอร์ของคุณ', 'error');
     await _updateOrder(orderId, {
       riderId: rider.id,
+      riderUserId: uid,              // ← stored for settlement RPC lookup
       riderName: rider.name,
       riderPhone: rider.phone,
       status: 'rider_accepted',
       riderAcceptedAt: formatDateTime(),
     });
+    // Mark rider as unavailable in riders table
+    supabase.from('riders')
+      .update({ is_available: false })
+      .eq('id', rider.id)
+      .then(() => {});
     notifySystem('รับงานแล้ว!', `ออเดอร์ #${orderId.slice(-6)} — ไปรับของที่ร้านได้เลย`, 'success');
   };
 
-  const updateOrderStatus = async (orderId, newStatus) => {
+  const updateOrderStatus = async (orderId, newStatus, _unused, extraData = {}) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
 
-    const patch = newStatus === 'completed'
+    const basePatch = newStatus === 'completed'
       ? { status: newStatus, completedAt: new Date().toISOString() }
       : { status: newStatus };
+    const patch = Object.keys(extraData).length ? { ...basePatch, ...extraData } : basePatch;
     await _updateOrder(orderId, patch);
 
-    if (newStatus === 'completed') {
-      const uid     = currentUser?.id || userProfile?.id;
-      const gpRate  = appConfig.gpPercent || 0.1;
-      const gpAmount = r2(order.grandTotal * gpRate);
-      const merchantIncomeCash = r2(order.foodTotal || 0);
-      const riderUid = riders.find(r => r.id === order.riderId)?.userId;
-      const shopOwnerUid = restaurants.find(r => r.id === order.restaurantId)?.ownerId;
+    // ── Grab Auto-Dispatch: trigger when merchant marks ready_to_pickup ──────
+    if (newStatus === 'ready_to_pickup') {
+      const updatedOrder = { ...order, ...patch };
+      autoDispatch(supabase, updatedOrder);
+    }
 
-      if (order.paymentMethod === 'cash') {
-        if (riderUid && gpAmount > 0)              creditWallet(riderUid, -gpAmount,           `หัก GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
-        if (riderUid && merchantIncomeCash > 0)    creditWallet(riderUid, -merchantIncomeCash, `หัก ยอดร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
-        if (shopOwnerUid && merchantIncomeCash > 0) creditWallet(shopOwnerUid, merchantIncomeCash, `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
-        if (ADMIN_EMAIL && gpAmount > 0)            creditWallet(ADMIN_EMAIL, gpAmount,         `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
-      } else {
-        const merchantIncome = r2((order.foodTotal || 0) * (1 - gpRate));
-        if (shopOwnerUid && merchantIncome > 0)   creditWallet(shopOwnerUid, merchantIncome, `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
-        if (ADMIN_EMAIL && gpAmount > 0)          creditWallet(ADMIN_EMAIL, gpAmount,        `GP ออเดอร์ #${orderId.slice(-6)}`);
-        if (riderUid && order.deliveryFee > 0)    creditWallet(riderUid, order.deliveryFee,  `ค่าส่ง ออเดอร์ #${orderId.slice(-6)}`);
+    // ── Settlement: use SQL RPC first, fall back to JS wallet credits ────────
+    if (newStatus === 'completed') {
+      const { data: rpcResult, error: rpcError } = await supabase
+        .rpc('process_order_settlement', { p_order_id: orderId });
+
+      if (rpcError || !rpcResult?.ok) {
+        // Fallback: JS-side wallet credits (keeps working before SQL migration runs)
+        const gpRate       = appConfig.gpPercent || 0.1;
+        const foodTotal    = r2(order.foodTotal || 0);
+        const gpAmount     = r2(foodTotal * gpRate);
+        const merchantIncome = r2(foodTotal * (1 - gpRate));
+        const riderUid     = order.riderUserId || riders.find(r => r.id === order.riderId)?.userId;
+        const shopOwnerUid = order.restaurantOwnerId || restaurants.find(r => r.id === order.restaurantId)?.ownerId;
+
+        if (order.paymentMethod === 'cash') {
+          if (riderUid && foodTotal > 0)
+            creditWallet(riderUid, -foodTotal,          `หัก ยอดร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
+          if (shopOwnerUid && merchantIncome > 0)
+            creditWallet(shopOwnerUid, merchantIncome,  `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
+          if (ADMIN_EMAIL && gpAmount > 0)
+            creditWallet(ADMIN_EMAIL, gpAmount,          `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
+        } else {
+          if (shopOwnerUid && merchantIncome > 0)
+            creditWallet(shopOwnerUid, merchantIncome,  `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
+          if (ADMIN_EMAIL && gpAmount > 0)
+            creditWallet(ADMIN_EMAIL, gpAmount,          `GP ออเดอร์ #${orderId.slice(-6)}`);
+          if (riderUid && order.deliveryFee > 0)
+            creditWallet(riderUid, order.deliveryFee,   `ค่าส่ง ออเดอร์ #${orderId.slice(-6)}`);
+        }
       }
+
+      // Mark rider as available again
+      const riderUid = order.riderUserId || riders.find(r => r.id === order.riderId)?.userId;
+      const riderRow = riders.find(r => r.userId === riderUid);
+      if (riderRow) {
+        supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
+      }
+
       notifySystem('✅ ส่งของสำเร็จ!', `ออเดอร์ #${orderId.slice(-6)} เสร็จสมบูรณ์`, 'success');
+    }
+
+    // ── Mark rider available when job cancelled ──────────────────────────────
+    if (newStatus === 'cancelled' && order.riderId) {
+      const riderRow = riders.find(r => r.id === order.riderId);
+      if (riderRow) {
+        supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
+      }
     }
   };
 
@@ -223,6 +268,11 @@ export function useOrderActions(deps) {
     if (order.paymentMethod === 'wallet' && order.grandTotal > 0) {
       const uid = currentUser?.id || userProfile?.id;
       creditWallet(uid, order.grandTotal, `คืนเงิน: ยกเลิกออเดอร์ #${orderId.slice(-6)}`);
+    }
+    // Release rider
+    if (order.riderId) {
+      const riderRow = riders.find(r => r.id === order.riderId);
+      if (riderRow) supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
     }
     notifySystem('ยกเลิกออเดอร์แล้ว', `ออเดอร์ #${orderId.slice(-6)} ถูกยกเลิก`, 'info');
   };

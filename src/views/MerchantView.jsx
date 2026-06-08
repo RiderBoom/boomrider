@@ -70,8 +70,9 @@ export default function MerchantView() {
   // กลุ่ม orders แยกตาม status
   const myOrders = myShop ? orders.filter(o => o.type === 'food' && o.restaurantId === myShop.id) : [];
   const newOrders     = myOrders.filter(o => o.status === 'pending');
-  const activeOrders  = myOrders.filter(o => ['preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up', 'delivering'].includes(o.status));
-  const doneOrders    = myOrders.filter(o => ['delivered', 'completed', 'cancelled'].includes(o.status));
+  // Once rider picks up food (picking_up+), remove from merchant's working screen immediately
+  const activeOrders  = myOrders.filter(o => ['preparing', 'ready_to_pickup', 'rider_accepted'].includes(o.status));
+  const doneOrders    = myOrders.filter(o => ['picking_up', 'delivering', 'delivered', 'completed', 'cancelled'].includes(o.status));
 
   const myRevenue = myOrders
     .filter(o => ['delivered', 'completed'].includes(o.status))
@@ -321,21 +322,25 @@ export default function MerchantView() {
           {/* ประวัติย่อ */}
           {doneOrders.length > 0 && (
             <div className="mt-6">
-              <h4 className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-1"><History size={12} /> เสร็จสิ้น ({doneOrders.length})</h4>
+              <h4 className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-1"><History size={12} /> ประวัติ ({doneOrders.length})</h4>
               <div className="space-y-2">
-                {doneOrders.slice(0, 10).map(order => (
-                  <div key={order.id} className="bg-white p-3 rounded-lg border border-gray-100 flex justify-between items-center">
-                    <div>
-                      <span className="text-xs font-bold text-gray-700">#{order.id.slice(-6)}</span>
-                      <span className="text-xs text-gray-400 ml-2">{order.customerName}</span>
+                {doneOrders.slice(0, 10).map(order => {
+                  const inTransit = ['picking_up', 'delivering'].includes(order.status);
+                  const isDone    = ['delivered', 'completed'].includes(order.status);
+                  return (
+                    <div key={order.id} className="bg-white p-3 rounded-lg border border-gray-100 flex justify-between items-center">
+                      <div>
+                        <span className="text-xs font-bold text-gray-700">#{order.id.slice(-6)}</span>
+                        <span className="text-xs text-gray-400 ml-2">{order.customerName}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-xs font-bold ${isDone ? 'text-green-600' : inTransit ? 'text-blue-500' : 'text-red-400'}`}>
+                          {isDone ? `+฿${(order.merchantIncome||0).toFixed(0)}` : inTransit ? '🚚 กำลังส่ง' : 'ยกเลิก'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className={`text-xs font-bold ${['delivered','completed'].includes(order.status) ? 'text-green-600' : 'text-red-400'}`}>
-                        {['delivered','completed'].includes(order.status) ? `+฿${(order.merchantIncome||0).toFixed(0)}` : 'ยกเลิก'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
