@@ -162,7 +162,7 @@ export function AppProvider({ children }) {
     }
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Role grant ---
+  // --- Role grant / revoke ---
   const grantRole = useCallback((userId, role) => {
     setGlobalUserRoles(prev => {
       const cur = prev[userId] || ['customer'];
@@ -173,6 +173,17 @@ export function AppProvider({ children }) {
       setUserRoles(prev => prev.includes(role) ? prev : [...prev, role]);
     }
     supabase.from('user_roles').upsert({ user_id: userId, role }).then(() => {});
+  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const revokeRole = useCallback((userId, role) => {
+    setGlobalUserRoles(prev => {
+      const cur = prev[userId] || ['customer'];
+      return { ...prev, [userId]: cur.filter(r => r !== role) };
+    });
+    if (currentUser?.id === userId || userProfile?.id === userId) {
+      setUserRoles(prev => prev.filter(r => r !== role));
+    }
+    supabase.from('user_roles').delete().eq('user_id', userId).eq('role', role).then(() => {});
   }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Wallet hook ─────────────────────────────────────────────────────────────
@@ -190,7 +201,8 @@ export function AppProvider({ children }) {
   const {
     calculateDeliveryFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
     addToCart, placeOrder, placeParcelOrder, acceptOrder, updateOrderStatus,
-    initiateCancelOrder, confirmCancelOrder, requestCancelOrder, requestCancelByRole,
+    initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
+    requestCancelOrder, requestCancelByRole,
     forceRefresh,
   } = useOrderActions({
     orders, setOrders,
@@ -1175,6 +1187,8 @@ export function AppProvider({ children }) {
     toggleRiderBan,
     saveShopEdit,
     deleteRestaurant,
+    grantRole,
+    revokeRole,
 
     // Misc
     toasts, removeToast,
@@ -1184,6 +1198,7 @@ export function AppProvider({ children }) {
     hasPendingCancelRequest,
     initiateCancelOrder,
     confirmCancelOrder,
+    cancelOrderDirectly,
     requestCancelOrder,
     requestCancelByRole,
     forceRefresh,

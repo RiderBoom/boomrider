@@ -84,7 +84,7 @@ export default function AdminView() {
     promoCodes, createPromoCode, togglePromoCode, deletePromoCode,
     // Admin tools
     adminAdjustWallet, adminBanUser,
-    creditWallet,
+    creditWallet, grantRole, revokeRole,
     setOrders, setRestaurants, setRiders, setPendingRequests, setGlobalWallets,
     isDataLoading,
   } = useApp();
@@ -398,6 +398,54 @@ export default function AdminView() {
       {/* ── DASHBOARD ─────────────────────────────────────────────────── */}
       {adminTab === 'dashboard' && (
         <>
+          {/* ── System Health Monitor ─────────────────────────────────────── */}
+          {(() => {
+            const activeOrders   = orders.filter(o => !['completed','cancelled'].includes(o.status));
+            const waitingDispatch = orders.filter(o => o.status === 'ready_to_pickup' && !o.riderId);
+            const ridersOnline   = riders.filter(r => r.is_available === true || r.isAvailable === true);
+            const ridersActive   = riders.filter(r => r.status === 'active');
+            const pendingCount   = pendingRequests.length;
+            const alerts         = [];
+            if (waitingDispatch.length > 0) alerts.push(`⚠️ ${waitingDispatch.length} ออเดอร์รอไรเดอร์ (ยังไม่มีการจ่ายงาน)`);
+            if (pendingCount > 0) alerts.push(`🔔 ${pendingCount} คำขอรออนุมัติ`);
+            return (
+              <div className="bg-white rounded-xl shadow-sm p-4 mb-6 border-l-4 border-green-500">
+                <div className="flex items-center gap-2 mb-3">
+                  <DatabaseZap size={16} className="text-green-600" />
+                  <h2 className="font-bold text-gray-700 text-sm">System Monitor</h2>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                  <div className="bg-orange-50 rounded-lg p-3 text-center">
+                    <div className="text-xl font-black text-orange-600">{activeOrders.length}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">ออเดอร์ Active</div>
+                  </div>
+                  <div className={`rounded-lg p-3 text-center ${waitingDispatch.length > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
+                    <div className={`text-xl font-black ${waitingDispatch.length > 0 ? 'text-red-600' : 'text-green-600'}`}>{waitingDispatch.length}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">รอจ่ายงาน</div>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <div className="text-xl font-black text-blue-600">{ridersOnline.length} / {ridersActive.length}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">ไรเดอร์ Online / Active</div>
+                  </div>
+                  <div className={`rounded-lg p-3 text-center ${pendingCount > 0 ? 'bg-yellow-50' : 'bg-gray-50'}`}>
+                    <div className={`text-xl font-black ${pendingCount > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>{pendingCount}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">รออนุมัติ</div>
+                  </div>
+                </div>
+                {alerts.length > 0 && (
+                  <div className="space-y-1">
+                    {alerts.map((a, i) => (
+                      <div key={i} className="text-xs bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1.5 text-yellow-800 font-semibold">{a}</div>
+                    ))}
+                  </div>
+                )}
+                {alerts.length === 0 && (
+                  <div className="text-xs text-green-700 font-semibold bg-green-50 rounded-lg px-3 py-1.5">✅ ระบบทำงานปกติ ไม่มีการแจ้งเตือน</div>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <StatCard label="กำไร GP สุทธิ (จบแล้ว)" value={`฿${totalGP.toLocaleString()}`}       color="green"  icon={DollarSign} />
             <StatCard label="GMV (ออเดอร์จบแล้ว)"  value={`฿${gmv.toLocaleString()}`}           color="blue"   icon={TrendingUp} />
@@ -901,6 +949,32 @@ export default function AdminView() {
                         >รีเซ็ต PW</button>
                       </div>
                     </div>
+
+                    {/* Role management */}
+                    {!user.roles?.includes('admin') && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {['merchant', 'rider'].map(role => {
+                          const has = user.roles?.includes(role);
+                          return (
+                            <button
+                              key={role}
+                              onClick={() => {
+                                if (has) {
+                                  revokeRole(user.id, role);
+                                  setAllUsers(prev => prev.map(u => u.id === user.id ? { ...u, roles: u.roles.filter(r => r !== role) } : u));
+                                } else {
+                                  grantRole(user.id, role);
+                                  setAllUsers(prev => prev.map(u => u.id === user.id ? { ...u, roles: [...(u.roles || []), role] } : u));
+                                }
+                              }}
+                              className={`text-[11px] px-2.5 py-1 rounded-lg font-bold transition-all ${has ? 'bg-orange-200 text-orange-800 hover:bg-red-100 hover:text-red-700' : 'bg-gray-100 text-gray-500 hover:bg-orange-100 hover:text-orange-700'}`}
+                            >
+                              {has ? `✓ ${role}` : `+ ${role}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {/* Reset password panel */}
                     {resetPwdUserId === user.id && (

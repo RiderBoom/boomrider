@@ -31,7 +31,7 @@ export default function ActivityTab() {
   const {
     orders, userProfile, currentUser,
     openRatingModal, updateOrderStatus,
-    hasPendingCancelRequest, requestCancelOrder,
+    hasPendingCancelRequest, requestCancelOrder, cancelOrderDirectly,
     openChatWindow, restaurants, riders,
     setActiveTab,
   } = useApp();
@@ -121,6 +121,17 @@ export default function ActivityTab() {
                             <p className="text-yellow-600 text-[11px] mt-0.5">คำขอยกเลิกกำลังรอการตรวจสอบ</p>
                           </div>
                         </div>
+                      ) : order.status === 'pending' ? (
+                        <button
+                          onClick={() => {
+                            if (window.confirm('ยืนยันการยกเลิกออเดอร์นี้?')) {
+                              cancelOrderDirectly(order.id, 'ลูกค้ายกเลิก');
+                            }
+                          }}
+                          className="w-full text-center text-xs text-red-500 font-semibold hover:text-white py-2 hover:bg-red-500 rounded-xl transition-all border border-red-200 hover:border-red-500"
+                        >
+                          ✕ ยกเลิกออเดอร์ทันที
+                        </button>
                       ) : (
                         <button
                           onClick={() => { setCancelReqOrderId(order.id); setCancelReqReason(''); setShowCancelReqModal(true); }}

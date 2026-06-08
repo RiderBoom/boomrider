@@ -320,6 +320,22 @@ export function useOrderActions(deps) {
     notifyAdmin(`⚠️ ${roleName}ขอยกเลิก`, `${userProfile.name} ขอยกเลิก #${orderId.slice(-6)}: ${reason}`, 'warning');
   };
 
+  // Direct cancel — for customer on still-pending orders (no admin needed)
+  const cancelOrderDirectly = async (orderId, reason = 'ลูกค้ายกเลิก') => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    await _updateOrder(orderId, { status: 'cancelled', cancelReason: reason });
+    if (order.paymentMethod === 'wallet' && order.grandTotal > 0) {
+      const uid = currentUser?.id || userProfile?.id;
+      creditWallet(uid, order.grandTotal, `คืนเงิน: ยกเลิกออเดอร์ #${orderId.slice(-6)}`);
+    }
+    if (order.riderId) {
+      const riderRow = riders.find(r => r.id === order.riderId);
+      if (riderRow) supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
+    }
+    notifySystem('ยกเลิกออเดอร์แล้ว', `ออเดอร์ #${orderId.slice(-6)} ถูกยกเลิกแล้ว`, 'info');
+  };
+
   const forceRefresh = async () => {
     const { data } = await supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200);
     if (data?.length) setOrders(data.map(o => o.data));
@@ -329,7 +345,8 @@ export function useOrderActions(deps) {
   return {
     calculateDeliveryFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
     addToCart, placeOrder, placeParcelOrder, acceptOrder, updateOrderStatus,
-    initiateCancelOrder, confirmCancelOrder, requestCancelOrder, requestCancelByRole,
+    initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
+    requestCancelOrder, requestCancelByRole,
     forceRefresh,
   };
 }
