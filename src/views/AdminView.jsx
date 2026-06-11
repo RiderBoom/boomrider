@@ -462,10 +462,8 @@ export default function AdminView() {
           </div>
           {/* ── กระเป๋าเงิน Admin (GP สะสม) ───────────────────────────────── */}
           {(() => {
-            const adminBal = globalWallets[ADMIN_EMAIL]?.balance ?? userWallet ?? 0;
-            const rawHistory = globalWallets[ADMIN_EMAIL]?.history?.length
-              ? globalWallets[ADMIN_EMAIL].history
-              : (walletHistory ?? []);
+            const adminBal = userWallet ?? 0;
+            const rawHistory = walletHistory?.length ? walletHistory : [];
             const displayHistory = [...rawHistory].sort((a, b) => {
               const ms = (e) => e.createdAtMs || parseInt(((e.id || '').match(/\d{10,}/) || ['0'])[0], 10);
               return ms(b) - ms(a);

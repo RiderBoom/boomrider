@@ -351,9 +351,11 @@ export function AppProvider({ children }) {
       setUserWallet(r2(wallet?.balance || 0));
       setWalletAllEntries(wallet?.history || []);
       setUserAddresses(profile.addresses || [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }]);
+      // Use email key for admin so it stays consistent with creditWallet(ADMIN_EMAIL,...) calls
+      const walletKey = (ADMIN_EMAIL && authUser.email === ADMIN_EMAIL) ? ADMIN_EMAIL : authUser.id;
       setGlobalWallets(prev => ({
         ...prev,
-        [authUser.id]: { balance: r2(wallet?.balance || 0), history: wallet?.history || [] },
+        [walletKey]: { balance: r2(wallet?.balance || 0), history: wallet?.history || [] },
       }));
     } catch (e) {
       console.error('loadUserSession error', e);
