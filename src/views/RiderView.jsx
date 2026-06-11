@@ -95,21 +95,16 @@ export default function RiderView() {
   const activeJobRef  = React.useRef(null);   // { id, status } ของงานที่กำลังทำอยู่
   const lastWriteRef  = React.useRef(0);      // throttle timestamp
 
-  // ── Sync refs ทุก render ──────────────────────────────────────────────────
+  // ── Sync refs ทุก render (synchronous — ไม่ใช้ useEffect เพื่อลด overhead) ──
   const _uid = userProfile.id || currentUser?.id;
-  React.useEffect(() => {
-    // riderId ดึงจาก riders collection (riders[n].userId === UID → riders[n].id)
-    const meRider = riders.find(r => r.userId === _uid);
-    riderIdRef.current  = meRider?.id ?? null;
-    riderUidRef.current = _uid ?? null;
-  });
-  React.useEffect(() => {
-    const activeJob = orders.find(o =>
-      ['rider_accepted', 'picking_up', 'delivering'].includes(o.status) &&
-      riderIdRef.current && o.riderId === riderIdRef.current,
-    );
-    activeJobRef.current = activeJob ? { id: activeJob.id, status: activeJob.status } : null;
-  });
+  const meRider = riders.find(r => r.userId === _uid);
+  riderIdRef.current  = meRider?.id ?? null;
+  riderUidRef.current = _uid ?? null;
+  const _activeJob = orders.find(o =>
+    ['rider_accepted', 'picking_up', 'delivering'].includes(o.status) &&
+    riderIdRef.current && o.riderId === riderIdRef.current,
+  );
+  activeJobRef.current = _activeJob ? { id: _activeJob.id, status: _activeJob.status } : null;
 
   // ── watchPosition — mount ครั้งเดียว, cleanup ตอน unmount ────────────────
   React.useEffect(() => {
@@ -151,6 +146,11 @@ export default function RiderView() {
       const next = !prev;
       const key = `boomrider_rider_online_${userProfile.id || currentUser?.id}`;
       localStorage.setItem(key, String(next));
+      // Sync availability to DB so dispatch_order RPC can find this rider
+      const rid = riderIdRef.current;
+      if (rid) {
+        supabase.from('riders').update({ is_available: next }).eq('id', rid).then(() => {});
+      }
       return next;
     });
   };
@@ -217,8 +217,9 @@ export default function RiderView() {
 
   // Earnings stats
   const completedJobs = historyJobs.filter(j => ['delivered', 'completed'].includes(j.status));
-  const todayStr = formatDateTime().slice(0, 10); // DD/MM/YYYY
-  const todayJobs = completedJobs.filter(j => j.timestamp && j.timestamp.startsWith(todayStr));
+  const todayStr = formatDateTime().slice(0, 10); // DD/MM/YYYY → "08/06/2026"
+  const jobDate = (j) => (j.deliveredAt || j.completedAt || j.createdAt || '');
+  const todayJobs = completedJobs.filter(j => jobDate(j).startsWith(todayStr));
   const todayEarning = todayJobs.reduce((s, j) => s + (j.riderIncome || 0), 0);
   const totalEarning = completedJobs.reduce((s, j) => s + (j.riderIncome || 0), 0);
 
@@ -297,7 +298,7 @@ export default function RiderView() {
                 <button
                   onClick={async () => {
                     const ok = await acceptOffer(jobOffer.id);
-                    if (ok && offerOrder) acceptOrder(offerOrder.id);
+                    if (ok) acceptOrder(offerOrder?.id ?? jobOffer.order_id);
                   }}
                   disabled={offerAccepting}
                   className="flex-2 flex-grow py-3 rounded-xl bg-green-500 text-white font-black text-base hover:bg-green-400 active:scale-95 transition-all shadow-lg shadow-green-900/50 disabled:opacity-40 flex items-center justify-center gap-2"
@@ -360,12 +361,12 @@ export default function RiderView() {
           {gpsStatus === 'denied' && (
             <div className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-900/30 rounded-lg px-2 py-1">
               <AlertCircle size={12} />
-              GPS ถูกปิดกั้น — เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์เพื่อให้ลูกค้าเห็นตำแหน่งของคุณ
+              GPS ถูกปิดกั้น — ระบบจ่ายงานอัตโนมัติจะไม่ทำงาน กรุณาเปิดสิทธิ์ตำแหน่งในเบราว์เซอร์
             </div>
           )}
           {gpsStatus === 'unavailable' && (
-            <div className="flex items-center gap-1.5 text-xs text-orange-400">
-              <AlertCircle size={12} /> GPS ไม่พร้อมใช้งาน
+            <div className="flex items-center gap-1.5 text-xs text-orange-400 bg-orange-900/30 rounded-lg px-2 py-1">
+              <AlertCircle size={12} /> GPS ไม่พร้อมใช้งาน — ระบบจ่ายงานอัตโนมัติจะไม่ทำงาน
             </div>
           )}
           {gpsStatus === 'timeout' && (
@@ -559,7 +560,9 @@ export default function RiderView() {
 
             {/* ⚠️ คำเตือนกระเป๋าติดลบ (cash orders) */}
             {job.paymentMethod === 'cash' && (() => {
-              const netChange = (job.riderIncome || 0) - (job.merchantIncome || 0) - (job.adminGP || 0);
+              const netChange = job.type === 'parcel'
+                ? (job.riderIncome || 0)
+                : (job.riderIncome || 0) - (job.merchantIncome || 0) - (job.adminGP || 0);
               if (netChange < 0 && (userWallet ?? 0) + netChange < 0) {
                 const shortfall = Math.ceil(Math.abs((userWallet ?? 0) + netChange));
                 return (
@@ -765,10 +768,18 @@ export default function RiderView() {
                         <div className="text-sm font-bold text-yellow-300">
                           💰 เก็บเงินสดจาก{job.type === 'parcel' ? 'ผู้รับ' : 'ลูกค้า'}: ฿{(job.grandTotal || 0).toLocaleString()}
                         </div>
-                        {(job.adminGP || 0) > 0 && (
-                          <div className="text-[11px] text-orange-300">
-                            ⚠️ หลังส่งสำเร็จ −฿{(job.adminGP || 0).toFixed(0)} จะหักจากกระเป๋า (ค่า GP platform)
-                          </div>
+                        {job.type === 'parcel' ? (
+                          (job.riderIncome || 0) > 0 && (
+                            <div className="text-[11px] text-green-300">
+                              ✅ หลังส่งสำเร็จ +฿{(job.riderIncome || 0).toFixed(0)} เข้ากระเป๋า (GP ฿{(job.adminGP || 0).toFixed(0)} รวมหักแล้ว)
+                            </div>
+                          )
+                        ) : (
+                          (job.foodTotal || 0) > 0 && (
+                            <div className="text-[11px] text-orange-300">
+                              ⚠️ หลังส่งสำเร็จ หัก −฿{(job.foodTotal || 0).toFixed(0)} (ยอดอาหาร) รับค่าส่ง +฿{(job.deliveryFee || 0).toFixed(0)}
+                            </div>
+                          )
                         )}
                       </div>
                     )}
@@ -900,7 +911,7 @@ export default function RiderView() {
                       </button>
                     )}
 
-                    {/* ── Step: delivering → delivered ── */}
+                    {/* ── Step: delivering → completed (ข้าม 'delivered' เพื่อให้ order จบทันทีทั้งสองฝั่ง) ── */}
                     {job.status === 'delivering' && (
                       <>
                         {job.paymentMethod === 'cash' && (
@@ -908,10 +919,18 @@ export default function RiderView() {
                             <p className="text-yellow-300 text-sm font-bold mb-0.5">
                               💰 อย่าลืมเก็บเงินสด ฿{(job.grandTotal || 0).toLocaleString()} จาก{job.type === 'parcel' ? 'ผู้รับ' : 'ลูกค้า'}!
                             </p>
-                            {(job.adminGP || 0) > 0 && (
-                              <p className="text-orange-300 text-[11px]">
-                                หลังกดยืนยัน −฿{(job.adminGP || 0).toFixed(0)} หักจากกระเป๋า (ค่า GP)
-                              </p>
+                            {job.type === 'parcel' ? (
+                              (job.riderIncome || 0) > 0 && (
+                                <p className="text-green-300 text-[11px]">
+                                  ✅ หลังกดยืนยัน +฿{(job.riderIncome || 0).toFixed(0)} เข้ากระเป๋า (GP ฿{(job.adminGP || 0).toFixed(0)} รวมหักแล้ว)
+                                </p>
+                              )
+                            ) : (
+                              (job.foodTotal || 0) > 0 && (
+                                <p className="text-orange-300 text-[11px]">
+                                  ⚠️ หลังกดยืนยัน หัก −฿{(job.foodTotal || 0).toFixed(0)} (ยอดอาหาร) รับค่าส่ง +฿{(job.deliveryFee || 0).toFixed(0)}
+                                </p>
+                              )
                             )}
                           </div>
                         )}
@@ -973,9 +992,14 @@ export default function RiderView() {
                         <button
                           disabled={!!proofUploading[job.id]}
                           onClick={async () => {
+                            // Complete directly — settlement + rider release + customer order ends
                             await updateOrderStatus(
-                              job.id, 'delivered', null,
-                              proofPhotos[job.id] ? { deliveryProofUrl: proofPhotos[job.id] } : {},
+                              job.id, 'completed', null,
+                              {
+                                deliveredAt: new Date().toISOString(),
+                                deliveredAtMs: Date.now(),
+                                ...(proofPhotos[job.id] ? { deliveryProofUrl: proofPhotos[job.id] } : {}),
+                              },
                             );
                             setProofPhotos(prev => { const n = { ...prev }; delete n[job.id]; return n; });
                           }}
@@ -1218,7 +1242,7 @@ export default function RiderView() {
                         <div className="font-bold text-sm text-white truncate">
                           {job.restaurantName || 'ส่งพัสดุ'}
                         </div>
-                        <div className="text-xs text-gray-500 mt-0.5">{job.timestamp}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{job.deliveredAt || job.createdAt || job.timestamp}</div>
                         {job.status === 'cancelled' && (
                           <div className="text-xs text-red-400 mt-0.5">
                             ยกเลิก: {job.cancelReason || 'ไม่ระบุเหตุผล'}

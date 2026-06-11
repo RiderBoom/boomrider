@@ -92,7 +92,7 @@ export default function ActivityTab() {
                       <h3 className="font-bold text-gray-900">
                         {order.type === 'parcel' ? '📦 ส่งพัสดุด่วน' : order.restaurantName}
                       </h3>
-                      <p className="text-xs text-gray-400 mt-0.5">{order.id} · {order.timestamp}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{order.id} · {order.createdAt || order.timestamp}</p>
                     </div>
                     <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${s.color}`}>{s.label}</span>
                   </div>
@@ -294,7 +294,7 @@ export default function ActivityTab() {
                     <h3 className="font-bold text-gray-900">
                       {order.type === 'parcel' ? '📦 ส่งพัสดุด่วน' : order.restaurantName}
                     </h3>
-                    <p className="text-xs text-gray-400 mt-0.5">{order.id} · {order.timestamp}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{order.id} · {order.createdAt || order.timestamp}</p>
                     {order.type === 'parcel' && order.dropoff && (
                       <p className="text-xs text-gray-500 mt-0.5">→ {order.dropoff}</p>
                     )}
@@ -346,7 +346,7 @@ export default function ActivityTab() {
                   <h3 className="font-bold text-gray-800">
                     {order.type === 'parcel' ? '📦 ส่งพัสดุด่วน' : order.restaurantName}
                   </h3>
-                  <p className="text-xs text-gray-400">{order.id} · {order.timestamp}</p>
+                  <p className="text-xs text-gray-400">{order.id} · {order.createdAt || order.timestamp}</p>
                   {order.type === 'parcel' && order.dropoff && (
                     <p className="text-xs text-gray-500 mt-0.5">→ {order.dropoff}</p>
                   )}

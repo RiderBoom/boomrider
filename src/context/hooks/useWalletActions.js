@@ -35,6 +35,19 @@ export function useWalletActions(deps) {
     createdAtMs: Date.now(),
   });
 
+  // Local-only update (no Supabase write) — used after RPC already handled DB writes
+  const creditWalletLocal = (userId, amount, desc) => {
+    const entry = _makeEntry(amount, desc);
+    setGlobalWallets(prev => {
+      const cur = prev[userId] || { balance: 0, history: [] };
+      return { ...prev, [userId]: { balance: r2(cur.balance + amount), history: [entry, ...cur.history] } };
+    });
+    if (currentUser?.id === userId || currentUser?.email === userId) {
+      setUserWallet(prev => r2(prev + amount));
+      setWalletAllEntries(prev => [entry, ...prev]);
+    }
+  };
+
   const creditWallet = (userId, amount, desc) => {
     const entry = _makeEntry(amount, desc);
 
@@ -131,5 +144,5 @@ export function useWalletActions(deps) {
     notifySystem('Admin', `ปรับยอด ${amount > 0 ? '+' : ''}฿${amount} ให้ผู้ใช้เรียบร้อย`, 'success');
   };
 
-  return { creditWallet, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet };
+  return { creditWallet, creditWalletLocal, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet };
 }

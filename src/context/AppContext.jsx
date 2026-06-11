@@ -19,7 +19,10 @@ const AppContext = createContext(null);
 const ORDER_STATUS_RANK = { pending:0, preparing:1, ready_to_pickup:2, rider_accepted:3, picking_up:4, delivering:5, delivered:6, completed:7, cancelled:99 };
 const canApplyOrderUpdate = (existing, incoming) => {
   if (!existing) return true;
-  if (incoming.status === 'cancelled') return existing.status !== 'completed';
+  // Never cancel an already-delivered or completed order via realtime/polling
+  if (incoming.status === 'cancelled') {
+    return !['delivered', 'completed'].includes(existing.status);
+  }
   return (ORDER_STATUS_RANK[incoming.status] ?? -1) >= (ORDER_STATUS_RANK[existing.status] ?? -1);
 };
 
@@ -187,7 +190,7 @@ export function AppProvider({ children }) {
   }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Wallet hook ─────────────────────────────────────────────────────────────
-  const { creditWallet, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet } = useWalletActions({
+  const { creditWallet, creditWalletLocal, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet } = useWalletActions({
     currentUser, currentUserRef,
     userProfile, userWallet, pendingRequests,
     setUserWallet, setWalletAllEntries, setGlobalWallets, setPendingRequests,
@@ -219,7 +222,7 @@ export function AppProvider({ children }) {
     setSelectedRestaurant, setActiveTab,
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
-    creditWallet, processTransaction, setUserWallet,
+    creditWallet, creditWalletLocal, processTransaction, setUserWallet,
     seenOrderIdsRef,
     notifySystem, notifyAdmin,
     supabase,
@@ -710,6 +713,32 @@ export function AppProvider({ children }) {
         .order('created_at', { ascending: false })
         .limit(100);
       if (!data?.length) return;
+
+      // Auto-complete 'delivered' orders older than 15 min (customer didn't confirm)
+      // Only the rider who delivered OR admin triggers — prevents every client from firing simultaneously
+      const AUTO_COMPLETE_MS = 15 * 60 * 1000;
+      const _uid   = currentUserRef.current?.id;
+      const _email = currentUserRef.current?.email;
+      data.filter(r => r.status === 'delivered').forEach(r => {
+        const o = r.data;
+        if (!o?.deliveredAtMs) return;
+        if (Date.now() - o.deliveredAtMs < AUTO_COMPLETE_MS) return;
+        const isOrderRider = _uid && o.riderUserId === _uid;
+        const isAdminUser  = !!ADMIN_EMAIL && _email === ADMIN_EMAIL;
+        if (!isOrderRider && !isAdminUser) return;
+        const completed = {
+          ...o,
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+          autoCompleted: true,
+        };
+        supabase.from('orders')
+          .update({ status: 'completed', data: completed })
+          .eq('id', r.id)
+          .then(() => {});
+        supabase.rpc('process_order_settlement', { p_order_id: r.id }).then(() => {});
+      });
+
       setOrders(prev => {
         const incoming = data.map(r => r.data).filter(Boolean);
         const map = new Map(prev.map(o => [o.id, o]));
@@ -764,11 +793,10 @@ export function AppProvider({ children }) {
         : userProfile?.name || 'ลูกค้า',
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     };
-    setChats(prev => {
-      const next = { ...prev, [activeChat.id]: [...(prev[activeChat.id] || []), newMessage] };
-      supabase.from('chats').upsert({ order_id: activeChat.id, messages: next[activeChat.id], updated_at: new Date().toISOString() }).then(() => {});
-      return next;
-    });
+    // Optimistic local update
+    setChats(prev => ({ ...prev, [activeChat.id]: [...(prev[activeChat.id] || []), newMessage] }));
+    // Atomic server-side append — concurrent sends never overwrite each other
+    supabase.rpc('append_chat_message', { p_order_id: activeChat.id, p_message: newMessage }).then(() => {});
   };
 
   const deleteChat = (chatId) => {
@@ -901,10 +929,46 @@ export function AppProvider({ children }) {
   const handleDeleteAddress = (id) => setUserAddresses(prev => prev.filter(a => a.id !== id));
 
   // ── Rider location update ─────────────────────────────────────────────────
+  const _lastGpsWriteRef = useRef(0); // throttle: write to Supabase at most once per 5s
+
   const updateRiderWorkingLocation = useCallback((riderId, location) => {
     if (!riderId || !location) return;
-    setRiders(prev => prev.map(r => r.id === riderId ? { ...r, location } : r));
-  }, []);
+
+    // 1. Update local riders state immediately
+    setRiders(prev => prev.map(r =>
+      r.id === riderId
+        ? { ...r, location, current_lat: location.lat, current_lng: location.lng }
+        : r,
+    ));
+
+    const now = Date.now();
+    if (now - _lastGpsWriteRef.current < 5000) return; // throttle
+    _lastGpsWriteRef.current = now;
+
+    // 2. Persist GPS to riders table (columns added by migration 001)
+    supabase.from('riders').update({
+      current_lat: location.lat,
+      current_lng: location.lng,
+      last_location_at: new Date().toISOString(),
+    }).eq('id', riderId).then(() => {});
+
+    // 3. Update riderLocation on any active order so customers see real-time movement
+    setOrders(prev => {
+      const activeStatuses = ['rider_accepted', 'picking_up', 'delivering'];
+      let changed = false;
+      const next = prev.map(o => {
+        if (!activeStatuses.includes(o.status) || o.riderId !== riderId) return o;
+        changed = true;
+        const updated = { ...o, riderLocation: location };
+        supabase.from('orders')
+          .update({ data: updated })
+          .eq('id', o.id)
+          .then(() => {});
+        return updated;
+      });
+      return changed ? next : prev;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Manual role/pending sync from Supabase ───────────────────────────────
   const syncRoles = useCallback(async () => {

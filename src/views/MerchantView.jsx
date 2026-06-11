@@ -15,7 +15,7 @@ export default function MerchantView() {
   const {
     activeRole, setActiveRole,
     merchantTab, setMerchantTab,
-    orders, restaurants, menuItems,
+    orders, restaurants, riders, menuItems,
     userProfile, currentUser,
     appConfig,
     isEditingMenu, setIsEditingMenu,
@@ -288,6 +288,7 @@ export default function MerchantView() {
                 <OrderCard
                   key={order.id}
                   order={order}
+                  riders={riders}
                   updateOrderStatus={updateOrderStatus}
                   onCancel={initiateCancelOrder}
                   highlight="orange"
@@ -312,6 +313,7 @@ export default function MerchantView() {
                 <OrderCard
                   key={order.id}
                   order={order}
+                  riders={riders}
                   updateOrderStatus={updateOrderStatus}
                   onCancel={initiateCancelOrder}
                   highlight="blue"
@@ -569,7 +571,7 @@ export default function MerchantView() {
         const done = myOrders.filter(o => ['delivered', 'completed'].includes(o.status));
         const cancelled = myOrders.filter(o => o.status === 'cancelled');
         const todayStr = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`; })();
-        const todayDone = done.filter(o => o.timestamp && o.timestamp.startsWith(todayStr));
+        const todayDone = done.filter(o => (o.createdAt || o.timestamp || '').startsWith(todayStr));
         const todayRevenue = todayDone.reduce((s, o) => s + (o.merchantIncome || 0), 0);
         const allRevenue = done.reduce((s, o) => s + (o.merchantIncome || 0), 0);
         const avgOrder = done.length > 0 ? allRevenue / done.length : 0;
@@ -588,8 +590,9 @@ export default function MerchantView() {
         // Order count by hour
         const hourCounts = Array(24).fill(0);
         myOrders.forEach(o => {
-          if (!o.timestamp) return;
-          const parts = o.timestamp.split(' ');
+          const ts = o.createdAt || o.timestamp;
+          if (!ts) return;
+          const parts = ts.split(' ');
           if (parts[1]) { const h = parseInt(parts[1].split(':')[0]); if (!isNaN(h)) hourCounts[h]++; }
         });
         const peakHours = hourCounts.map((cnt, h) => ({ h, cnt })).filter(x => x.cnt > 0);
@@ -766,8 +769,7 @@ export default function MerchantView() {
 }
 
 // ── OrderCard component ──────────────────────────────────────────────────────
-function OrderCard({ order, updateOrderStatus, onCancel, highlight }) {
-  const { userProfile, riders } = useApp();
+function OrderCard({ order, riders, updateOrderStatus, onCancel, highlight }) {
   const borderColor = highlight === 'orange' ? 'border-orange-400' : 'border-blue-400';
   const badgeBg = {
     pending:         'bg-yellow-100 text-yellow-800',

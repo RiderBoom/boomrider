@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   MapPin, ArrowDownCircle, Wallet, MessageSquare,
   ChevronRight, Repeat, LogOut, Settings, Save,
@@ -46,6 +46,25 @@ export default function ProfileTab() {
   const [userPinSaving, setUserPinSaving] = useState(false);
   const [merchantSubmitting, setMerchantSubmitting] = useState(false);
   const [riderSubmitting, setRiderSubmitting] = useState(false);
+
+  // Auto-GPS: pull current location when entering pin_location subview
+  useEffect(() => {
+    if (profileSubView !== 'pin_location' || !navigator.geolocation) return;
+    notifySystem('กำลังดึง GPS', 'กำลังหาตำแหน่งของคุณ...', 'info');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setUserPinLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        notifySystem('สำเร็จ', 'พบตำแหน่ง GPS ของคุณแล้ว', 'success');
+      },
+      () => notifySystem('ไม่สามารถดึง GPS', 'กรุณาแตะแผนที่เพื่อเลือกตำแหน่ง', 'error'),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }, [profileSubView]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-GPS: pull current location when adding a new address
+  useEffect(() => {
+    if (newAddrMode) getCurrentLocationForForm();
+  }, [newAddrMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const MERCHANT_FORM_INIT = { shopName: '', category: 'Street Food', realName: '', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, shopImage: null, location: null };
   const RIDER_FORM_INIT    = { realName: '', vehicle: 'Motorcycle', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, profileImage: null };

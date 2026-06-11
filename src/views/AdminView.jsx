@@ -171,11 +171,9 @@ export default function AdminView() {
 
   const handleClearTransactions = async () => {
     if (!window.confirm('ล้างประวัติธุรกรรมทั้งระบบใช่หรือไม่?')) return;
-    const { data: wallets } = await supabase.from('wallets').select('user_id, balance');
+    const { data: wallets } = await supabase.from('wallets').select('user_id');
     if (wallets?.length) {
-      await Promise.all(wallets.map(w =>
-        supabase.from('wallets').update({ history: [] }).eq('user_id', w.user_id),
-      ));
+      await Promise.all(wallets.map(w => supabase.rpc('clear_wallet_history', { p_user_id: w.user_id })));
     }
     setTxList([]);
     setTxRefreshKey(k => k + 1);
@@ -201,7 +199,7 @@ export default function AdminView() {
 
   const handlePurge = async (isResetAll = false) => {
     const opts = isResetAll
-      ? { orders: true, walletEntries: true, pendingRequests: true, restaurants: true, riders: true, wallets: true }
+      ? { orders: true, walletEntries: true, pendingRequests: true, restaurants: true, riders: true, wallets: true, users: true }
       : purgeOptions;
     setPurgeLoading(true);
     setPurgeResult(null);
@@ -215,8 +213,12 @@ export default function AdminView() {
         tasks.push(supabase.from('wallets').delete().neq('user_id', ''));
         setGlobalWallets({});
       } else if (opts.walletEntries) {
-        const { data: wals } = await supabase.from('wallets').select('user_id, balance');
-        if (wals?.length) tasks.push(...wals.map(w => supabase.from('wallets').update({ history: [] }).eq('user_id', w.user_id)));
+        const { data: wals } = await supabase.from('wallets').select('user_id');
+        if (wals?.length) tasks.push(...wals.map(w => supabase.rpc('clear_wallet_history', { p_user_id: w.user_id })));
+      }
+      if (opts.users) {
+        tasks.push(supabase.from('profiles').delete().neq('id', ''));
+        tasks.push(supabase.from('user_roles').delete().neq('user_id', ''));
       }
       await Promise.all(tasks);
       setPurgeResult({ ok: true, summary: 'เสร็จสิ้น' });
@@ -258,7 +260,7 @@ export default function AdminView() {
 
   // Today's date string — must match formatDateTime() output: DD/MM/YYYY
   const todayStr = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`; })();
-  const todayOrders = orders.filter(o => o.timestamp && o.timestamp.startsWith(todayStr));
+  const todayOrders = orders.filter(o => (o.createdAt || o.timestamp || '').startsWith(todayStr));
   const todayCompletedOrders = todayOrders.filter(o => ['completed', 'delivered'].includes(o.status));
   const todayGMV  = todayCompletedOrders.reduce((s, o) => s + (o.grandTotal || 0), 0);
   const todayGP   = todayCompletedOrders.reduce((s, o) => s + (o.adminGP || 0), 0);
@@ -321,7 +323,7 @@ export default function AdminView() {
 
   const handleClearUserWalletHistory = async (userId, userName) => {
     if (!window.confirm(`ล้างประวัติกระเป๋าของ ${userName} ใช่หรือไม่?\n(รายการจะถูกซ่อน — ยอดเงินคงเดิม)`)) return;
-    await supabase.from('wallets').update({ history: [] }).eq('user_id', userId);
+    await supabase.rpc('clear_wallet_history', { p_user_id: userId });
     setUserWalletEntries(prev => ({ ...prev, [userId]: [] }));
     notifySystem('Admin', `ล้างประวัติกระเป๋าของ ${userName} แล้ว`, 'success');
   };
@@ -550,7 +552,7 @@ export default function AdminView() {
                     const restaurant = restaurants.find(r => r.id === order.restaurantId);
                     return (
                       <tr key={order.id} className="hover:bg-gray-50">
-                        <td className="p-4"><div className="font-mono font-bold text-gray-700 text-xs">{order.id}</div><div className="text-xs text-gray-400">{order.timestamp}</div></td>
+                        <td className="p-4"><div className="font-mono font-bold text-gray-700 text-xs">{order.id}</div><div className="text-xs text-gray-400">{order.createdAt || order.timestamp}</div></td>
                         <td className="p-4"><div className="font-bold text-sm">{order.customerName}</div><div className="text-xs text-gray-400 flex items-center mt-0.5"><Phone size={10} className="mr-1" /> {order.customerPhone || '-'}</div></td>
                         <td className="p-4">
                           {order.type === 'food'
@@ -979,19 +981,11 @@ export default function AdminView() {
                     {/* Reset password panel */}
                     {resetPwdUserId === user.id && (
                       <div className="mt-3 bg-purple-50 p-3 rounded-lg border border-purple-200 animate-fade-in">
-                        <p className="text-xs font-bold text-purple-700 mb-2">รีเซ็ตรหัสผ่านของ {user.name}</p>
+                        <p className="text-xs font-bold text-purple-700 mb-1">รีเซ็ตรหัสผ่านของ {user.name}</p>
+                        <p className="text-xs text-gray-500 mb-3">ระบบจะส่งลิงก์รีเซ็ตรหัสผ่านไปยัง <strong>{user.email}</strong> ทางอีเมล</p>
                         <div className="flex gap-2">
-                          <input
-                            type="password"
-                            placeholder="รหัสผ่านใหม่ (6 ตัวขึ้นไป)"
-                            value={resetPwdValue}
-                            onChange={e => setResetPwdValue(e.target.value)}
-                            className="flex-1 border p-2 rounded text-sm"
-                          />
-                        </div>
-                        <div className="flex gap-2 mt-2">
                           <button onClick={() => { setResetPwdUserId(null); setResetPwdValue(''); }} className="flex-1 bg-gray-200 py-2 rounded text-sm">ยกเลิก</button>
-                          <button onClick={handleResetPassword} className="flex-1 bg-purple-600 text-white py-2 rounded text-sm font-bold">ยืนยัน</button>
+                          <button onClick={handleResetPassword} className="flex-1 bg-purple-600 text-white py-2 rounded text-sm font-bold">ส่งอีเมลรีเซ็ต</button>
                         </div>
                       </div>
                     )}

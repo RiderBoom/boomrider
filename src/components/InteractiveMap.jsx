@@ -236,6 +236,32 @@ export default function InteractiveMap({
     mapRef.current.panTo([centerOverride.lat, centerOverride.lng], { animate: true });
   }, [centerOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Non-parcel select: sync pin when userLocation prop changes (e.g., auto-GPS from parent) ──
+  useEffect(() => {
+    if (!mapRef.current || !leafletRef.current || mode !== 'select' || isParcel) return;
+    if (!userLocation) return;
+    const L   = leafletRef.current;
+    const map = mapRef.current;
+    const latlng = [userLocation.lat, userLocation.lng];
+    if (markersRef.current.pin) {
+      markersRef.current.pin.setLatLng(latlng);
+    } else {
+      const m = L.marker(latlng, {
+        icon:      makeIcon(L, '#22c55e', '📍'),
+        draggable: true,
+      }).addTo(map);
+      m.on('dragend', (e) => {
+        const p      = e.target.getLatLng();
+        const newLoc = { lat: p.lat, lng: p.lng };
+        setPinned(newLoc);
+        onLocationSelectRef.current?.(newLoc);
+      });
+      markersRef.current.pin = m;
+    }
+    setPinned(userLocation);
+    map.panTo(latlng, { animate: true });
+  }, [userLocation, isParcel, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Parcel: sync active pin + secondary static marker when target/locations change ──
   useEffect(() => {
     if (!mapRef.current || !leafletRef.current || mode !== 'select' || !isParcel) return;

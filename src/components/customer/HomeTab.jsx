@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Utensils, Package, Search, ArrowLeft, Star, Clock,
   MapPin, Navigation, Plus, Minus, X, Tag, CheckCircle,
@@ -28,6 +28,12 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
     selectedRestaurant, setSelectedRestaurant,
     isDataLoading,
   } = useApp();
+
+  // Auto-GPS: pull current pickup location when parcel tab opens (only if not already set)
+  useEffect(() => {
+    if (serviceType !== 'parcel' || parcelDetails.pickupLocation) return;
+    getCurrentLocationForParcel('pickup');
+  }, [serviceType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [selectedCategory, setSelectedCategory] = useState('ทั้งหมด');
   const [orderNotes, setOrderNotes]   = useState('');
