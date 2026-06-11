@@ -66,10 +66,16 @@ export function useWalletActions(deps) {
     const prev = queue[userId] || Promise.resolve();
     queue[userId] = prev.then(async () => {
       try {
-        const { data: current } = await supabase.from('wallets').select('balance, history').eq('user_id', userId).single();
+        // Resolve email → UUID (admin constant is email, but wallets table uses auth UUID)
+        let dbKey = userId;
+        if (userId.includes('@')) {
+          const { data: p } = await supabase.from('profiles').select('id').eq('email', userId).maybeSingle();
+          if (p?.id) dbKey = p.id;
+        }
+        const { data: current } = await supabase.from('wallets').select('balance, history').eq('user_id', dbKey).single();
         const newBalance = r2((current?.balance || 0) + amount);
         const newHistory = [entry, ...(current?.history || [])].slice(0, 500);
-        await supabase.from('wallets').upsert({ user_id: userId, balance: newBalance, history: newHistory });
+        await supabase.from('wallets').upsert({ user_id: dbKey, balance: newBalance, history: newHistory });
       } catch (e) {
         console.error('creditWallet sync error', e);
       }
