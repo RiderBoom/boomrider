@@ -61,21 +61,18 @@ export function useWalletActions(deps) {
       setWalletAllEntries(prev => [entry, ...prev]);
     }
 
-    // Serial queue per userId — prevents concurrent writes from corrupting balance
+    // Serial queue per userId — prevents concurrent writes corrupting balance
+    // Uses js_credit_wallet RPC (SECURITY DEFINER) to bypass RLS and resolve
+    // email → UUID server-side (needed for ADMIN_EMAIL constant → admin UUID)
     const queue = walletQueues.current;
     const prev = queue[userId] || Promise.resolve();
     queue[userId] = prev.then(async () => {
       try {
-        // Resolve email → UUID (admin constant is email, but wallets table uses auth UUID)
-        let dbKey = userId;
-        if (userId.includes('@')) {
-          const { data: p } = await supabase.from('profiles').select('id').eq('email', userId).maybeSingle();
-          if (p?.id) dbKey = p.id;
-        }
-        const { data: current } = await supabase.from('wallets').select('balance, history').eq('user_id', dbKey).single();
-        const newBalance = r2((current?.balance || 0) + amount);
-        const newHistory = [entry, ...(current?.history || [])].slice(0, 500);
-        await supabase.from('wallets').upsert({ user_id: dbKey, balance: newBalance, history: newHistory });
+        await supabase.rpc('js_credit_wallet', {
+          p_user_id: userId,
+          p_amount:  amount,
+          p_entry:   entry,
+        });
       } catch (e) {
         console.error('creditWallet sync error', e);
       }
