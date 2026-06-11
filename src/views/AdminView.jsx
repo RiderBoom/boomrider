@@ -113,6 +113,11 @@ export default function AdminView() {
   const [txLoading, setTxLoading] = useState(false);
   const [txRefreshKey, setTxRefreshKey] = useState(0);
 
+  // Wallet overview state (dashboard tab)
+  const [walletRows, setWalletRows] = useState([]);       // [{ uid, name, roles, balance, history }]
+  const [walletExpanded, setWalletExpanded] = useState(null); // uid of expanded row
+  const [walletOverviewLoading, setWalletOverviewLoading] = useState(false);
+
   const loadAllUsers = async () => {
     const [profilesResult, walletsResult, rolesResult] = await Promise.all([
       supabase.from('profiles').select('*'),
@@ -137,8 +142,36 @@ export default function AdminView() {
     })));
   };
 
+  const loadWalletOverview = async () => {
+    setWalletOverviewLoading(true);
+    const [walletsResult, profilesResult, rolesResult] = await Promise.all([
+      supabase.from('wallets').select('user_id, balance, history'),
+      supabase.from('profiles').select('id, name, email'),
+      supabase.from('user_roles').select('user_id, role'),
+    ]);
+    const nameMap = {};
+    profilesResult.data?.forEach(p => { nameMap[p.id] = { name: p.name || p.email || p.id.slice(0,8), email: p.email }; });
+    const rolesMap = {};
+    rolesResult.data?.forEach(r => {
+      if (!rolesMap[r.user_id]) rolesMap[r.user_id] = [];
+      rolesMap[r.user_id].push(r.role);
+    });
+    const rows = (walletsResult.data || []).map(w => ({
+      uid:     w.user_id,
+      name:    nameMap[w.user_id]?.name  || w.user_id.slice(0, 8),
+      email:   nameMap[w.user_id]?.email || '',
+      roles:   rolesMap[w.user_id]       || ['customer'],
+      balance: w.balance || 0,
+      history: (w.history || []).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)),
+    }));
+    rows.sort((a, b) => b.balance - a.balance);
+    setWalletRows(rows);
+    setWalletOverviewLoading(false);
+  };
+
   useEffect(() => {
     if (adminTab === 'users') loadAllUsers();
+    if (adminTab === 'dashboard') loadWalletOverview();
     if (adminTab === 'approvals') {
       supabase.from('pending_requests').select('id, data').then(({ data }) => {
         if (data) setPendingRequests(data.map(r => r.data));
@@ -666,57 +699,129 @@ export default function AdminView() {
             </div>
           </div>
 
-          {/* Wallet balances */}
-          <div className="bg-white p-6 rounded-xl shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-lg flex items-center gap-2 text-gray-700">
-                <Wallet size={20} className="text-purple-600" /> ยอด Wallet ทั้งระบบ
+          {/* ── Wallet ทั้งระบบ ──────────────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b bg-purple-50 flex items-center justify-between">
+              <h2 className="font-bold text-gray-700 flex items-center gap-2">
+                <Wallet size={18} className="text-purple-600" /> Wallet ทั้งระบบ
               </h2>
+              <div className="flex items-center gap-3">
+                {walletRows.length > 0 && (
+                  <span className="text-xs text-gray-400">{walletRows.length} กระเป๋า · รวม ฿{walletRows.reduce((s,r)=>s+r.balance,0).toLocaleString('th-TH',{minimumFractionDigits:2})}</span>
+                )}
+                <button onClick={loadWalletOverview} className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-lg font-bold hover:bg-purple-200">
+                  รีเฟรช
+                </button>
+              </div>
             </div>
-            {(() => {
-              const entries = Object.entries(globalWallets);
-              const total = entries.reduce((s, [, w]) => s + (w.balance || 0), 0);
-              const sorted = [...entries].sort(([, a], [, b]) => (b.balance || 0) - (a.balance || 0));
 
-              // map uid → role label สำหรับ admin
-              const roleLabel = (uid) => {
-                if (uid === ADMIN_EMAIL) return { label: 'Admin', color: 'bg-red-100 text-red-700' };
-                return null;
-              };
-
-              return (
-                <>
-                  <div className="flex items-baseline gap-2 mb-4">
-                    <span className="text-3xl font-bold text-purple-600">฿{total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    <span className="text-gray-400 text-sm">{entries.length} กระเป๋า</span>
-                  </div>
-                  {sorted.length === 0 ? (
-                    <p className="text-gray-400 text-sm">ไม่มีข้อมูล Wallet</p>
-                  ) : (
-                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                      {sorted.map(([uid, w]) => {
-                        const rl = roleLabel(uid);
-                        const bal = typeof w.balance === 'number' ? w.balance : 0;
-                        return (
-                          <div key={uid} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {rl && (
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${rl.color} shrink-0`}>{rl.label}</span>
-                              )}
-                              <span className="text-xs text-gray-500 font-mono truncate">{uid.slice(0, 8)}…</span>
-                            </div>
-                            <span className={`text-sm font-bold shrink-0 ml-2 ${bal < 0 ? 'text-red-600' : bal > 0 ? 'text-green-700' : 'text-gray-400'}`}>
-                              ฿{bal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
+            {walletOverviewLoading ? (
+              <div className="p-8 text-center text-gray-400 text-sm animate-pulse">กำลังโหลด wallet...</div>
+            ) : walletRows.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-sm">ยังไม่มีข้อมูล wallet</div>
+            ) : (
+              <div className="divide-y max-h-[480px] overflow-y-auto">
+                {walletRows.map(row => {
+                  const isExpanded = walletExpanded === row.uid;
+                  const roleCls = r => r === 'admin' ? 'bg-red-100 text-red-700' : r === 'merchant' ? 'bg-orange-100 text-orange-700' : r === 'rider' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500';
+                  const gpEntries = row.history.filter(e => (e.desc||'').toLowerCase().includes('gp'));
+                  const totalGP   = gpEntries.reduce((s,e)=>s+(e.amount||0), 0);
+                  return (
+                    <div key={row.uid}>
+                      <div
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setWalletExpanded(isExpanded ? null : row.uid)}
+                      >
+                        {/* avatar */}
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                          {(row.name||'?')[0].toUpperCase()}
+                        </div>
+                        {/* name + roles */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-sm text-gray-800 truncate">{row.name}</span>
+                            {row.roles.map(r => (
+                              <span key={r} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${roleCls(r)}`}>{r}</span>
+                            ))}
                           </div>
-                        );
-                      })}
+                          <div className="text-[11px] text-gray-400 truncate">{row.email}</div>
+                        </div>
+                        {/* GP badge */}
+                        {totalGP > 0 && (
+                          <div className="text-[11px] text-purple-600 font-bold bg-purple-50 px-2 py-0.5 rounded shrink-0">
+                            GP +฿{totalGP.toLocaleString()}
+                          </div>
+                        )}
+                        {/* balance */}
+                        <span className={`text-sm font-bold shrink-0 ml-1 ${row.balance < 0 ? 'text-red-600' : row.balance > 0 ? 'text-green-700' : 'text-gray-400'}`}>
+                          ฿{row.balance.toLocaleString('th-TH',{minimumFractionDigits:2})}
+                        </span>
+                        <span className="text-gray-300 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                      </div>
+
+                      {/* Expanded history */}
+                      {isExpanded && (
+                        <div className="bg-gray-50 border-t px-4 py-3 space-y-1.5 max-h-60 overflow-y-auto">
+                          {row.history.length === 0 ? (
+                            <p className="text-xs text-gray-400 text-center py-2">ไม่มีประวัติธุรกรรม</p>
+                          ) : (
+                            row.history.slice(0, 50).map((e, i) => (
+                              <div key={e.id || i} className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${(e.amount||0)>=0?'bg-green-500':'bg-red-400'}`} />
+                                  <span className="text-gray-600 truncate">{e.desc || '-'}</span>
+                                  {e.refOrderId && (
+                                    <span className="text-gray-300 shrink-0 font-mono">#{e.refOrderId.slice(-6)}</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 ml-2">
+                                  <span className={`font-bold ${(e.amount||0)>=0?'text-green-600':'text-red-500'}`}>
+                                    {(e.amount||0)>=0?'+':''}{(e.amount||0).toLocaleString('th-TH',{minimumFractionDigits:2})}
+                                  </span>
+                                  <span className="text-gray-300 text-[10px]">{(e.date||'').slice(0,16)}</span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </>
-              );
-            })()}
+                  );
+                })}
+              </div>
+            )}
           </div>
+
+          {/* ── GP เข้า Admin ────────────────────────────────────────────── */}
+          {(() => {
+            const gpHistory = walletHistory.filter(e => (e.desc||'').toLowerCase().includes('gp'));
+            const totalGP   = gpHistory.reduce((s,e) => s + (e.amount||0), 0);
+            if (gpHistory.length === 0) return null;
+            return (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b bg-green-50 flex items-center justify-between">
+                  <h2 className="font-bold text-gray-700 flex items-center gap-2">
+                    <TrendingUp size={18} className="text-green-600" /> GP เข้า Admin
+                  </h2>
+                  <span className="text-lg font-bold text-green-600">+฿{totalGP.toLocaleString('th-TH',{minimumFractionDigits:2})}</span>
+                </div>
+                <div className="divide-y max-h-64 overflow-y-auto">
+                  {gpHistory.slice(0,100).map((e, i) => (
+                    <div key={e.id||i} className="flex items-center gap-3 px-4 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-700 truncate">{e.desc}</div>
+                        <div className="text-[11px] text-gray-400">
+                          {e.date || ''}
+                          {e.refOrderId && <span className="ml-2 font-mono text-gray-300">#{e.refOrderId.slice(-6)}</span>}
+                        </div>
+                      </div>
+                      <span className="text-sm font-bold text-green-600 shrink-0">+฿{(e.amount||0).toLocaleString('th-TH',{minimumFractionDigits:2})}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
