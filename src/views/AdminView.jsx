@@ -200,7 +200,7 @@ export default function AdminView() {
       setTxLoading(false);
     };
     loadLedger();
-  }, [adminTab, txRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [adminTab, txRefreshKey]);
 
   const handleClearTransactions = async () => {
     if (!window.confirm('ล้างประวัติธุรกรรมทั้งระบบใช่หรือไม่?')) return;

@@ -260,7 +260,7 @@ export default function InteractiveMap({
     }
     setPinned(userLocation);
     map.panTo(latlng, { animate: true });
-  }, [userLocation, isParcel, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userLocation, isParcel, mode]);
 
   // ── Parcel: sync active pin + secondary static marker when target/locations change ──
   useEffect(() => {
@@ -316,7 +316,7 @@ export default function InteractiveMap({
       markersRef.current.secondary.remove();
       markersRef.current.secondary = null;
     }
-  }, [activeParcelTarget, shopLocation, userLocation, isParcel, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeParcelTarget, shopLocation, userLocation, isParcel, mode]);
 
   // ── GPS ──────────────────────────────────────────────────────────────────
   const useGPS = () => {
