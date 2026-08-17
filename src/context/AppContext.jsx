@@ -750,7 +750,13 @@ export function AppProvider({ children }) {
           .update({ status: 'completed', data: completed })
           .eq('id', r.id)
           .then(() => {});
-        supabase.rpc('process_order_settlement', { p_order_id: r.id }).then(() => {});
+        const gpFoodRate  = (appConfig.gpFood ?? 30) / 100;
+        const gpDelivRate = (appConfig.gpDelivery ?? 15) / 100;
+        supabase.rpc('process_order_settlement', {
+          p_order_id: r.id,
+          p_gp_food_rate: gpFoodRate,
+          p_gp_delivery_rate: gpDelivRate
+        }).then(() => {});
       });
 
       setOrders(prev => {

@@ -32,19 +32,21 @@ export function useOrderActions(deps) {
 
   // Returns correct settlement split for both food and parcel orders
   const _settlementAmounts = (order) => {
-    const gpRate      = appConfig.gpPercent ?? 0.1;
+    const gpFoodRate  = (appConfig.gpFood ?? 30) / 100;
+    const gpDelivRate = (appConfig.gpDelivery ?? 15) / 100;
     const foodTotal   = r2(order.foodTotal   || 0);
     const deliveryFee = r2(order.deliveryFee || 0);
+
     if (order.type === 'parcel') {
-      const adminGP     = r2(deliveryFee * gpRate);
+      const adminGP     = r2(deliveryFee * gpDelivRate);
       const riderIncome = r2(deliveryFee - adminGP);
       return { foodTotal: 0, deliveryFee, gpAmount: adminGP, merchantIncome: 0, riderIncome };
     }
     return {
       foodTotal,
       deliveryFee,
-      gpAmount:       r2(foodTotal * gpRate),
-      merchantIncome: r2(foodTotal * (1 - gpRate)),
+      gpAmount:       r2(foodTotal * gpFoodRate),
+      merchantIncome: r2(foodTotal * (1 - gpFoodRate)),
       riderIncome:    deliveryFee,
     };
   };
@@ -149,7 +151,7 @@ export function useOrderActions(deps) {
       receiverName: parcelDetails.receiverName,
       receiverPhone: parcelDetails.receiverPhone,
       deliveryFee: grandTotal,
-      riderIncome: r2(grandTotal * (1 - (appConfig.gpPercent ?? 0.1))),
+      riderIncome: r2(grandTotal * (1 - ((appConfig.gpDelivery ?? 15) / 100))),
       grandTotal,
       paymentMethod,
       createdAt: formatDateTime(),
@@ -255,8 +257,15 @@ export function useOrderActions(deps) {
       const riderUid     = order.riderUserId || riders.find(r => r.id === order.riderId)?.userId;
       const shopOwnerUid = order.restaurantOwnerId || restaurants.find(r => r.id === order.restaurantId)?.ownerId;
 
+      const gpFoodRate  = (appConfig.gpFood ?? 30) / 100;
+      const gpDelivRate = (appConfig.gpDelivery ?? 15) / 100;
+
       const { data: rpcResult, error: rpcError } = await supabase
-        .rpc('process_order_settlement', { p_order_id: orderId });
+        .rpc('process_order_settlement', {
+          p_order_id: orderId,
+          p_gp_food_rate: gpFoodRate,
+          p_gp_delivery_rate: gpDelivRate
+        });
 
       if (rpcError || !rpcResult?.ok) {
         // Fallback: JS-side wallet credits (keeps working if RPC unavailable)
