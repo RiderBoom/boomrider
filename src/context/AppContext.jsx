@@ -127,8 +127,10 @@ export function AppProvider({ children }) {
   // --- Refs ---
   const restaurantsRef = React.useRef(INITIAL_RESTAURANTS);
   const currentUserRef = React.useRef(null);
+  const ordersRef = React.useRef([]);
   useEffect(() => { restaurantsRef.current = restaurants; }, [restaurants]);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { ordersRef.current = orders; }, [orders]);
 
   const seenOrderIdsRef         = React.useRef(new Set());
   const placingOrderRef         = React.useRef(false);
@@ -715,70 +717,60 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Polling fallback for active orders (every 4s) ──────────────────────
+  // ── Local Auto-complete for Delivered Orders (every 30s) ───────────────
   useEffect(() => {
     if (!isLoggedIn) return;
-    const poll = setInterval(async () => {
-      const activeStatuses = ['pending','preparing','ready_to_pickup','rider_accepted','picking_up','delivering','delivered'];
-      const { data } = await supabase
-        .from('orders')
-        .select('id, status, data')
-        .in('status', activeStatuses)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (!data?.length) return;
-
+    const interval = setInterval(() => {
       // Auto-complete 'delivered' orders older than 15 min (customer didn't confirm)
       // Only the rider who delivered OR admin triggers — prevents every client from firing simultaneously
       const AUTO_COMPLETE_MS = 15 * 60 * 1000;
       const _uid   = currentUserRef.current?.id;
       const _email = currentUserRef.current?.email;
-      data.filter(r => r.status === 'delivered').forEach(r => {
-        const o = r.data;
-        if (!o?.deliveredAtMs) return;
+      const currentOrders = ordersRef.current;
+
+      let hasChanges = false;
+      const completedIds = new Set();
+      const updatedOrdersMap = new Map();
+
+      currentOrders.forEach(o => {
+        if (o.status !== 'delivered' || !o.deliveredAtMs) return;
         if (Date.now() - o.deliveredAtMs < AUTO_COMPLETE_MS) return;
+
         const isOrderRider = _uid && o.riderUserId === _uid;
         const isAdminUser  = !!ADMIN_EMAIL && _email === ADMIN_EMAIL;
         if (!isOrderRider && !isAdminUser) return;
+
+        hasChanges = true;
         const completed = {
           ...o,
           status: 'completed',
           completedAt: new Date().toISOString(),
           autoCompleted: true,
         };
+
+        completedIds.add(o.id);
+        updatedOrdersMap.set(o.id, completed);
+
         supabase.from('orders')
           .update({ status: 'completed', data: completed })
-          .eq('id', r.id)
+          .eq('id', o.id)
           .then(() => {});
+
         const gpFoodRate  = (appConfig.gpFood ?? 30) / 100;
         const gpDelivRate = (appConfig.gpDelivery ?? 15) / 100;
         supabase.rpc('process_order_settlement', {
-          p_order_id: r.id,
+          p_order_id: o.id,
           p_gp_food_rate: gpFoodRate,
           p_gp_delivery_rate: gpDelivRate
         }).then(() => {});
       });
 
-      setOrders(prev => {
-        const incoming = data.map(r => r.data).filter(Boolean);
-        const map = new Map(prev.map(o => [o.id, o]));
-        let changed = false;
-        incoming.forEach(o => {
-          const existing = map.get(o.id);
-          if (canApplyOrderUpdate(existing, o)) {
-            const rank    = ORDER_STATUS_RANK[o.status] ?? -1;
-            const oldRank = ORDER_STATUS_RANK[existing?.status] ?? -1;
-            if (rank > oldRank || JSON.stringify(existing) !== JSON.stringify(o)) {
-              map.set(o.id, o);
-              changed = true;
-            }
-          }
-        });
-        return changed ? Array.from(map.values()) : prev;
-      });
-    }, 4000);
-    return () => clearInterval(poll);
-  }, [isLoggedIn]);
+      if (hasChanges) {
+        setOrders(prevOrders => prevOrders.map(o => completedIds.has(o.id) ? updatedOrdersMap.get(o.id) : o));
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, appConfig]);
 
   // ── Update Parcel Estimate ───────────────────────────────────────────────
   useEffect(() => {
