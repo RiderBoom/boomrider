@@ -289,7 +289,10 @@ export default function MerchantView() {
                   key={order.id}
                   order={order}
                   riders={riders}
-                  updateOrderStatus={updateOrderStatus}
+                  updateOrderStatus={(id, status) => {
+                    updateOrderStatus(id, status);
+                    if (status === 'preparing') setMerchantTab('active');
+                  }}
                   onCancel={initiateCancelOrder}
                   highlight="orange"
                 />

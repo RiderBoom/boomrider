@@ -619,7 +619,7 @@ export function AppProvider({ children }) {
 
     // ── Merchant: new pending orders ──────────────────────────────────────
     if (myShop) {
-      const newMerchantOrders = orders.filter(o => o.status === 'pending' && o.restaurantId === myShop.id && !prevMap.has(o.id));
+      const newMerchantOrders = orders.filter(o => o.status === 'pending' && o.restaurantId === myShop.id && (!prevMap.has(o.id) || prevMap.get(o.id).status !== 'pending'));
       if (newMerchantOrders.length > 0) {
         setMerchantTab('orders');
         playOrderNotificationSound();
