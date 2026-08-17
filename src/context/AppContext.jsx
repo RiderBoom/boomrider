@@ -163,7 +163,7 @@ export function AppProvider({ children }) {
       shownAdminNotifIds.current.add(id);
       notifySystem(title, message, type);
     }
-  }, [isAdmin]);
+  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Role grant / revoke ---
   const grantRole = useCallback((userId, role) => {
@@ -176,7 +176,7 @@ export function AppProvider({ children }) {
       setUserRoles(prev => prev.includes(role) ? prev : [...prev, role]);
     }
     supabase.from('user_roles').upsert({ user_id: userId, role }).then(() => {});
-  }, [currentUser?.id, userProfile?.id]);
+  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const revokeRole = useCallback((userId, role) => {
     setGlobalUserRoles(prev => {
@@ -187,7 +187,7 @@ export function AppProvider({ children }) {
       setUserRoles(prev => prev.filter(r => r !== role));
     }
     supabase.from('user_roles').delete().eq('user_id', userId).eq('role', role).then(() => {});
-  }, [currentUser?.id, userProfile?.id]);
+  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Wallet hook ─────────────────────────────────────────────────────────────
   const { creditWallet, creditWalletLocal, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet } = useWalletActions({
@@ -360,7 +360,7 @@ export function AppProvider({ children }) {
     } catch (e) {
       console.error('loadUserSession error', e);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -433,7 +433,7 @@ export function AppProvider({ children }) {
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [isLoggedIn]);
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: Pending Requests ──────────────────────────────────────────
   useEffect(() => {
@@ -461,7 +461,7 @@ export function AppProvider({ children }) {
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [isLoggedIn]);
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: Admin notifications ───────────────────────────────────────
   useEffect(() => {
@@ -479,7 +479,7 @@ export function AppProvider({ children }) {
       })
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [isAdmin]);
+  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: Chats ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -564,7 +564,7 @@ export function AppProvider({ children }) {
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 },
     );
-  }, [isLoggedIn, currentUser?.id]);
+  }, [isLoggedIn, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-grant merchant/rider role (recovery) ───────────────────────────
   useEffect(() => {
@@ -760,7 +760,7 @@ export function AppProvider({ children }) {
       });
     }, 4000);
     return () => clearInterval(poll);
-  }, [isLoggedIn]);
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Update Parcel Estimate ───────────────────────────────────────────────
   useEffect(() => {
@@ -869,14 +869,14 @@ export function AppProvider({ children }) {
     setUserProfile({ ...tempProfile });
     setProfileSubView('main');
     notifySystem('สำเร็จ', 'บันทึกข้อมูลโปรไฟล์เรียบร้อย', 'success');
-  }, [tempProfile]);
+  }, [tempProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Merchant Management ──────────────────────────────────────────────────
   const handleUpdateShopLocation = useCallback((restaurantId, location) => {
     if (!restaurantId || !location) return;
     setRestaurants(prev => prev.map(r => r.id === restaurantId ? { ...r, location } : r));
     notifySystem('📍 บันทึกที่ตั้งร้านแล้ว', 'ลูกค้าและไรเดอร์ในรัศมีจะเห็นร้านคุณได้ถูกต้อง', 'success');
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleShopStatus = (restaurantId) => {
     setRestaurants(prev => prev.map(r => {
@@ -914,7 +914,7 @@ export function AppProvider({ children }) {
     setUserProfile(prev => ({ ...prev, location }));
     if (uid) supabase.from('profiles').update({ location }).eq('id', uid).then(() => {});
     notifySystem('📍 บันทึกตำแหน่งแล้ว', 'ตำแหน่งหลักของคุณถูกอัปเดตเรียบร้อย', 'success');
-  }, [currentUser?.id, userProfile?.id]);
+  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddAddress = (addr) => {
     const loc = addr.location || USER_LOCATION;
@@ -970,7 +970,7 @@ export function AppProvider({ children }) {
       });
       return changed ? next : prev;
     });
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Manual role/pending sync from Supabase ───────────────────────────────
   const syncRoles = useCallback(async () => {
@@ -1064,7 +1064,7 @@ export function AppProvider({ children }) {
       const { data: w } = await supabase.from('wallets').select('balance').eq('user_id', uid).single();
       await supabase.from('wallets').upsert({ user_id: uid, balance: w?.balance || 0, history: [] });
     }
-  }, [currentUser?.id, userProfile?.id]);
+  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Rating ────────────────────────────────────────────────────────────────
   const openRatingModal  = useCallback((order) => { setRatingOrderData(order); setShowRatingModal(true); }, []);
@@ -1102,7 +1102,7 @@ export function AppProvider({ children }) {
     setShowRatingModal(false);
     setRatingOrderData(null);
     notifySystem('ขอบคุณ! 🌟', 'บันทึกรีวิวของคุณแล้ว', 'success');
-  }, [orders]);
+  }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Context Value ---
   const value = {

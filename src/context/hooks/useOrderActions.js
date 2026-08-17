@@ -262,13 +262,12 @@ export function useOrderActions(deps) {
         // Fallback: JS-side wallet credits (keeps working if RPC unavailable)
         if (order.paymentMethod === 'cash') {
           if (order.type === 'parcel') {
-            // Parcel cash: rider collected full cash, record net earnings + GP owed to admin
-            if (riderUid && calcRiderIncome > 0) creditWallet(riderUid,    calcRiderIncome, `ค่าส่งพัสดุ(สด) #${orderId.slice(-6)}`);
-            if (ADMIN_EMAIL && gpAmount > 0)     creditWallet(ADMIN_EMAIL, gpAmount,        `GP พัสดุ(สด) #${orderId.slice(-6)}`);
+            // Parcel cash: rider collected full cash. No credit needed, only debit GP to admin.
+            if (riderUid && gpAmount > 0)        creditWallet(riderUid,    -gpAmount, `หัก GP พัสดุ(สด) #${orderId.slice(-6)}`);
+            if (ADMIN_EMAIL && gpAmount > 0)     creditWallet(ADMIN_EMAIL, gpAmount,  `GP พัสดุ(สด) #${orderId.slice(-6)}`);
           } else {
-            // Food cash: rider collected (food + delivery); debit food portion they must remit
-            if (riderUid && foodTotal > 0)          creditWallet(riderUid,     -foodTotal,      `หัก ยอดร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
-            if (riderUid && deliveryFee > 0)        creditWallet(riderUid,     deliveryFee,     `ค่าส่ง(สด) ออเดอร์ #${orderId.slice(-6)}`);
+            // Food cash: rider collected (food + delivery) in cash. No credit needed for delivery fee, only debit food (minus GP) and GP to admin.
+            if (riderUid && foodTotal > 0)          creditWallet(riderUid,     -foodTotal,      `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
             if (shopOwnerUid && merchantIncome > 0) creditWallet(shopOwnerUid, merchantIncome,  `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
             if (ADMIN_EMAIL && gpAmount > 0)        creditWallet(ADMIN_EMAIL,  gpAmount,        `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
           }
@@ -284,11 +283,14 @@ export function useOrderActions(deps) {
         const merchantEarned = r2(rpcResult.merchantIncome ?? merchantIncome);
         const gpEarned       = r2(rpcResult.gpAmount       ?? gpAmount);
         if (order.paymentMethod === 'cash') {
-          // foodTotal=0 for parcel → debit skipped naturally; riderEarned = net income from RPC
-          if (riderUid && foodTotal > 0)           creditWalletLocal(riderUid,     -foodTotal,      `หัก ยอดร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
-          if (riderUid && riderEarned > 0)         creditWalletLocal(riderUid,     riderEarned,     `ค่าส่ง(สด) ออเดอร์ #${orderId.slice(-6)}`);
-          if (shopOwnerUid && merchantEarned > 0)  creditWalletLocal(shopOwnerUid, merchantEarned,  `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
-          if (ADMIN_EMAIL && gpEarned > 0)         creditWalletLocal(ADMIN_EMAIL,  gpEarned,        `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
+          if (order.type === 'parcel') {
+            if (riderUid && gpEarned > 0)            creditWalletLocal(riderUid,    -gpEarned,      `หัก GP พัสดุ(สด) #${orderId.slice(-6)}`);
+            if (ADMIN_EMAIL && gpEarned > 0)         creditWalletLocal(ADMIN_EMAIL,  gpEarned,      `GP พัสดุ(สด) #${orderId.slice(-6)}`);
+          } else {
+            if (riderUid && foodTotal > 0)           creditWalletLocal(riderUid,     -foodTotal,      `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
+            if (shopOwnerUid && merchantEarned > 0)  creditWalletLocal(shopOwnerUid, merchantEarned,  `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
+            if (ADMIN_EMAIL && gpEarned > 0)         creditWalletLocal(ADMIN_EMAIL,  gpEarned,        `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
+          }
         } else {
           if (shopOwnerUid && merchantEarned > 0)  creditWalletLocal(shopOwnerUid, merchantEarned,  `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
           if (ADMIN_EMAIL && gpEarned > 0)         creditWalletLocal(ADMIN_EMAIL,  gpEarned,        `GP ออเดอร์ #${orderId.slice(-6)}`);
