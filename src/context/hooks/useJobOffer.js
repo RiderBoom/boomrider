@@ -129,7 +129,10 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
 
     return () => {
       clearTimers();
-      supabase.removeChannel(channelRef.current);
+      if (channelRef.current) {
+        channelRef.current.unsubscribe();
+        supabase.removeChannel(channelRef.current);
+      }
     };
   }, [riderUserId, supabase, startCountdown, clearTimers]);
 

@@ -432,12 +432,15 @@ export function AppProvider({ children }) {
         setOrders(prev => prev.filter(x => x.id !== payload.old?.id));
       })
       .subscribe();
-    return () => supabase.removeChannel(channel);
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
   }, [isLoggedIn]);
 
   // ── Realtime: Pending Requests ──────────────────────────────────────────
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isAdmin) return;
     const channel = supabase.channel('pending-rt')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pending_requests' }, async (payload) => {
         const r = payload.new?.data;
@@ -460,8 +463,11 @@ export function AppProvider({ children }) {
         setPendingRequests(prev => prev.filter(x => x.id !== payload.old?.id));
       })
       .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, [isLoggedIn]);
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin]);
 
   // ── Realtime: Admin notifications ───────────────────────────────────────
   useEffect(() => {
@@ -478,7 +484,10 @@ export function AppProvider({ children }) {
         notifySystem(n.title, n.message, n.type || 'info');
       })
       .subscribe();
-    return () => supabase.removeChannel(channel);
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
   }, [isAdmin]);
 
   // ── Realtime: Chats ─────────────────────────────────────────────────────
@@ -491,7 +500,10 @@ export function AppProvider({ children }) {
         setChats(prev => ({ ...prev, [row.order_id]: row.messages || [] }));
       })
       .subscribe();
-    return () => supabase.removeChannel(channel);
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
   }, [isLoggedIn]);
 
   // ── Auto-save to Supabase on state changes ──────────────────────────────
