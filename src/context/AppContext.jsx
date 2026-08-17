@@ -208,7 +208,6 @@ export function AppProvider({ children }) {
     addToCart, placeOrder, placeParcelOrder, acceptOrder, updateOrderStatus,
     initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
     requestCancelOrder, requestCancelByRole,
-    forceRefresh,
   } = useOrderActions({
     orders, setOrders,
     cart, setCart,
@@ -282,43 +281,49 @@ export function AppProvider({ children }) {
   } = usePromoActions({ notifySystem, supabase });
 
   // ── Load app data from Supabase on mount ────────────────────────────────
-  useEffect(() => {
-    const loadData = async () => {
-      setIsDataLoading(true);
-      try {
-        const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
-          supabase.from('restaurants').select('id, data'),
-          supabase.from('menu_items').select('restaurant_id, items'),
-          supabase.from('riders').select('id, data'),
-          supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
-          supabase.from('pending_requests').select('id, data'),
-          supabase.from('app_config').select('data').eq('id', 1).single(),
-          supabase.from('promo_codes').select('id, data'),
-        ]);
+  const loadData = useCallback(async () => {
+    setIsDataLoading(true);
+    try {
+      const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
+        supabase.from('restaurants').select('id, data'),
+        supabase.from('menu_items').select('restaurant_id, items'),
+        supabase.from('riders').select('id, data'),
+        supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
+        supabase.from('pending_requests').select('id, data'),
+        supabase.from('app_config').select('data').eq('id', 1).single(),
+        supabase.from('promo_codes').select('id, data'),
+      ]);
 
-        if (restsResult.data?.length) setRestaurants(restsResult.data.map(r => r.data));
-        if (menusResult.data?.length) {
-          const obj = {};
-          menusResult.data.forEach(m => { obj[m.restaurant_id] = m.items; });
-          setMenuItems(obj);
-        }
-        if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
-        if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
-        if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
-        if (configResult.data?.data) {
-          setAppConfig(configResult.data.data);
-          setEditConfig(configResult.data.data);
-        }
-        if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
-      } catch (e) {
-        console.error('loadData error', e);
-      } finally {
-        setIsDataLoading(false);
-        dataLoadedRef.current = true;
+      if (restsResult.data?.length) setRestaurants(restsResult.data.map(r => r.data));
+      if (menusResult.data?.length) {
+        const obj = {};
+        menusResult.data.forEach(m => { obj[m.restaurant_id] = m.items; });
+        setMenuItems(obj);
       }
-    };
-    loadData();
+      if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
+      if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
+      if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
+      if (configResult.data?.data) {
+        setAppConfig(configResult.data.data);
+        setEditConfig(configResult.data.data);
+      }
+      if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
+    } catch (e) {
+      console.error('loadData error', e);
+    } finally {
+      setIsDataLoading(false);
+      dataLoadedRef.current = true;
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    loadData();
+  }, [isLoggedIn, loadData]);
+
+  const forceRefresh = useCallback(async () => {
+    await loadData();
+    notifySystem('รีเฟรชแล้ว', 'โหลดข้อมูลล่าสุดแล้ว', 'success');
+  }, [loadData]);
 
   // ── Supabase Auth session + onAuthStateChange ───────────────────────────
   const loadUserSession = useCallback(async (authUser) => {
