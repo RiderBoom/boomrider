@@ -56,16 +56,23 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
     setAccepting(true);
     clearTimers();
     try {
-      const { error } = await supabase
-        .from('job_offers')
-        .update({ status: 'accepted', responded_at: new Date().toISOString() })
-        .eq('id', offerId)
-        .eq('status', 'pending'); // only update if still pending (prevents race)
+      const { data, error } = await supabase.rpc('accept_job_offer', {
+        p_offer_id: offerId,
+      });
 
       if (error) {
         console.error('[JobOffer] accept error:', error.message);
         return false;
       }
+
+      if (!data?.ok) {
+        console.warn('[JobOffer] accept failed:', data?.reason);
+        // Popup silently closes if someone else got the job or if it expired
+        setOffer(null);
+        setCountdown(0);
+        return false;
+      }
+
       setOffer(null);
       setCountdown(0);
       onAccepted?.();

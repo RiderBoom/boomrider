@@ -193,8 +193,10 @@ export function useOrderActions(deps) {
     const uid    = currentUser?.id || userProfile?.id || '';
     const rider  = riders.find(r => r.userId === uid);
     if (!rider) return notifySystem('ผิดพลาด', 'ไม่พบข้อมูลไรเดอร์ของคุณ', 'error');
-    const { deliveryFee, gpAmount: adminGP, merchantIncome, riderIncome } = _settlementAmounts(order);
-    await _updateOrder(orderId, {
+
+    const { gpAmount: adminGP, merchantIncome, riderIncome } = _settlementAmounts(order);
+
+    const patch = {
       riderId: rider.id,
       riderUserId: uid,
       riderName: rider.name,
@@ -204,7 +206,24 @@ export function useOrderActions(deps) {
       riderIncome,
       merchantIncome,
       adminGP,
-    });
+    };
+
+    // Atomic update to prevent race conditions (First-Come, First-Served manual accept)
+    const updatedOrderData = { ...order, ...patch };
+    const { data: updatedDbOrder, error } = await supabase
+      .from('orders')
+      .update({ status: patch.status, data: updatedOrderData })
+      .eq('id', orderId)
+      .eq('status', 'ready_to_pickup')
+      .select('id')
+      .maybeSingle();
+
+    if (error || !updatedDbOrder) {
+      return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
+    }
+
+    // Since DB update succeeded, we can safely update local state
+    setOrders(prev => prev.map(o => o.id === orderId ? updatedOrderData : o));
     // Mark rider as unavailable in riders table
     supabase.from('riders')
       .update({ is_available: false })
