@@ -1,0 +1,10 @@
+Ah, I see another issue in `InteractiveMap.jsx`:
+```javascript
+useEffect(() => {
+  if (leafletRef.current) return;
+  // Initialize map...
+  // Place pin...
+}, []);
+```
+Wait, the `placePin` logic only runs once on map initialization (`if (leafletRef.current) return;`)?
+Wait, `InteractiveMap.jsx` usually manages its state. Let's see if there's a `useEffect` that listens to `activeParcelTarget` or `userLocation`/`shopLocation` changes.

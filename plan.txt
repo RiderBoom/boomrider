@@ -1,0 +1,3 @@
+Plan:
+1. Fix Auto-GPS execution so it happens when user logs in OR app loads (not blocked by previous run) - wait, if we just remove the `gpsSessionRef.current = uid` logic entirely, the `useEffect` will fire whenever `isLoggedIn` and `currentUser.id` is available, but wait, `useEffect` dependencies must be correct so it doesn't infinite loop. Currently, `useEffect` has NO dependency array?
+Wait! `useEffect(() => { ... })` without dependency array runs on EVERY render! That's bad. Wait, let me check the dependency array in `AppContext.jsx`.
