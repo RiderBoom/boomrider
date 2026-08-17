@@ -410,17 +410,10 @@ export function useOrderActions(deps) {
     notifySystem('ยกเลิกออเดอร์แล้ว', `ออเดอร์ #${orderId.slice(-6)} ถูกยกเลิกแล้ว`, 'info');
   };
 
-  const forceRefresh = async () => {
-    const { data } = await supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200);
-    if (data?.length) setOrders(data.map(o => o.data));
-    notifySystem('รีเฟรชแล้ว', 'โหลดออเดอร์ล่าสุดแล้ว', 'success');
-  };
-
   return {
     calculateDeliveryFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
     addToCart, placeOrder, placeParcelOrder, acceptOrder, updateOrderStatus,
     initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
     requestCancelOrder, requestCancelByRole,
-    forceRefresh,
   };
 }
