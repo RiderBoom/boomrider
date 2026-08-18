@@ -370,18 +370,18 @@ export function AppProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('getSession error:', error);
+        supabase.auth.signOut();
+      } else if (session?.user) {
         setIsLoggedIn(true);
         loadUserSession(session.user);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        setIsLoggedIn(true);
-        await loadUserSession(session.user);
-      } else {
+      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
         setIsLoggedIn(false);
         setCurrentUser(null);
         setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
@@ -396,6 +396,12 @@ export function AppProvider({ children }) {
         prevOrdersRef.current = [];
         lastChatCountsRef.current = {};
         gpsSessionRef.current = '';
+      } else if (session?.user) {
+        setIsLoggedIn(true);
+        await loadUserSession(session.user);
+      } else {
+        setIsLoggedIn(false);
+        setCurrentUser(null);
       }
     });
     return () => subscription.unsubscribe();
