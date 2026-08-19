@@ -127,10 +127,8 @@ export function AppProvider({ children }) {
   // --- Refs ---
   const restaurantsRef = React.useRef(INITIAL_RESTAURANTS);
   const currentUserRef = React.useRef(null);
-  const ordersRef = React.useRef([]);
   useEffect(() => { restaurantsRef.current = restaurants; }, [restaurants]);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
-  useEffect(() => { ordersRef.current = orders; }, [orders]);
 
   const seenOrderIdsRef         = React.useRef(new Set());
   const placingOrderRef         = React.useRef(false);
@@ -165,7 +163,7 @@ export function AppProvider({ children }) {
       shownAdminNotifIds.current.add(id);
       notifySystem(title, message, type);
     }
-  }, [isAdmin]);
+  }, [isAdmin]);  
 
   // --- Role grant / revoke ---
   const grantRole = useCallback((userId, role) => {
@@ -178,7 +176,7 @@ export function AppProvider({ children }) {
       setUserRoles(prev => prev.includes(role) ? prev : [...prev, role]);
     }
     supabase.from('user_roles').upsert({ user_id: userId, role }).then(() => {});
-  }, [currentUser?.id, userProfile?.id]);
+  }, [currentUser?.id, userProfile?.id]);  
 
   const revokeRole = useCallback((userId, role) => {
     setGlobalUserRoles(prev => {
@@ -189,7 +187,7 @@ export function AppProvider({ children }) {
       setUserRoles(prev => prev.filter(r => r !== role));
     }
     supabase.from('user_roles').delete().eq('user_id', userId).eq('role', role).then(() => {});
-  }, [currentUser?.id, userProfile?.id]);
+  }, [currentUser?.id, userProfile?.id]);  
 
   // ── Wallet hook ─────────────────────────────────────────────────────────────
   const { creditWallet, creditWalletLocal, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet } = useWalletActions({
@@ -208,6 +206,7 @@ export function AppProvider({ children }) {
     addToCart, placeOrder, placeParcelOrder, acceptOrder, updateOrderStatus,
     initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
     requestCancelOrder, requestCancelByRole,
+    forceRefresh,
   } = useOrderActions({
     orders, setOrders,
     cart, setCart,
@@ -281,49 +280,43 @@ export function AppProvider({ children }) {
   } = usePromoActions({ notifySystem, supabase });
 
   // ── Load app data from Supabase on mount ────────────────────────────────
-  const loadData = useCallback(async () => {
-    setIsDataLoading(true);
-    try {
-      const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
-        supabase.from('restaurants').select('id, data'),
-        supabase.from('menu_items').select('restaurant_id, items'),
-        supabase.from('riders').select('id, data'),
-        supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
-        supabase.from('pending_requests').select('id, data'),
-        supabase.from('app_config').select('data').eq('id', 1).single(),
-        supabase.from('promo_codes').select('id, data'),
-      ]);
-
-      if (restsResult.data?.length) setRestaurants(restsResult.data.map(r => r.data));
-      if (menusResult.data?.length) {
-        const obj = {};
-        menusResult.data.forEach(m => { obj[m.restaurant_id] = m.items; });
-        setMenuItems(obj);
-      }
-      if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
-      if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
-      if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
-      if (configResult.data?.data) {
-        setAppConfig(configResult.data.data);
-        setEditConfig(configResult.data.data);
-      }
-      if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
-    } catch (e) {
-      console.error('loadData error', e);
-    } finally {
-      setIsDataLoading(false);
-      dataLoadedRef.current = true;
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => {
-    loadData();
-  }, [isLoggedIn, loadData]);
+    const loadData = async () => {
+      setIsDataLoading(true);
+      try {
+        const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
+          supabase.from('restaurants').select('id, data'),
+          supabase.from('menu_items').select('restaurant_id, items'),
+          supabase.from('riders').select('id, data'),
+          supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
+          supabase.from('pending_requests').select('id, data'),
+          supabase.from('app_config').select('data').eq('id', 1).single(),
+          supabase.from('promo_codes').select('id, data'),
+        ]);
 
-  const forceRefresh = useCallback(async () => {
-    await loadData();
-    notifySystem('รีเฟรชแล้ว', 'โหลดข้อมูลล่าสุดแล้ว', 'success');
-  }, [loadData]);
+        if (restsResult.data?.length) setRestaurants(restsResult.data.map(r => r.data));
+        if (menusResult.data?.length) {
+          const obj = {};
+          menusResult.data.forEach(m => { obj[m.restaurant_id] = m.items; });
+          setMenuItems(obj);
+        }
+        if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
+        if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
+        if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
+        if (configResult.data?.data) {
+          setAppConfig(configResult.data.data);
+          setEditConfig(configResult.data.data);
+        }
+        if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
+      } catch (e) {
+        console.error('loadData error', e);
+      } finally {
+        setIsDataLoading(false);
+        dataLoadedRef.current = true;
+      }
+    };
+    loadData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Supabase Auth session + onAuthStateChange ───────────────────────────
   const loadUserSession = useCallback(async (authUser) => {
@@ -367,21 +360,21 @@ export function AppProvider({ children }) {
     } catch (e) {
       console.error('loadUserSession error', e);
     }
-  }, []);
+  }, []);  
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error('getSession error:', error);
-        supabase.auth.signOut();
-      } else if (session?.user) {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
         setIsLoggedIn(true);
         loadUserSession(session.user);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+      if (session?.user) {
+        setIsLoggedIn(true);
+        await loadUserSession(session.user);
+      } else {
         setIsLoggedIn(false);
         setCurrentUser(null);
         setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
@@ -396,12 +389,6 @@ export function AppProvider({ children }) {
         prevOrdersRef.current = [];
         lastChatCountsRef.current = {};
         gpsSessionRef.current = '';
-      } else if (session?.user) {
-        setIsLoggedIn(true);
-        await loadUserSession(session.user);
-      } else {
-        setIsLoggedIn(false);
-        setCurrentUser(null);
       }
     });
     return () => subscription.unsubscribe();
@@ -449,7 +436,7 @@ export function AppProvider({ children }) {
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn]);  
 
   // ── Realtime: Pending Requests ──────────────────────────────────────────
   useEffect(() => {
@@ -480,7 +467,7 @@ export function AppProvider({ children }) {
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, [isAdmin]);
+  }, [isAdmin]);  
 
   // ── Realtime: Admin notifications ───────────────────────────────────────
   useEffect(() => {
@@ -501,7 +488,7 @@ export function AppProvider({ children }) {
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, [isAdmin]);
+  }, [isAdmin]);  
 
   // ── Realtime: Chats ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -589,7 +576,7 @@ export function AppProvider({ children }) {
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 },
     );
-  }, [isLoggedIn, currentUser?.id]);
+  }, [isLoggedIn, currentUser?.id]);  
 
   // ── Auto-grant merchant/rider role (recovery) ───────────────────────────
   useEffect(() => {
@@ -625,7 +612,7 @@ export function AppProvider({ children }) {
 
     // ── Merchant: new pending orders ──────────────────────────────────────
     if (myShop) {
-      const newMerchantOrders = orders.filter(o => o.status === 'pending' && o.restaurantId === myShop.id && (!prevMap.has(o.id) || prevMap.get(o.id).status !== 'pending'));
+      const newMerchantOrders = orders.filter(o => o.status === 'pending' && o.restaurantId === myShop.id && !prevMap.has(o.id));
       if (newMerchantOrders.length > 0) {
         setMerchantTab('orders');
         playOrderNotificationSound();
@@ -728,60 +715,64 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Local Auto-complete for Delivered Orders (every 30s) ───────────────
+  // ── Polling fallback for active orders (every 4s) ──────────────────────
   useEffect(() => {
     if (!isLoggedIn) return;
-    const interval = setInterval(() => {
+    const poll = setInterval(async () => {
+      const activeStatuses = ['pending','preparing','ready_to_pickup','rider_accepted','picking_up','delivering','delivered'];
+      const { data } = await supabase
+        .from('orders')
+        .select('id, status, data')
+        .in('status', activeStatuses)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (!data?.length) return;
+
       // Auto-complete 'delivered' orders older than 15 min (customer didn't confirm)
       // Only the rider who delivered OR admin triggers — prevents every client from firing simultaneously
       const AUTO_COMPLETE_MS = 15 * 60 * 1000;
       const _uid   = currentUserRef.current?.id;
       const _email = currentUserRef.current?.email;
-      const currentOrders = ordersRef.current;
-
-      let hasChanges = false;
-      const completedIds = new Set();
-      const updatedOrdersMap = new Map();
-
-      currentOrders.forEach(o => {
-        if (o.status !== 'delivered' || !o.deliveredAtMs) return;
+      data.filter(r => r.status === 'delivered').forEach(r => {
+        const o = r.data;
+        if (!o?.deliveredAtMs) return;
         if (Date.now() - o.deliveredAtMs < AUTO_COMPLETE_MS) return;
-
         const isOrderRider = _uid && o.riderUserId === _uid;
         const isAdminUser  = !!ADMIN_EMAIL && _email === ADMIN_EMAIL;
         if (!isOrderRider && !isAdminUser) return;
-
-        hasChanges = true;
         const completed = {
           ...o,
           status: 'completed',
           completedAt: new Date().toISOString(),
           autoCompleted: true,
         };
-
-        completedIds.add(o.id);
-        updatedOrdersMap.set(o.id, completed);
-
         supabase.from('orders')
           .update({ status: 'completed', data: completed })
-          .eq('id', o.id)
+          .eq('id', r.id)
           .then(() => {});
-
-        const gpFoodRate  = (appConfig.gpFood ?? 30) / 100;
-        const gpDelivRate = (appConfig.gpDelivery ?? 15) / 100;
-        supabase.rpc('process_order_settlement', {
-          p_order_id: o.id,
-          p_gp_food_rate: gpFoodRate,
-          p_gp_delivery_rate: gpDelivRate
-        }).then(() => {});
+        supabase.rpc('process_order_settlement', { p_order_id: r.id }).then(() => {});
       });
 
-      if (hasChanges) {
-        setOrders(prevOrders => prevOrders.map(o => completedIds.has(o.id) ? updatedOrdersMap.get(o.id) : o));
-      }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [isLoggedIn, appConfig]);
+      setOrders(prev => {
+        const incoming = data.map(r => r.data).filter(Boolean);
+        const map = new Map(prev.map(o => [o.id, o]));
+        let changed = false;
+        incoming.forEach(o => {
+          const existing = map.get(o.id);
+          if (canApplyOrderUpdate(existing, o)) {
+            const rank    = ORDER_STATUS_RANK[o.status] ?? -1;
+            const oldRank = ORDER_STATUS_RANK[existing?.status] ?? -1;
+            if (rank > oldRank || JSON.stringify(existing) !== JSON.stringify(o)) {
+              map.set(o.id, o);
+              changed = true;
+            }
+          }
+        });
+        return changed ? Array.from(map.values()) : prev;
+      });
+    }, 4000);
+    return () => clearInterval(poll);
+  }, [isLoggedIn]);  
 
   // ── Update Parcel Estimate ───────────────────────────────────────────────
   useEffect(() => {
@@ -890,14 +881,14 @@ export function AppProvider({ children }) {
     setUserProfile({ ...tempProfile });
     setProfileSubView('main');
     notifySystem('สำเร็จ', 'บันทึกข้อมูลโปรไฟล์เรียบร้อย', 'success');
-  }, [tempProfile]);
+  }, [tempProfile]);  
 
   // ── Merchant Management ──────────────────────────────────────────────────
   const handleUpdateShopLocation = useCallback((restaurantId, location) => {
     if (!restaurantId || !location) return;
     setRestaurants(prev => prev.map(r => r.id === restaurantId ? { ...r, location } : r));
     notifySystem('📍 บันทึกที่ตั้งร้านแล้ว', 'ลูกค้าและไรเดอร์ในรัศมีจะเห็นร้านคุณได้ถูกต้อง', 'success');
-  }, []);
+  }, []);  
 
   const handleToggleShopStatus = (restaurantId) => {
     setRestaurants(prev => prev.map(r => {
@@ -935,7 +926,7 @@ export function AppProvider({ children }) {
     setUserProfile(prev => ({ ...prev, location }));
     if (uid) supabase.from('profiles').update({ location }).eq('id', uid).then(() => {});
     notifySystem('📍 บันทึกตำแหน่งแล้ว', 'ตำแหน่งหลักของคุณถูกอัปเดตเรียบร้อย', 'success');
-  }, [currentUser?.id, userProfile?.id]);
+  }, [currentUser?.id, userProfile?.id]);  
 
   const handleAddAddress = (addr) => {
     const loc = addr.location || USER_LOCATION;
@@ -991,7 +982,7 @@ export function AppProvider({ children }) {
       });
       return changed ? next : prev;
     });
-  }, []);
+  }, []);  
 
   // ── Manual role/pending sync from Supabase ───────────────────────────────
   const syncRoles = useCallback(async () => {
@@ -1085,7 +1076,7 @@ export function AppProvider({ children }) {
       const { data: w } = await supabase.from('wallets').select('balance').eq('user_id', uid).single();
       await supabase.from('wallets').upsert({ user_id: uid, balance: w?.balance || 0, history: [] });
     }
-  }, [currentUser?.id, userProfile?.id]);
+  }, [currentUser?.id, userProfile?.id]);  
 
   // ── Rating ────────────────────────────────────────────────────────────────
   const openRatingModal  = useCallback((order) => { setRatingOrderData(order); setShowRatingModal(true); }, []);
@@ -1123,7 +1114,7 @@ export function AppProvider({ children }) {
     setShowRatingModal(false);
     setRatingOrderData(null);
     notifySystem('ขอบคุณ! 🌟', 'บันทึกรีวิวของคุณแล้ว', 'success');
-  }, [orders]);
+  }, [orders]);  
 
   // --- Context Value ---
   const value = {
