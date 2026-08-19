@@ -290,7 +290,7 @@ export function AppProvider({ children }) {
           supabase.from('riders').select('id, data'),
           supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
           supabase.from('pending_requests').select('id, data'),
-          supabase.from('app_config').select('data').eq('id', 1).single(),
+          supabase.from('app_config').select('data').eq('id', 1),
           supabase.from('promo_codes').select('id, data'),
         ]);
 
@@ -303,9 +303,11 @@ export function AppProvider({ children }) {
         if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
         if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
         if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
-        if (configResult.data?.data) {
-          setAppConfig(configResult.data.data);
-          setEditConfig(configResult.data.data);
+
+        const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
+        if (configRow?.data) {
+          setAppConfig(configRow.data);
+          setEditConfig(configRow.data);
         }
         if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
       } catch (e) {
