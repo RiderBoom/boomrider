@@ -214,7 +214,7 @@ export function useOrderActions(deps) {
       .from('orders')
       .update({ status: patch.status, data: updatedOrderData })
       .eq('id', orderId)
-      .eq('status', 'ready_to_pickup')
+      .in('status', ['pending', 'ready_to_pickup'])
       .select('id')
       .maybeSingle();
 
