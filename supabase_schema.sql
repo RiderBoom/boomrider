@@ -48,12 +48,59 @@ create policy "wallets_all" on public.wallets for all using (auth.role() = 'auth
 -- ── Orders ────────────────────────────────────────────────────────────────────
 create table if not exists public.orders (
   id text primary key,
-  status text,
+  status text not null default 'pending',
   data jsonb not null,
   created_at timestamptz default now()
 );
 alter table public.orders enable row level security;
-create policy "orders_all" on public.orders for all using (auth.role() = 'authenticated');
+
+create policy "customer_read_own_orders" on public.orders for select using (
+  data->>'customerId' = auth.uid()::text or data->>'userId' = auth.uid()::text
+);
+create policy "rider_read_own_orders" on public.orders for select using (
+  (data->>'riderId' is null or data->>'riderId' = '') or
+  exists (
+    select 1 from public.riders r
+    where r.id = data->>'riderId' and (r.user_id = auth.uid()::text or r.data->>'userId' = auth.uid()::text)
+  )
+);
+create policy "merchant_read_own_orders" on public.orders for select using (
+  data->>'restaurantOwnerId' = auth.uid()::text
+);
+create policy "admin_read_orders" on public.orders for select using (
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+);
+create policy "authenticated_insert_orders" on public.orders for insert with check (
+  auth.role() = 'authenticated'
+);
+create policy "customer_update_own_orders" on public.orders for update using (
+  data->>'customerId' = auth.uid()::text or data->>'userId' = auth.uid()::text
+) with check (
+  data->>'customerId' = auth.uid()::text or data->>'userId' = auth.uid()::text
+);
+create policy "rider_update_assigned_orders" on public.orders for update using (
+  (data->>'riderId' is null or data->>'riderId' = '') or
+  exists (
+    select 1 from public.riders r
+    where r.id = data->>'riderId' and (r.user_id = auth.uid()::text or r.data->>'userId' = auth.uid()::text)
+  )
+) with check (
+  exists (
+    select 1 from public.riders r
+    where r.id = data->>'riderId' and (r.user_id = auth.uid()::text or r.data->>'userId' = auth.uid()::text)
+  ) or
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+);
+create policy "merchant_update_own_orders" on public.orders for update using (
+  data->>'restaurantOwnerId' = auth.uid()::text
+) with check (
+  data->>'restaurantOwnerId' = auth.uid()::text
+);
+create policy "admin_update_orders" on public.orders for update using (
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+) with check (
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+);
 
 -- ── Restaurants ───────────────────────────────────────────────────────────────
 create table if not exists public.restaurants (
@@ -63,16 +110,25 @@ create table if not exists public.restaurants (
 );
 alter table public.restaurants enable row level security;
 create policy "restaurants_select" on public.restaurants for select using (true);
-create policy "restaurants_write" on public.restaurants for all using (auth.role() = 'authenticated');
+create policy "restaurants_write" on public.restaurants for all using (
+  owner_id = auth.uid()::text or
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+);
 
--- ── Menu Items (one JSONB array per restaurant) ───────────────────────────────
+-- ── Menu Items ────────────────────────────────────────────────────────────────
 create table if not exists public.menu_items (
   restaurant_id text primary key,
   items jsonb default '[]'::jsonb
 );
 alter table public.menu_items enable row level security;
 create policy "menu_items_select" on public.menu_items for select using (true);
-create policy "menu_items_write" on public.menu_items for all using (auth.role() = 'authenticated');
+create policy "menu_items_write" on public.menu_items for all using (
+  exists (
+    select 1 from public.restaurants
+    where restaurants.id = menu_items.restaurant_id and restaurants.owner_id = auth.uid()::text
+  ) or
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+);
 
 -- ── Riders ────────────────────────────────────────────────────────────────────
 create table if not exists public.riders (
@@ -81,7 +137,12 @@ create table if not exists public.riders (
   data jsonb not null
 );
 alter table public.riders enable row level security;
-create policy "riders_all" on public.riders for all using (auth.role() = 'authenticated');
+create policy "riders_select" on public.riders for select using (true);
+create policy "riders_all" on public.riders for all using (
+  user_id = auth.uid()::text or
+  data->>'userId' = auth.uid()::text or
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+);
 
 -- ── Pending Requests ──────────────────────────────────────────────────────────
 create table if not exists public.pending_requests (
@@ -108,7 +169,9 @@ create table if not exists public.promo_codes (
 );
 alter table public.promo_codes enable row level security;
 create policy "promo_codes_select" on public.promo_codes for select using (true);
-create policy "promo_codes_write" on public.promo_codes for all using (auth.role() = 'authenticated');
+create policy "promo_codes_write" on public.promo_codes for all using (
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+);
 
 -- ── Admin Notifications ───────────────────────────────────────────────────────
 create table if not exists public.admin_notifs (
@@ -130,7 +193,9 @@ create table if not exists public.app_config (
 );
 alter table public.app_config enable row level security;
 create policy "app_config_select" on public.app_config for select using (true);
-create policy "app_config_write" on public.app_config for all using (auth.role() = 'authenticated');
+create policy "app_config_write" on public.app_config for all using (
+  exists (select 1 from public.user_roles where user_roles.user_id = auth.uid() and user_roles.role = 'admin')
+);
 
 -- ── Enable Realtime ───────────────────────────────────────────────────────────
 alter publication supabase_realtime add table public.orders;
