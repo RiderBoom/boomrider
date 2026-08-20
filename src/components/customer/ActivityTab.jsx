@@ -421,12 +421,16 @@ export default function ActivityTab() {
                 {cancelReqReason === r ? '✓ ' : ''}{r}
               </button>
             ))}
+            <label htmlFor="customer-cancel-req-reason" className="sr-only">เหตุผลการยกเลิก</label>
             <textarea
+              id="customer-cancel-req-reason"
+              name="cancelReason"
               value={cancelReqReason}
               onChange={e => setCancelReqReason(e.target.value)}
               placeholder="หรือพิมพ์เหตุผลอื่น..."
               rows={2}
               className="w-full mt-1 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-200"
+              autoComplete="off"
             />
             <div className="flex gap-2 mt-3">
               <button

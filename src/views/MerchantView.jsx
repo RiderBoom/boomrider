@@ -150,9 +150,9 @@ export default function MerchantView() {
               )}
             </div>
             <div className="flex gap-2">
-              <label className="flex-1 flex items-center justify-center gap-1 py-2 bg-orange-500 text-white rounded-lg cursor-pointer hover:bg-orange-600 active:scale-95 transition-all text-xs font-bold">
+              <label htmlFor="merchant-notif-sound-file" className="flex-1 flex items-center justify-center gap-1 py-2 bg-orange-500 text-white rounded-lg cursor-pointer hover:bg-orange-600 active:scale-95 transition-all text-xs font-bold">
                 <Bell size={13} /> เลือกเสียงจากเครื่อง
-                <input type="file" accept="audio/*" className="hidden" onChange={handleSoundFilePick} />
+                <input id="merchant-notif-sound-file" name="soundFile" type="file" accept="audio/*" className="hidden" onChange={handleSoundFilePick} />
               </label>
               <button
                 onClick={() => { playOrderNotificationSound(); notifySystem('🔊 ทดสอบเสียง', 'กำลังเล่น...', 'info'); }}
@@ -166,9 +166,9 @@ export default function MerchantView() {
         {/* รูปหน้าร้าน */}
         <div className="relative h-36 w-full rounded-xl overflow-hidden mb-3 group">
           <img src={myShop.image} className="w-full h-full object-cover" alt="shop" />
-          <label className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-sm font-bold">
+          <label htmlFor="merchant-shop-photo-file" className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-sm font-bold">
             <Camera className="mr-2" size={18} /> เปลี่ยนรูปหน้าร้าน
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleShopPhotoChange(myShop.id, e)} />
+            <input id="merchant-shop-photo-file" name="shopPhoto" type="file" accept="image/*" className="hidden" onChange={(e) => handleShopPhotoChange(myShop.id, e)} />
           </label>
         </div>
 
@@ -397,12 +397,15 @@ export default function MerchantView() {
             <div className="bg-white p-6 rounded-xl shadow-lg">
               <h3 className="font-bold text-lg mb-4">{isEditingMenu === 'new' ? 'เพิ่มเมนูใหม่' : 'แก้ไขเมนู'}</h3>
               <div className="space-y-3">
-                <input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่ออาหาร" className="w-full border p-2 rounded" />
-                <input type="number" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} placeholder="ราคา (บาท)" className="w-full border p-2 rounded" />
-                <textarea value={editForm.desc} onChange={e => setEditForm({ ...editForm, desc: e.target.value })} placeholder="รายละเอียด" className="w-full border p-2 rounded" />
+                <label htmlFor="merchant-menu-name-input" className="sr-only">ชื่ออาหาร</label>
+                <input id="merchant-menu-name-input" name="name" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} placeholder="ชื่ออาหาร" className="w-full border p-2 rounded" autoComplete="off" aria-label="ชื่ออาหาร" />
+                <label htmlFor="merchant-menu-price-input" className="sr-only">ราคา (บาท)</label>
+                <input id="merchant-menu-price-input" name="price" type="number" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} placeholder="ราคา (บาท)" className="w-full border p-2 rounded" autoComplete="off" aria-label="ราคา (บาท)" />
+                <label htmlFor="merchant-menu-desc-input" className="sr-only">รายละเอียด</label>
+                <textarea id="merchant-menu-desc-input" name="desc" value={editForm.desc} onChange={e => setEditForm({ ...editForm, desc: e.target.value })} placeholder="รายละเอียด" className="w-full border p-2 rounded" autoComplete="off" aria-label="รายละเอียด" />
                 <div className="mb-2">
-                  <label className="block text-sm text-gray-500 mb-1">รูปภาพอาหาร</label>
-                  <label className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block text-gray-500 hover:bg-gray-50 ${editForm._imageUploading ? 'opacity-60 pointer-events-none' : ''}`}>
+                  <label htmlFor="merchant-menu-photo-file" className="block text-sm text-gray-500 mb-1">รูปภาพอาหาร</label>
+                  <label htmlFor="merchant-menu-photo-file" className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block text-gray-500 hover:bg-gray-50 ${editForm._imageUploading ? 'opacity-60 pointer-events-none' : ''}`}>
                     {editForm._imageUploading ? (
                       <div className="flex flex-col items-center py-2">
                         <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-2" />
@@ -418,7 +421,7 @@ export default function MerchantView() {
                     ) : (
                       <><ImageIcon className="mx-auto mb-2 text-gray-400" /><span>กดเพื่อเลือกรูป หรือ ถ่ายรูป</span></>
                     )}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleMenuPhotoSelect} />
+                    <input id="merchant-menu-photo-file" name="menuPhoto" type="file" accept="image/*" className="hidden" onChange={handleMenuPhotoSelect} />
                   </label>
                 </div>
                 <div className="flex gap-2 mt-4">
@@ -731,11 +734,15 @@ export default function MerchantView() {
                   </button>
                 ))}
               </div>
+              <label htmlFor="merchant-cancel-reason-input" className="sr-only">เหตุผลเพิ่มเติม</label>
               <textarea
+                id="merchant-cancel-reason-input"
+                name="cancelReason"
                 value={cancelReasonInput}
                 onChange={e => setCancelReasonInput(e.target.value)}
                 placeholder="หรือพิมพ์เหตุผลเพิ่มเติม..."
                 className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-red-300"
+                autoComplete="off"
               />
               <p className="text-xs text-gray-400 mt-1.5">
                 * หากลูกค้าชำระผ่าน Wallet ระบบจะคืนเงินให้อัตโนมัติ

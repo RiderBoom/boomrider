@@ -60,13 +60,17 @@ export default function CustomerView() {
           </div>
           <div className="flex items-center gap-3 bg-gray-100 px-3 py-2.5 rounded-2xl">
             <Search size={18} className="text-gray-400 flex-shrink-0" />
+            <label htmlFor="customer-search-input" className="sr-only">ค้นหาร้านอาหาร เมนู</label>
             <input
+              id="customer-search-input"
+              name="searchQuery"
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="ค้นหาร้านอาหาร เมนู..."
               className="bg-transparent outline-none flex-1 text-sm text-gray-700 placeholder-gray-400"
-              aria-label="ค้นหา"
+              aria-label="ค้นหาร้านอาหาร เมนู"
+              autoComplete="off"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="text-gray-400 hover:text-gray-600">

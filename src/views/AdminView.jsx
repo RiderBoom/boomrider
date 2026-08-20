@@ -1098,19 +1098,29 @@ export default function AdminView() {
                       <div className="mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200 animate-fade-in space-y-3">
                         <p className="text-xs font-bold text-gray-600">ปรับยอด Wallet ของ {user.name}</p>
                         <div className="flex gap-2">
+                          <label htmlFor="admin-adjust-amount-input" className="sr-only">จำนวนเงิน</label>
                           <input
+                            id="admin-adjust-amount-input"
+                            name="adjustAmount"
                             type="number"
                             placeholder="จำนวนเงิน (ใส่ - เพื่อหัก)"
                             value={adjustAmount}
                             onChange={e => setAdjustAmount(e.target.value)}
                             className="flex-1 border p-2 rounded text-sm"
+                            autoComplete="off"
+                            aria-label="จำนวนเงิน"
                           />
+                          <label htmlFor="admin-adjust-desc-input" className="sr-only">คำอธิบาย</label>
                           <input
+                            id="admin-adjust-desc-input"
+                            name="adjustDesc"
                             type="text"
                             placeholder="คำอธิบาย"
                             value={adjustDesc}
                             onChange={e => setAdjustDesc(e.target.value)}
                             className="flex-1 border p-2 rounded text-sm"
+                            autoComplete="off"
+                            aria-label="คำอธิบาย"
                           />
                         </div>
                         <div className="flex gap-2">
@@ -1182,12 +1192,16 @@ export default function AdminView() {
                 <div key={rest.id} className="border rounded-xl p-3">
                   {editingShop === rest.id ? (
                     <div className="space-y-2">
-                      <input value={shopEditForm.name || ''} onChange={e => setShopEditForm(f => ({ ...f, name: e.target.value }))} placeholder="ชื่อร้าน" className="w-full border p-2 rounded text-sm" />
-                      <input value={shopEditForm.phone || ''} onChange={e => setShopEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="เบอร์โทร" className="w-full border p-2 rounded text-sm" />
-                      <select value={shopEditForm.category || ''} onChange={e => setShopEditForm(f => ({ ...f, category: e.target.value }))} className="w-full border p-2 rounded text-sm">
+                      <label htmlFor="admin-shop-name-input" className="sr-only">ชื่อร้าน</label>
+                      <input id="admin-shop-name-input" name="shopName" value={shopEditForm.name || ''} onChange={e => setShopEditForm(f => ({ ...f, name: e.target.value }))} placeholder="ชื่อร้าน" className="w-full border p-2 rounded text-sm" autoComplete="off" aria-label="ชื่อร้าน" />
+                      <label htmlFor="admin-shop-phone-input" className="sr-only">เบอร์โทร</label>
+                      <input id="admin-shop-phone-input" name="shopPhone" value={shopEditForm.phone || ''} onChange={e => setShopEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="เบอร์โทร" className="w-full border p-2 rounded text-sm" autoComplete="tel" aria-label="เบอร์โทร" />
+                      <label htmlFor="admin-shop-category-select" className="sr-only">หมวดหมู่</label>
+                      <select id="admin-shop-category-select" name="shopCategory" value={shopEditForm.category || ''} onChange={e => setShopEditForm(f => ({ ...f, category: e.target.value }))} className="w-full border p-2 rounded text-sm" aria-label="หมวดหมู่">
                         {['Street Food', 'Fast Food', 'Japanese', 'Italian', 'Dessert', 'Thai'].map(c => <option key={c}>{c}</option>)}
                       </select>
-                      <input value={shopEditForm.time || ''} onChange={e => setShopEditForm(f => ({ ...f, time: e.target.value }))} placeholder="เวลาจัดส่ง เช่น 20-30 min" className="w-full border p-2 rounded text-sm" />
+                      <label htmlFor="admin-shop-time-input" className="sr-only">เวลาจัดส่ง</label>
+                      <input id="admin-shop-time-input" name="shopTime" value={shopEditForm.time || ''} onChange={e => setShopEditForm(f => ({ ...f, time: e.target.value }))} placeholder="เวลาจัดส่ง เช่น 20-30 min" className="w-full border p-2 rounded text-sm" autoComplete="off" aria-label="เวลาจัดส่ง" />
                       <div className="flex gap-2">
                         <button onClick={() => setEditingShop(null)} className="flex-1 bg-gray-200 py-2 rounded text-sm font-bold">ยกเลิก</button>
                         <button onClick={saveShopEdit} className="flex-1 bg-green-600 text-white py-2 rounded text-sm font-bold">บันทึก</button>
@@ -1250,20 +1264,20 @@ export default function AdminView() {
           <div className="bg-white p-6 rounded-xl shadow-sm">
             <h2 className="font-bold text-xl mb-4 flex items-center gap-2 text-purple-600"><PlusCircle size={20} /> สร้างโค้ดส่วนลดใหม่</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-sm font-medium mb-1">โค้ดส่วนลด <span className="text-red-500">*</span></label><input value={promoForm.code} onChange={e => setPromoForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="เช่น BOOM50" className="w-full border p-2 rounded-lg font-mono uppercase" maxLength={20} /></div>
-              <div><label className="block text-sm font-medium mb-1">คำอธิบาย</label><input value={promoForm.description} onChange={e => setPromoForm(f => ({ ...f, description: e.target.value }))} placeholder="เช่น ส่วนลด 10% สำหรับออเดอร์แรก" className="w-full border p-2 rounded-lg" /></div>
+              <div><label htmlFor="admin-promo-code" className="block text-sm font-medium mb-1">โค้ดส่วนลด <span className="text-red-500">*</span></label><input id="admin-promo-code" name="code" value={promoForm.code} onChange={e => setPromoForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="เช่น BOOM50" className="w-full border p-2 rounded-lg font-mono uppercase" maxLength={20} autoComplete="off" /></div>
+              <div><label htmlFor="admin-promo-desc" className="block text-sm font-medium mb-1">คำอธิบาย</label><input id="admin-promo-desc" name="description" value={promoForm.description} onChange={e => setPromoForm(f => ({ ...f, description: e.target.value }))} placeholder="เช่น ส่วนลด 10% สำหรับออเดอร์แรก" className="w-full border p-2 rounded-lg" autoComplete="off" /></div>
               <div>
-                <label className="block text-sm font-medium mb-1">ประเภทส่วนลด</label>
-                <select value={promoForm.type} onChange={e => setPromoForm(f => ({ ...f, type: e.target.value }))} className="w-full border p-2 rounded-lg">
+                <label htmlFor="admin-promo-type" className="block text-sm font-medium mb-1">ประเภทส่วนลด</label>
+                <select id="admin-promo-type" name="type" value={promoForm.type} onChange={e => setPromoForm(f => ({ ...f, type: e.target.value }))} className="w-full border p-2 rounded-lg">
                   <option value="percent">เปอร์เซ็นต์ (%)</option>
                   <option value="fixed">จำนวนเงิน (฿)</option>
                 </select>
               </div>
-              <div><label className="block text-sm font-medium mb-1">มูลค่า ({promoForm.type === 'percent' ? '%' : '฿'})</label><input type="number" value={promoForm.value} onChange={e => setPromoForm(f => ({ ...f, value: e.target.value }))} className="w-full border p-2 rounded-lg" /></div>
-              <div><label className="block text-sm font-medium mb-1">ยอดขั้นต่ำ (฿)</label><input type="number" value={promoForm.minOrder} onChange={e => setPromoForm(f => ({ ...f, minOrder: e.target.value }))} className="w-full border p-2 rounded-lg" /></div>
-              {promoForm.type === 'percent' && <div><label className="block text-sm font-medium mb-1">ส่วนลดสูงสุด (฿)</label><input type="number" value={promoForm.maxDiscount} onChange={e => setPromoForm(f => ({ ...f, maxDiscount: e.target.value }))} className="w-full border p-2 rounded-lg" /></div>}
-              <div><label className="block text-sm font-medium mb-1">จำนวนครั้งที่ใช้ได้</label><input type="number" value={promoForm.maxUses} onChange={e => setPromoForm(f => ({ ...f, maxUses: e.target.value }))} className="w-full border p-2 rounded-lg" /></div>
-              <div><label className="block text-sm font-medium mb-1">หมดอายุ</label><input type="date" value={promoForm.expiry} onChange={e => setPromoForm(f => ({ ...f, expiry: e.target.value }))} className="w-full border p-2 rounded-lg" /></div>
+              <div><label htmlFor="admin-promo-value" className="block text-sm font-medium mb-1">มูลค่า ({promoForm.type === 'percent' ? '%' : '฿'})</label><input id="admin-promo-value" name="value" type="number" value={promoForm.value} onChange={e => setPromoForm(f => ({ ...f, value: e.target.value }))} className="w-full border p-2 rounded-lg" autoComplete="off" /></div>
+              <div><label htmlFor="admin-promo-minorder" className="block text-sm font-medium mb-1">ยอดขั้นต่ำ (฿)</label><input id="admin-promo-minorder" name="minOrder" type="number" value={promoForm.minOrder} onChange={e => setPromoForm(f => ({ ...f, minOrder: e.target.value }))} className="w-full border p-2 rounded-lg" autoComplete="off" /></div>
+              {promoForm.type === 'percent' && <div><label htmlFor="admin-promo-maxdiscount" className="block text-sm font-medium mb-1">ส่วนลดสูงสุด (฿)</label><input id="admin-promo-maxdiscount" name="maxDiscount" type="number" value={promoForm.maxDiscount} onChange={e => setPromoForm(f => ({ ...f, maxDiscount: e.target.value }))} className="w-full border p-2 rounded-lg" autoComplete="off" /></div>}
+              <div><label htmlFor="admin-promo-maxuses" className="block text-sm font-medium mb-1">จำนวนครั้งที่ใช้ได้</label><input id="admin-promo-maxuses" name="maxUses" type="number" value={promoForm.maxUses} onChange={e => setPromoForm(f => ({ ...f, maxUses: e.target.value }))} className="w-full border p-2 rounded-lg" autoComplete="off" /></div>
+              <div><label htmlFor="admin-promo-expiry" className="block text-sm font-medium mb-1">หมดอายุ</label><input id="admin-promo-expiry" name="expiry" type="date" value={promoForm.expiry} onChange={e => setPromoForm(f => ({ ...f, expiry: e.target.value }))} className="w-full border p-2 rounded-lg" autoComplete="off" /></div>
             </div>
             <button onClick={handleCreatePromo} className="mt-4 bg-purple-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-purple-700 flex items-center gap-2">
               <PlusCircle size={18} /> สร้างโค้ด
@@ -1495,25 +1509,25 @@ export default function AdminView() {
           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-8">
             <h3 className="font-bold text-blue-700 border-b border-blue-200 pb-2 mb-4 flex items-center gap-2"><CreditCard size={18} /> บัญชีรับเงิน</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-sm font-medium mb-1">ชื่อธนาคาร</label><input type="text" value={editConfig.adminBankName} onChange={e => setEditConfig({ ...editConfig, adminBankName: e.target.value })} className="w-full border p-2 rounded" /></div>
-              <div><label className="block text-sm font-medium mb-1">เลขที่บัญชี</label><input type="text" value={editConfig.adminBankAccount} onChange={e => setEditConfig({ ...editConfig, adminBankAccount: e.target.value })} className="w-full border p-2 rounded" /></div>
-              <div><label className="block text-sm font-medium mb-1">ชื่อบัญชี</label><input type="text" value={editConfig.adminAccountName} onChange={e => setEditConfig({ ...editConfig, adminAccountName: e.target.value })} className="w-full border p-2 rounded" /></div>
-              <div><label className="block text-sm font-medium mb-1">เบอร์ / เลขบัตร PromptPay</label><input type="text" value={editConfig.adminPromptPayId || ''} onChange={e => setEditConfig({ ...editConfig, adminPromptPayId: e.target.value })} className="w-full border p-2 rounded" placeholder="0xx-xxx-xxxx หรือ 13 หลัก" /></div>
-              <div><label className="block text-sm font-medium mb-1">QR Code URL (สำรอง)</label><input type="text" value={editConfig.adminQrCode} onChange={e => setEditConfig({ ...editConfig, adminQrCode: e.target.value })} className="w-full border p-2 rounded" /></div>
+              <div><label htmlFor="admin-bank-name" className="block text-sm font-medium mb-1">ชื่อธนาคาร</label><input id="admin-bank-name" name="adminBankName" type="text" value={editConfig.adminBankName} onChange={e => setEditConfig({ ...editConfig, adminBankName: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-bank-account" className="block text-sm font-medium mb-1">เลขที่บัญชี</label><input id="admin-bank-account" name="adminBankAccount" type="text" value={editConfig.adminBankAccount} onChange={e => setEditConfig({ ...editConfig, adminBankAccount: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-account-name" className="block text-sm font-medium mb-1">ชื่อบัญชี</label><input id="admin-account-name" name="adminAccountName" type="text" value={editConfig.adminAccountName} onChange={e => setEditConfig({ ...editConfig, adminAccountName: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-promptpay-id" className="block text-sm font-medium mb-1">เบอร์ / เลขบัตร PromptPay</label><input id="admin-promptpay-id" name="adminPromptPayId" type="text" value={editConfig.adminPromptPayId || ''} onChange={e => setEditConfig({ ...editConfig, adminPromptPayId: e.target.value })} className="w-full border p-2 rounded" placeholder="0xx-xxx-xxxx หรือ 13 หลัก" autoComplete="off" /></div>
+              <div><label htmlFor="admin-qr-code" className="block text-sm font-medium mb-1">QR Code URL (สำรอง)</label><input id="admin-qr-code" name="adminQrCode" type="text" value={editConfig.adminQrCode} onChange={e => setEditConfig({ ...editConfig, adminQrCode: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="space-y-4">
               <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><MapIcon size={16} /> รัศมีให้บริการ (กม.)</h3>
-              <div><label className="block text-sm font-medium mb-1">App Service Radius</label><input type="number" value={editConfig.appRadius} onChange={e => setEditConfig({ ...editConfig, appRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" /></div>
-              <div><label className="block text-sm font-medium mb-1">Restaurant Delivery Radius</label><input type="number" value={editConfig.restaurantRadius} onChange={e => setEditConfig({ ...editConfig, restaurantRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" /></div>
-              <div><label className="block text-sm font-medium mb-1">Rider Job Radius</label><input type="number" value={editConfig.riderRadius} onChange={e => setEditConfig({ ...editConfig, riderRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" /></div>
+              <div><label htmlFor="admin-app-radius" className="block text-sm font-medium mb-1">App Service Radius</label><input id="admin-app-radius" name="appRadius" type="number" value={editConfig.appRadius} onChange={e => setEditConfig({ ...editConfig, appRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-restaurant-radius" className="block text-sm font-medium mb-1">Restaurant Delivery Radius</label><input id="admin-restaurant-radius" name="restaurantRadius" type="number" value={editConfig.restaurantRadius} onChange={e => setEditConfig({ ...editConfig, restaurantRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-rider-radius" className="block text-sm font-medium mb-1">Rider Job Radius</label><input id="admin-rider-radius" name="riderRadius" type="number" value={editConfig.riderRadius} onChange={e => setEditConfig({ ...editConfig, riderRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
             </div>
             <div className="space-y-4">
               <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><DollarSign size={16} /> ค่าบริการขนส่ง</h3>
-              <div><label className="block text-sm font-medium mb-1">Base Fee (฿)</label><input type="number" value={editConfig.baseFee} onChange={e => setEditConfig({ ...editConfig, baseFee: parseFloat(e.target.value) })} className="w-full border p-2 rounded" /></div>
-              <div><label className="block text-sm font-medium mb-1">Per Km Fee (฿/กม.)</label><input type="number" value={editConfig.perKmFee} onChange={e => setEditConfig({ ...editConfig, perKmFee: parseFloat(e.target.value) })} className="w-full border p-2 rounded" /></div>
+              <div><label htmlFor="admin-base-fee" className="block text-sm font-medium mb-1">Base Fee (฿)</label><input id="admin-base-fee" name="baseFee" type="number" value={editConfig.baseFee} onChange={e => setEditConfig({ ...editConfig, baseFee: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-per-km-fee" className="block text-sm font-medium mb-1">Per Km Fee (฿/กม.)</label><input id="admin-per-km-fee" name="perKmFee" type="number" value={editConfig.perKmFee} onChange={e => setEditConfig({ ...editConfig, perKmFee: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
             </div>
           </div>
 
@@ -1521,16 +1535,16 @@ export default function AdminView() {
             <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><Percent size={16} /> ค่าคอมมิชชั่น (GP %)</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium mb-1 text-orange-600">GP ร้านค้า (Food)</label>
+                <label htmlFor="admin-gp-food" className="block text-sm font-medium mb-1 text-orange-600">GP ร้านค้า (Food)</label>
                 <div className="flex items-center">
-                  <input type="number" value={editConfig.gpFood} onChange={e => setEditConfig({ ...editConfig, gpFood: parseFloat(e.target.value) })} className="w-full border p-2 rounded-l" />
+                  <input id="admin-gp-food" name="gpFood" type="number" value={editConfig.gpFood} onChange={e => setEditConfig({ ...editConfig, gpFood: parseFloat(e.target.value) })} className="w-full border p-2 rounded-l" autoComplete="off" />
                   <span className="bg-gray-100 border border-l-0 p-2 rounded-r text-gray-500">%</span>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-blue-600">GP ไรเดอร์ (Delivery)</label>
+                <label htmlFor="admin-gp-delivery" className="block text-sm font-medium mb-1 text-blue-600">GP ไรเดอร์ (Delivery)</label>
                 <div className="flex items-center">
-                  <input type="number" value={editConfig.gpDelivery} onChange={e => setEditConfig({ ...editConfig, gpDelivery: parseFloat(e.target.value) })} className="w-full border p-2 rounded-l" />
+                  <input id="admin-gp-delivery" name="gpDelivery" type="number" value={editConfig.gpDelivery} onChange={e => setEditConfig({ ...editConfig, gpDelivery: parseFloat(e.target.value) })} className="w-full border p-2 rounded-l" autoComplete="off" />
                   <span className="bg-gray-100 border border-l-0 p-2 rounded-r text-gray-500">%</span>
                 </div>
               </div>
@@ -1708,7 +1722,8 @@ export default function AdminView() {
           <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-sm">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-red-600"><Ban size={20} /> ยืนยันการยกเลิกออเดอร์</h3>
             <p className="text-gray-600 mb-2 text-sm">กรุณาระบุเหตุผล:</p>
-            <textarea value={cancelReasonInput} onChange={e => setCancelReasonInput(e.target.value)} placeholder="เช่น ติดต่อลูกค้าไม่ได้, ร้านปิด..." className="w-full border p-2 rounded-lg mb-4 h-24 resize-none" />
+            <label htmlFor="admin-cancel-reason-textarea" className="sr-only">เหตุผลการยกเลิก</label>
+            <textarea id="admin-cancel-reason-textarea" name="cancelReason" value={cancelReasonInput} onChange={e => setCancelReasonInput(e.target.value)} placeholder="เช่น ติดต่อลูกค้าไม่ได้, ร้านปิด..." className="w-full border p-2 rounded-lg mb-4 h-24 resize-none" autoComplete="off" />
             <div className="flex gap-2">
               <button onClick={() => setShowCancelModal(false)} className="flex-1 bg-gray-200 py-2 rounded-lg font-bold">ยกเลิก</button>
               <button onClick={confirmCancelOrder} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">ยืนยัน</button>
@@ -1783,12 +1798,17 @@ export default function AdminView() {
                   {txLoading ? 'กำลังโหลด...' : `${filtered.length} รายการ`}
                 </p>
               </div>
+              <label htmlFor="admin-search-ledger-input" className="sr-only">ค้นหาชื่อ / รายการ / ออเดอร์</label>
               <input
+                id="admin-search-ledger-input"
+                name="searchLedger"
                 type="search"
                 placeholder="ค้นหาชื่อ / รายการ / ออเดอร์..."
                 value={searchLedger}
                 onChange={e => setSearchLedger(e.target.value)}
                 className="border rounded-xl px-3 py-2 text-sm w-full sm:w-52 focus:outline-none focus:ring-2 focus:ring-green-400"
+                autoComplete="off"
+                aria-label="ค้นหาชื่อ / รายการ / ออเดอร์"
               />
               <button
                 onClick={handleClearTransactions}

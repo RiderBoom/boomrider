@@ -50,8 +50,10 @@ export default function AuthView() {
         {authMode === 'login' ? (
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เบอร์โทร หรือ อีเมล</label>
+              <label htmlFor="login-identifier" className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เบอร์โทร หรือ อีเมล</label>
               <input
+                id="login-identifier"
+                name="identifier"
                 type="text"
                 value={loginForm.phone || loginForm.email}
                 onChange={(e) => setLoginForm({ ...loginForm, phone: e.target.value, email: e.target.value })}
@@ -61,8 +63,10 @@ export default function AuthView() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">รหัสผ่าน</label>
+              <label htmlFor="login-password" className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">รหัสผ่าน</label>
               <input
+                id="login-password"
+                name="password"
                 type="password"
                 value={loginForm.password}
                 onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
@@ -86,15 +90,17 @@ export default function AuthView() {
         ) : (
           <div className="space-y-3">
             {[
-              { label: 'ชื่อ-นามสกุล *', type: 'text', field: 'name', placeholder: 'ชื่อจริง นามสกุล', autoComplete: 'name' },
-              { label: 'อีเมล *', type: 'email', field: 'email', placeholder: 'email@example.com', autoComplete: 'email' },
-              { label: 'เบอร์โทรศัพท์ (ไม่บังคับ)', type: 'tel', field: 'phone', placeholder: '081-xxx-xxxx', autoComplete: 'tel' },
-              { label: 'รหัสผ่าน * (6 ตัวขึ้นไป)', type: 'password', field: 'password', placeholder: '••••••••', autoComplete: 'new-password' },
-              { label: 'ยืนยันรหัสผ่าน *', type: 'password', field: 'confirmPassword', placeholder: '••••••••', autoComplete: 'new-password' },
-            ].map(({ label, type, field, placeholder, autoComplete }) => (
+              { label: 'ชื่อ-นามสกุล *', type: 'text', field: 'name', id: 'register-name', placeholder: 'ชื่อจริง นามสกุล', autoComplete: 'name' },
+              { label: 'อีเมล *', type: 'email', field: 'email', id: 'register-email', placeholder: 'email@example.com', autoComplete: 'email' },
+              { label: 'เบอร์โทรศัพท์ (ไม่บังคับ)', type: 'tel', field: 'phone', id: 'register-phone', placeholder: '081-xxx-xxxx', autoComplete: 'tel' },
+              { label: 'รหัสผ่าน * (6 ตัวขึ้นไป)', type: 'password', field: 'password', id: 'register-password', placeholder: '••••••••', autoComplete: 'new-password' },
+              { label: 'ยืนยันรหัสผ่าน *', type: 'password', field: 'confirmPassword', id: 'register-confirm-password', placeholder: '••••••••', autoComplete: 'new-password' },
+            ].map(({ label, type, field, id, placeholder, autoComplete }) => (
               <div key={field}>
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">{label}</label>
+                <label htmlFor={id} className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">{label}</label>
                 <input
+                  id={id}
+                  name={field}
                   type={type}
                   value={registerForm[field]}
                   onChange={(e) => setRegisterForm({ ...registerForm, [field]: e.target.value })}
