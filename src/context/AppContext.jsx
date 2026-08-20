@@ -137,6 +137,7 @@ export function AppProvider({ children }) {
   const prevOrdersRef           = React.useRef([]);
   const gpsSessionRef           = React.useRef('');
   const shownAdminNotifIds      = React.useRef(new Set());
+  const isClearingAuthRef       = React.useRef(false);
 
   // --- Global Wallet Store (in-memory cache for all wallets) ---
   const [globalWallets, setGlobalWallets] = useState({});
@@ -321,6 +322,64 @@ export function AppProvider({ children }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Supabase Auth session + onAuthStateChange ───────────────────────────
+  const clearAuthStorageKeys = useCallback(() => {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('sb-') || key.includes('auth-token') || key.includes('supabase'))) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.error('Error clearing auth keys from storage:', e);
+    }
+  }, []);
+
+  const isInvalidTokenError = useCallback((error) => {
+    if (!error) return false;
+    const msg = (error.message || '').toLowerCase();
+    const code = (error.code || '').toLowerCase();
+    const status = error.status;
+    return (
+      msg.includes('invalid refresh token') ||
+      msg.includes('refresh_token_not_found') ||
+      msg.includes('refresh token not found') ||
+      msg.includes('invalid_grant') ||
+      msg.includes('jwt expired') ||
+      msg.includes('token is expired') ||
+      code.includes('refresh_token_not_found') ||
+      code.includes('invalid_grant') ||
+      status === 400 ||
+      status === 401
+    );
+  }, []);
+
+  const handleAuthErrorOrSignOut = useCallback(async () => {
+    if (isClearingAuthRef.current) return;
+    isClearingAuthRef.current = true;
+    try {
+      await supabase.auth.signOut().catch(() => {});
+    } finally {
+      clearAuthStorageKeys();
+      setIsLoggedIn(false);
+      setCurrentUser(null);
+      setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
+      setTempProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
+      setUserRoles(['customer']);
+      setUserWallet(0);
+      setWalletAllEntries([]);
+      setUserAddresses([]);
+      setActiveRole('customer');
+      setActiveTab('home');
+      setProfileSubView('main');
+      setAuthMode('login');
+      prevOrdersRef.current = [];
+      lastChatCountsRef.current = {};
+      gpsSessionRef.current = '';
+      isClearingAuthRef.current = false;
+    }
+  }, [clearAuthStorageKeys]);
+
   const loadUserSession = useCallback(async (authUser) => {
     try {
       const [profileResult, rolesResult, walletResult] = await Promise.all([
@@ -365,36 +424,57 @@ export function AppProvider({ children }) {
   }, []);  
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error && isInvalidTokenError(error)) {
+        handleAuthErrorOrSignOut();
+        return;
+      }
       if (session?.user) {
         setIsLoggedIn(true);
         loadUserSession(session.user);
       }
+    }).catch((err) => {
+      if (isInvalidTokenError(err)) {
+        handleAuthErrorOrSignOut();
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        if (!isClearingAuthRef.current) {
+          await handleAuthErrorOrSignOut();
+        }
+        return;
+      }
+
       if (session?.user) {
         setIsLoggedIn(true);
         await loadUserSession(session.user);
       } else {
-        setIsLoggedIn(false);
-        setCurrentUser(null);
-        setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
-        setTempProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
-        setUserRoles(['customer']);
-        setUserWallet(0);
-        setWalletAllEntries([]);
-        setUserAddresses([]);
-        setActiveRole('customer');
-        setActiveTab('home');
-        setProfileSubView('main');
-        prevOrdersRef.current = [];
-        lastChatCountsRef.current = {};
-        gpsSessionRef.current = '';
+        if (!isClearingAuthRef.current) {
+          const hasAuthKeys = Object.keys(localStorage).some(
+            k => k.startsWith('sb-') || k.includes('auth-token')
+          );
+          if (hasAuthKeys) {
+            await handleAuthErrorOrSignOut();
+          } else {
+            setIsLoggedIn(false);
+            setCurrentUser(null);
+            setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
+            setTempProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
+            setUserRoles(['customer']);
+            setUserWallet(0);
+            setWalletAllEntries([]);
+            setUserAddresses([]);
+            setActiveRole('customer');
+            setActiveTab('home');
+            setProfileSubView('main');
+          }
+        }
       }
     });
     return () => subscription.unsubscribe();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [handleAuthErrorOrSignOut, isInvalidTokenError, loadUserSession]);
 
   // ── Realtime: Orders ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1066,7 +1146,7 @@ export function AppProvider({ children }) {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await handleAuthErrorOrSignOut();
   };
 
   // ── Clear wallet history ──────────────────────────────────────────────────
