@@ -178,12 +178,17 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               </button>
             ) : (
               <div className="flex gap-2 mb-2">
+                <label htmlFor="cart-promo-input" className="sr-only">โค้ดส่วนลด</label>
                 <input
+                  id="cart-promo-input"
+                  name="promoCode"
                   value={promoInput}
                   onChange={e => setPromoInput(e.target.value.toUpperCase())}
                   placeholder="กรอกโค้ดส่วนลด"
                   className="flex-1 border border-orange-200 rounded-lg px-3 py-1.5 text-sm font-mono uppercase focus:outline-none focus:border-orange-400"
                   maxLength={20}
+                  autoComplete="off"
+                  aria-label="กรอกโค้ดส่วนลด"
                 />
                 <button onClick={handleApplyPromo} className="bg-orange-500 text-white px-3 py-1.5 rounded-lg text-sm font-bold">ใช้</button>
                 <button onClick={() => { setShowPromoField(false); setPromoInput(''); setPromoResult(null); }} className="text-gray-400 hover:text-gray-600 px-2"><X size={16} /></button>
@@ -195,12 +200,16 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               </div>
             )}
 
+            <label htmlFor="cart-order-notes" className="sr-only">หมายเหตุถึงร้าน</label>
             <textarea
+              id="cart-order-notes"
+              name="orderNotes"
               value={orderNotes}
               onChange={e => setOrderNotes(e.target.value)}
               placeholder="หมายเหตุถึงร้าน (ไม่ใส่น้ำตาล, ไม่ใส่ผัก...)"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none h-16 mb-2 focus:outline-none focus:border-orange-300"
               maxLength={200}
+              autoComplete="off"
             />
 
             <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
@@ -352,7 +361,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
             </div>
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="text-sm text-gray-500">จุดรับของ</label>
+                <label htmlFor="parcel-pickup-input" className="text-sm text-gray-500">จุดรับของ</label>
                 <button
                   onClick={() => getCurrentLocationForParcel('pickup')}
                   className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1 hover:bg-green-200 active:scale-95 transition-transform"
@@ -360,12 +369,12 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               </div>
               <div className="flex items-center border rounded-lg p-2 bg-gray-50">
                 <MapPin size={18} className="text-green-500 mr-2 flex-shrink-0" />
-                <input value={parcelDetails.pickup} onChange={e => setParcelDetails({ ...parcelDetails, pickup: e.target.value })} type="text" placeholder="ระบุจุดรับ..." className="w-full outline-none bg-transparent text-sm" />
+                <input id="parcel-pickup-input" name="pickup" value={parcelDetails.pickup} onChange={e => setParcelDetails({ ...parcelDetails, pickup: e.target.value })} type="text" placeholder="ระบุจุดรับ..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
               </div>
             </div>
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="text-sm text-gray-500">จุดส่งของ</label>
+                <label htmlFor="parcel-dropoff-input" className="text-sm text-gray-500">จุดส่งของ</label>
                 <button
                   onClick={() => getCurrentLocationForParcel('dropoff')}
                   className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex items-center gap-1 hover:bg-red-200 active:scale-95 transition-transform"
@@ -373,22 +382,22 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               </div>
               <div className="flex items-center border rounded-lg p-2 bg-gray-50">
                 <Navigation size={18} className="text-red-500 mr-2 flex-shrink-0" />
-                <input value={parcelDetails.dropoff} onChange={e => setParcelDetails({ ...parcelDetails, dropoff: e.target.value })} type="text" placeholder="ระบุจุดส่ง..." className="w-full outline-none bg-transparent text-sm" />
+                <input id="parcel-dropoff-input" name="dropoff" value={parcelDetails.dropoff} onChange={e => setParcelDetails({ ...parcelDetails, dropoff: e.target.value })} type="text" placeholder="ระบุจุดส่ง..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
               </div>
             </div>
             <div>
-              <label className="text-sm text-gray-500">น้ำหนักพัสดุ (kg)</label>
-              <input value={parcelDetails.weight} onChange={e => setParcelDetails({ ...parcelDetails, weight: e.target.value })} type="number" className="border rounded-lg p-2 mt-1 w-full" />
+              <label htmlFor="parcel-weight-input" className="text-sm text-gray-500">น้ำหนักพัสดุ (kg)</label>
+              <input id="parcel-weight-input" name="weight" value={parcelDetails.weight} onChange={e => setParcelDetails({ ...parcelDetails, weight: e.target.value })} type="number" className="border rounded-lg p-2 mt-1 w-full" autoComplete="off" />
             </div>
             <div className="bg-blue-50 rounded-xl p-3 space-y-2 border border-blue-100">
               <p className="text-xs font-bold text-blue-700">📬 ข้อมูลผู้รับ (สำหรับให้ไรเดอร์ติดต่อ)</p>
               <div>
-                <label className="text-xs text-gray-500">ชื่อผู้รับ</label>
-                <input value={parcelDetails.receiverName || ''} onChange={e => setParcelDetails({ ...parcelDetails, receiverName: e.target.value })} type="text" placeholder="ชื่อ-นามสกุลผู้รับ" className="border rounded-lg p-2 mt-1 w-full text-sm" />
+                <label htmlFor="parcel-receiver-name-input" className="text-xs text-gray-500">ชื่อผู้รับ</label>
+                <input id="parcel-receiver-name-input" name="receiverName" value={parcelDetails.receiverName || ''} onChange={e => setParcelDetails({ ...parcelDetails, receiverName: e.target.value })} type="text" placeholder="ชื่อ-นามสกุลผู้รับ" className="border rounded-lg p-2 mt-1 w-full text-sm" autoComplete="name" />
               </div>
               <div>
-                <label className="text-xs text-gray-500">เบอร์โทรผู้รับ</label>
-                <input value={parcelDetails.receiverPhone || ''} onChange={e => setParcelDetails({ ...parcelDetails, receiverPhone: e.target.value })} type="tel" placeholder="0xx-xxx-xxxx" className="border rounded-lg p-2 mt-1 w-full text-sm" />
+                <label htmlFor="parcel-receiver-phone-input" className="text-xs text-gray-500">เบอร์โทรผู้รับ</label>
+                <input id="parcel-receiver-phone-input" name="receiverPhone" value={parcelDetails.receiverPhone || ''} onChange={e => setParcelDetails({ ...parcelDetails, receiverPhone: e.target.value })} type="tel" placeholder="0xx-xxx-xxxx" className="border rounded-lg p-2 mt-1 w-full text-sm" autoComplete="tel" />
               </div>
             </div>
             {parcelDistance > 0 && (

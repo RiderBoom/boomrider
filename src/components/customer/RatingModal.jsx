@@ -59,12 +59,16 @@ export default function RatingModal() {
           <StarRow value={riderStars} onChange={setRiderStars} label="🛵 ไรเดอร์" />
         )}
 
+        <label htmlFor="rating-comment" className="sr-only">ความคิดเห็นเพิ่มเติม</label>
         <textarea
+          id="rating-comment"
+          name="comment"
           value={comment}
           onChange={e => setComment(e.target.value)}
           placeholder="ความคิดเห็นเพิ่มเติม (ไม่บังคับ)..."
           rows={2}
           className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-yellow-300 mb-4"
+          autoComplete="off"
         />
         <button
           onClick={() => submitRating({

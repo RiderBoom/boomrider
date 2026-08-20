@@ -189,10 +189,14 @@ export default function ProfileTab() {
               </div>
             ) : (
               <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm space-y-2">
-                <input type="number" placeholder="ระบุจำนวนเงิน" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="w-full text-black p-2 rounded text-center font-bold" />
-                <input type="text" placeholder="ชื่อธนาคาร (เช่น กสิกร)" value={withdrawBank} onChange={e => setWithdrawBank(e.target.value)} className="w-full text-black p-2 rounded text-sm" />
-                <input type="text" placeholder="เลขบัญชี" value={withdrawAccount} onChange={e => setWithdrawAccount(e.target.value)} className="w-full text-black p-2 rounded text-sm" />
-                <input type="text" placeholder="ชื่อบัญชี" value={withdrawName} onChange={e => setWithdrawName(e.target.value)} className="w-full text-black p-2 rounded text-sm" />
+                <label htmlFor="withdraw-amount-input" className="sr-only">ระบุจำนวนเงิน</label>
+                <input id="withdraw-amount-input" name="withdrawAmount" type="number" placeholder="ระบุจำนวนเงิน" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="w-full text-black p-2 rounded text-center font-bold" autoComplete="off" />
+                <label htmlFor="withdraw-bank-input" className="sr-only">ชื่อธนาคาร</label>
+                <input id="withdraw-bank-input" name="withdrawBank" type="text" placeholder="ชื่อธนาคาร (เช่น กสิกร)" value={withdrawBank} onChange={e => setWithdrawBank(e.target.value)} className="w-full text-black p-2 rounded text-sm" autoComplete="off" />
+                <label htmlFor="withdraw-account-input" className="sr-only">เลขบัญชี</label>
+                <input id="withdraw-account-input" name="withdrawAccount" type="text" placeholder="เลขบัญชี" value={withdrawAccount} onChange={e => setWithdrawAccount(e.target.value)} className="w-full text-black p-2 rounded text-sm" autoComplete="off" />
+                <label htmlFor="withdraw-name-input" className="sr-only">ชื่อบัญชี</label>
+                <input id="withdraw-name-input" name="withdrawName" type="text" placeholder="ชื่อบัญชี" value={withdrawName} onChange={e => setWithdrawName(e.target.value)} className="w-full text-black p-2 rounded text-sm" autoComplete="off" />
                 <div className="flex gap-2 pt-2">
                   <button onClick={() => setWithdrawMode(false)} className="flex-1 bg-gray-500 py-2 rounded font-bold">ยกเลิก</button>
                   <button
@@ -454,18 +458,26 @@ export default function ProfileTab() {
                   ✅ ปักหมุดแล้ว: {newAddr.location.lat.toFixed(4)}, {newAddr.location.lng.toFixed(4)}
                 </p>
               )}
+              <label htmlFor="new-addr-label-input" className="sr-only">ชื่อสถานที่</label>
               <input
+                id="new-addr-label-input"
+                name="label"
                 value={newAddr.label}
                 onChange={e => setNewAddr({ ...newAddr, label: e.target.value })}
                 placeholder="ชื่อสถานที่ เช่น บ้าน, ที่ทำงาน"
                 className="w-full p-2.5 border rounded-lg mb-2 text-sm"
+                autoComplete="off"
               />
+              <label htmlFor="new-addr-full-input" className="sr-only">รายละเอียดเพิ่มเติม</label>
               <textarea
+                id="new-addr-full-input"
+                name="fullAddr"
                 value={newAddr.fullAddr}
                 onChange={e => setNewAddr({ ...newAddr, fullAddr: e.target.value })}
                 placeholder="รายละเอียดเพิ่มเติม / จุดสังเกต (ไม่บังคับ)"
                 rows={2}
                 className="w-full p-2.5 border rounded-lg mb-3 text-sm resize-none"
+                autoComplete="off"
               />
               <button
                 onClick={() => {
@@ -487,7 +499,7 @@ export default function ProfileTab() {
       ) : profileSubView === 'edit_profile' ? (
         <div className="p-4 pt-0">
           <div className="flex justify-center mb-6">
-            <label className="w-24 h-24 bg-gray-200 rounded-full overflow-hidden relative cursor-pointer">
+            <label htmlFor="profile-photo-input" className="w-24 h-24 bg-gray-200 rounded-full overflow-hidden relative cursor-pointer">
               <img
                 src={tempProfile.image || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(tempProfile.name || 'User') + '&background=fb923c&color=fff&size=96'}
                 className="w-full h-full object-cover"
@@ -496,13 +508,13 @@ export default function ProfileTab() {
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white">
                 {profileUploading ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Camera />}
               </div>
-              <input type="file" accept="image/*" className="hidden" onChange={handleProfilePhotoChange} disabled={profileUploading} />
+              <input id="profile-photo-input" name="profileImage" type="file" accept="image/*" className="hidden" onChange={handleProfilePhotoChange} disabled={profileUploading} />
             </label>
           </div>
           <div className="space-y-4">
-            <div><label className="text-sm text-gray-500">ชื่อ-นามสกุล</label><input value={tempProfile.name} onChange={e => setTempProfile({ ...tempProfile, name: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" /></div>
-            <div><label className="text-sm text-gray-500">เบอร์โทรศัพท์</label><input value={tempProfile.phone} onChange={e => setTempProfile({ ...tempProfile, phone: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" /></div>
-            <div><label className="text-sm text-gray-500">อีเมล</label><input value={tempProfile.email} onChange={e => setTempProfile({ ...tempProfile, email: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" /></div>
+            <div><label htmlFor="edit-profile-name-input" className="text-sm text-gray-500">ชื่อ-นามสกุล</label><input id="edit-profile-name-input" name="name" value={tempProfile.name} onChange={e => setTempProfile({ ...tempProfile, name: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" autoComplete="name" /></div>
+            <div><label htmlFor="edit-profile-phone-input" className="text-sm text-gray-500">เบอร์โทรศัพท์</label><input id="edit-profile-phone-input" name="phone" value={tempProfile.phone} onChange={e => setTempProfile({ ...tempProfile, phone: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" autoComplete="tel" /></div>
+            <div><label htmlFor="edit-profile-email-input" className="text-sm text-gray-500">อีเมล</label><input id="edit-profile-email-input" name="email" value={tempProfile.email} onChange={e => setTempProfile({ ...tempProfile, email: e.target.value })} className="w-full border-b py-2 outline-none font-medium text-lg" autoComplete="email" /></div>
             <button
               onClick={handleSaveProfile}
               disabled={profileUploading}
@@ -520,34 +532,34 @@ export default function ProfileTab() {
             <h2 className="text-xl font-bold text-orange-700">ลงทะเบียนร้านค้า (KYC)</h2>
           </div>
           <div className="space-y-4">
-            <div><label className="font-bold mb-1 block">ชื่อร้านค้า</label><input value={merchantRegForm.shopName} onChange={e => setMerchantRegForm({ ...merchantRegForm, shopName: e.target.value })} className="w-full border p-2 rounded-lg" /></div>
+            <div><label htmlFor="merchant-reg-shopname" className="font-bold mb-1 block">ชื่อร้านค้า</label><input id="merchant-reg-shopname" name="shopName" value={merchantRegForm.shopName} onChange={e => setMerchantRegForm({ ...merchantRegForm, shopName: e.target.value })} className="w-full border p-2 rounded-lg" autoComplete="off" /></div>
             <div className="mb-4">
-              <label className="text-sm mb-1 block">รูปหน้าร้าน (Shop Image)</label>
-              <label className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${merchantRegForm.shopImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
+              <label htmlFor="merchant-reg-shopimage" className="text-sm mb-1 block">รูปหน้าร้าน (Shop Image)</label>
+              <label htmlFor="merchant-reg-shopimage" className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${merchantRegForm.shopImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
                 {merchantRegForm.shopImage ? <><Check className="inline mr-1" /> เลือกแล้ว</> : <><Camera className="inline mr-1" /> ถ่ายรูป/เลือกรูป</>}
-                <input type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setMerchantRegForm, 'shopImage')} />
+                <input id="merchant-reg-shopimage" name="shopImage" type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setMerchantRegForm, 'shopImage')} />
               </label>
               {merchantRegForm.shopImage && <img src={merchantRegForm.shopImage} className="mt-2 h-32 w-full object-cover rounded-lg" alt="shop" />}
             </div>
-            <div><label className="font-bold mb-1 block">หมวดหมู่</label>
-              <select value={merchantRegForm.category} onChange={e => setMerchantRegForm({ ...merchantRegForm, category: e.target.value })} className="w-full border p-2 rounded-lg">
+            <div><label htmlFor="merchant-reg-category" className="font-bold mb-1 block">หมวดหมู่</label>
+              <select id="merchant-reg-category" name="category" value={merchantRegForm.category} onChange={e => setMerchantRegForm({ ...merchantRegForm, category: e.target.value })} className="w-full border p-2 rounded-lg">
                 <option>Street Food</option><option>Fast Food</option><option>Japanese</option><option>Italian</option><option>Dessert</option>
               </select>
             </div>
             <div className="pt-2 border-t mt-2">
               <h4 className="font-bold text-gray-700 mb-2">ข้อมูลเจ้าของร้าน (ยืนยันตัวตน)</h4>
-              <div><label className="text-sm mb-1 block">ชื่อ-นามสกุล</label><input value={merchantRegForm.realName} onChange={e => setMerchantRegForm({ ...merchantRegForm, realName: e.target.value })} className="w-full border p-2 rounded-lg mb-2" /></div>
-              <div><label className="text-sm mb-1 block">เลขบัตรประชาชน</label><input value={merchantRegForm.idCard} onChange={e => setMerchantRegForm({ ...merchantRegForm, idCard: e.target.value })} className="w-full border p-2 rounded-lg mb-2" /></div>
-              <div><label className="text-sm mb-1 block">เบอร์โทรศัพท์</label><input value={merchantRegForm.phone} onChange={e => setMerchantRegForm({ ...merchantRegForm, phone: e.target.value })} className="w-full border p-2 rounded-lg mb-2" /></div>
+              <div><label htmlFor="merchant-reg-realname" className="text-sm mb-1 block">ชื่อ-นามสกุล</label><input id="merchant-reg-realname" name="realName" value={merchantRegForm.realName} onChange={e => setMerchantRegForm({ ...merchantRegForm, realName: e.target.value })} className="w-full border p-2 rounded-lg mb-2" autoComplete="name" /></div>
+              <div><label htmlFor="merchant-reg-idcard" className="text-sm mb-1 block">เลขบัตรประชาชน</label><input id="merchant-reg-idcard" name="idCard" value={merchantRegForm.idCard} onChange={e => setMerchantRegForm({ ...merchantRegForm, idCard: e.target.value })} className="w-full border p-2 rounded-lg mb-2" autoComplete="off" /></div>
+              <div><label htmlFor="merchant-reg-phone" className="text-sm mb-1 block">เบอร์โทรศัพท์</label><input id="merchant-reg-phone" name="phone" value={merchantRegForm.phone} onChange={e => setMerchantRegForm({ ...merchantRegForm, phone: e.target.value })} className="w-full border p-2 rounded-lg mb-2" autoComplete="tel" /></div>
               <div className="grid grid-cols-2 gap-2 mb-2">
-                <div><label className="text-sm mb-1 block">ธนาคาร</label><input value={merchantRegForm.bankName} onChange={e => setMerchantRegForm({ ...merchantRegForm, bankName: e.target.value })} className="w-full border p-2 rounded-lg" placeholder="กสิกร, ไทยพาณิชย์..." /></div>
-                <div><label className="text-sm mb-1 block">เลขที่บัญชี</label><input value={merchantRegForm.bankAccount} onChange={e => setMerchantRegForm({ ...merchantRegForm, bankAccount: e.target.value })} className="w-full border p-2 rounded-lg" /></div>
+                <div><label htmlFor="merchant-reg-bankname" className="text-sm mb-1 block">ธนาคาร</label><input id="merchant-reg-bankname" name="bankName" value={merchantRegForm.bankName} onChange={e => setMerchantRegForm({ ...merchantRegForm, bankName: e.target.value })} className="w-full border p-2 rounded-lg" placeholder="กสิกร, ไทยพาณิชย์..." autoComplete="off" /></div>
+                <div><label htmlFor="merchant-reg-bankaccount" className="text-sm mb-1 block">เลขที่บัญชี</label><input id="merchant-reg-bankaccount" name="bankAccount" value={merchantRegForm.bankAccount} onChange={e => setMerchantRegForm({ ...merchantRegForm, bankAccount: e.target.value })} className="w-full border p-2 rounded-lg" autoComplete="off" /></div>
               </div>
               <div className="mb-4">
-                <label className="text-sm mb-1 block">รูปถ่ายบัตรประชาชน</label>
-                <label className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${merchantRegForm.idCardImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
+                <label htmlFor="merchant-reg-idcardimage" className="text-sm mb-1 block">รูปถ่ายบัตรประชาชน</label>
+                <label htmlFor="merchant-reg-idcardimage" className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${merchantRegForm.idCardImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
                   {merchantRegForm.idCardImage ? <><Check className="inline mr-1" /> เลือกแล้ว</> : <><Camera className="inline mr-1" /> ถ่ายรูป/เลือกรูป</>}
-                  <input type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setMerchantRegForm, 'idCardImage')} />
+                  <input id="merchant-reg-idcardimage" name="idCardImage" type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setMerchantRegForm, 'idCardImage')} />
                 </label>
                 {merchantRegForm.idCardImage && <img src={merchantRegForm.idCardImage} className="mt-2 h-32 w-full object-cover rounded-lg" alt="id" />}
               </div>
@@ -579,33 +591,33 @@ export default function ProfileTab() {
             <h2 className="text-xl font-bold text-blue-700">สมัครขับ BoomRider (KYC)</h2>
           </div>
           <div className="space-y-4">
-            <div><label className="font-bold mb-1 block">ชื่อ-นามสกุล (ผู้ขับขี่)</label><input value={riderRegForm.realName} onChange={e => setRiderRegForm({ ...riderRegForm, realName: e.target.value })} className="w-full border p-2 rounded-lg" /></div>
-            <div><label className="font-bold mb-1 block">ประเภทพาหนะ</label>
-              <select value={riderRegForm.vehicle} onChange={e => setRiderRegForm({ ...riderRegForm, vehicle: e.target.value })} className="w-full border p-2 rounded-lg">
+            <div><label htmlFor="rider-reg-realname" className="font-bold mb-1 block">ชื่อ-นามสกุล (ผู้ขับขี่)</label><input id="rider-reg-realname" name="realName" value={riderRegForm.realName} onChange={e => setRiderRegForm({ ...riderRegForm, realName: e.target.value })} className="w-full border p-2 rounded-lg" autoComplete="name" /></div>
+            <div><label htmlFor="rider-reg-vehicle" className="font-bold mb-1 block">ประเภทพาหนะ</label>
+              <select id="rider-reg-vehicle" name="vehicle" value={riderRegForm.vehicle} onChange={e => setRiderRegForm({ ...riderRegForm, vehicle: e.target.value })} className="w-full border p-2 rounded-lg">
                 <option value="Motorcycle">รถจักรยานยนต์</option><option value="Car">รถยนต์</option>
               </select>
             </div>
             <div className="pt-2 border-t mt-2">
               <h4 className="font-bold text-gray-700 mb-2">ข้อมูลยืนยันตัวตน</h4>
-              <div><label className="text-sm mb-1 block">เลขบัตรประชาชน</label><input value={riderRegForm.idCard} onChange={e => setRiderRegForm({ ...riderRegForm, idCard: e.target.value })} className="w-full border p-2 rounded-lg mb-2" /></div>
-              <div><label className="text-sm mb-1 block">เบอร์โทรศัพท์</label><input value={riderRegForm.phone} onChange={e => setRiderRegForm({ ...riderRegForm, phone: e.target.value })} className="w-full border p-2 rounded-lg mb-2" /></div>
+              <div><label htmlFor="rider-reg-idcard" className="text-sm mb-1 block">เลขบัตรประชาชน</label><input id="rider-reg-idcard" name="idCard" value={riderRegForm.idCard} onChange={e => setRiderRegForm({ ...riderRegForm, idCard: e.target.value })} className="w-full border p-2 rounded-lg mb-2" autoComplete="off" /></div>
+              <div><label htmlFor="rider-reg-phone" className="text-sm mb-1 block">เบอร์โทรศัพท์</label><input id="rider-reg-phone" name="phone" value={riderRegForm.phone} onChange={e => setRiderRegForm({ ...riderRegForm, phone: e.target.value })} className="w-full border p-2 rounded-lg mb-2" autoComplete="tel" /></div>
               <div className="grid grid-cols-2 gap-2 mb-2">
-                <div><label className="text-sm mb-1 block">ธนาคาร</label><input value={riderRegForm.bankName} onChange={e => setRiderRegForm({ ...riderRegForm, bankName: e.target.value })} className="w-full border p-2 rounded-lg" placeholder="กสิกร, ไทยพาณิชย์..." /></div>
-                <div><label className="text-sm mb-1 block">เลขที่บัญชี</label><input value={riderRegForm.bankAccount} onChange={e => setRiderRegForm({ ...riderRegForm, bankAccount: e.target.value })} className="w-full border p-2 rounded-lg" /></div>
+                <div><label htmlFor="rider-reg-bankname" className="text-sm mb-1 block">ธนาคาร</label><input id="rider-reg-bankname" name="bankName" value={riderRegForm.bankName} onChange={e => setRiderRegForm({ ...riderRegForm, bankName: e.target.value })} className="w-full border p-2 rounded-lg" placeholder="กสิกร, ไทยพาณิชย์..." autoComplete="off" /></div>
+                <div><label htmlFor="rider-reg-bankaccount" className="text-sm mb-1 block">เลขที่บัญชี</label><input id="rider-reg-bankaccount" name="bankAccount" value={riderRegForm.bankAccount} onChange={e => setRiderRegForm({ ...riderRegForm, bankAccount: e.target.value })} className="w-full border p-2 rounded-lg" autoComplete="off" /></div>
               </div>
               <div className="mb-2">
-                <label className="text-sm mb-1 block">รูปถ่ายบัตรประชาชน <span className="text-red-500">*</span></label>
-                <label className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${riderRegForm.idCardImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
+                <label htmlFor="rider-reg-idcardimage" className="text-sm mb-1 block">รูปถ่ายบัตรประชาชน <span className="text-red-500">*</span></label>
+                <label htmlFor="rider-reg-idcardimage" className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${riderRegForm.idCardImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
                   {riderRegForm.idCardImage ? <><Check className="inline mr-1" /> เลือกแล้ว</> : <><Camera className="inline mr-1" /> ถ่ายรูป/เลือกรูป</>}
-                  <input type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setRiderRegForm, 'idCardImage')} />
+                  <input id="rider-reg-idcardimage" name="idCardImage" type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setRiderRegForm, 'idCardImage')} />
                 </label>
                 {riderRegForm.idCardImage && <img src={riderRegForm.idCardImage} className="mt-2 h-32 w-full object-cover rounded-lg" alt="id" />}
               </div>
               <div className="mb-4">
-                <label className="text-sm mb-1 block">รูปโปรไฟล์ไรเดอร์ (ไม่บังคับ)</label>
-                <label className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${riderRegForm.profileImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
+                <label htmlFor="rider-reg-profileimage" className="text-sm mb-1 block">รูปโปรไฟล์ไรเดอร์ (ไม่บังคับ)</label>
+                <label htmlFor="rider-reg-profileimage" className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block ${riderRegForm.profileImage ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500'}`}>
                   {riderRegForm.profileImage ? <><Check className="inline mr-1" /> เลือกแล้ว</> : <><Camera className="inline mr-1" /> ถ่ายรูป/เลือกรูป</>}
-                  <input type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setRiderRegForm, 'profileImage')} />
+                  <input id="rider-reg-profileimage" name="profileImage" type="file" accept="image/*" className="hidden" onChange={e => handleRegistrationPhotoSelect(e, setRiderRegForm, 'profileImage')} />
                 </label>
                 {riderRegForm.profileImage && <img src={riderRegForm.profileImage} className="mt-2 h-32 w-full object-cover rounded-lg" alt="profile" />}
               </div>

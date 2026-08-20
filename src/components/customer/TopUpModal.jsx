@@ -45,18 +45,23 @@ export default function TopUpModal() {
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <span className="text-gray-500 font-bold">฿</span>
             </div>
+            <label htmlFor="topup-amount-input" className="sr-only">จำนวนเงิน</label>
             <input
+              id="topup-amount-input"
+              name="withdrawAmount"
               type="number"
               value={withdrawAmount}
               onChange={e => setWithdrawAmount(e.target.value)}
               className="w-full pl-8 pr-4 py-2 text-right text-xl font-bold bg-white border border-gray-200 rounded-lg focus:border-green-500 focus:outline-none"
               placeholder="0.00"
+              autoComplete="off"
+              aria-label="จำนวนเงิน"
             />
           </div>
         </div>
         <div className="mb-4">
-          <label className={`w-full border-2 border-dashed p-2 rounded-lg text-center cursor-pointer flex items-center justify-center transition-colors ${topUpSlip ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}`}>
-            <input type="file" accept="image/*" className="hidden" onChange={handleTopUpSlipSelect} />
+          <label htmlFor="topup-slip-input" className={`w-full border-2 border-dashed p-2 rounded-lg text-center cursor-pointer flex items-center justify-center transition-colors ${topUpSlip ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}`}>
+            <input id="topup-slip-input" name="topupSlip" type="file" accept="image/*" className="hidden" onChange={handleTopUpSlipSelect} />
             {topUpSlip
               ? <><Check size={16} className="mr-1" /> สลิปพร้อมส่ง</>
               : <><Receipt size={16} className="mr-1" /> แนบสลิปโอนเงิน</>

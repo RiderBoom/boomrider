@@ -965,10 +965,12 @@ export default function RiderView() {
                               <span className="text-xs text-gray-400">กำลังอัปโหลด...</span>
                             </div>
                           ) : (
-                            <label className="flex flex-col items-center justify-center h-20 border-2 border-dashed border-gray-600 rounded-xl cursor-pointer hover:border-green-500/50 transition-all active:scale-95">
+                            <label htmlFor={`rider-proof-file-${job.id}`} className="flex flex-col items-center justify-center h-20 border-2 border-dashed border-gray-600 rounded-xl cursor-pointer hover:border-green-500/50 transition-all active:scale-95">
                               <Camera size={22} className="text-gray-500 mb-1" />
                               <span className="text-xs text-gray-500">แตะเพื่อถ่ายรูป / เลือกรูป</span>
                               <input
+                                id={`rider-proof-file-${job.id}`}
+                                name="proofImage"
                                 type="file"
                                 accept="image/*"
                                 capture="environment"
@@ -1094,22 +1096,30 @@ export default function RiderView() {
                 )}
 
                 <div className="space-y-2">
+                  <label htmlFor="rider-wallet-amount-input" className="sr-only">จำนวนเงิน</label>
                   <input
+                    id="rider-wallet-amount-input"
+                    name="walletAmount"
                     type="number"
                     placeholder={walletAction === 'withdraw' ? `จำนวนเงิน (สูงสุด ฿${effectiveBalance.toLocaleString()})` : 'จำนวนเงิน (฿) *'}
                     value={walletAmount}
                     onChange={e => setWalletAmount(e.target.value)}
                     className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-green-500 outline-none placeholder-gray-500"
+                    autoComplete="off"
+                    aria-label="จำนวนเงิน"
                   />
-                  <input type="text" placeholder="ชื่อธนาคาร (เช่น กสิกร, SCB) *" value={walletBank}
+                  <label htmlFor="rider-wallet-bank-input" className="sr-only">ชื่อธนาคาร</label>
+                  <input id="rider-wallet-bank-input" name="walletBank" type="text" placeholder="ชื่อธนาคาร (เช่น กสิกร, SCB) *" value={walletBank}
                     onChange={e => setWalletBank(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-green-500 outline-none placeholder-gray-500" />
-                  <input type="text" placeholder="ชื่อบัญชี *" value={walletAccName}
+                    className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-green-500 outline-none placeholder-gray-500" autoComplete="off" aria-label="ชื่อธนาคาร" />
+                  <label htmlFor="rider-wallet-accname-input" className="sr-only">ชื่อบัญชี</label>
+                  <input id="rider-wallet-accname-input" name="walletAccName" type="text" placeholder="ชื่อบัญชี *" value={walletAccName}
                     onChange={e => setWalletAccName(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-green-500 outline-none placeholder-gray-500" />
-                  <input type="text" placeholder="เลขบัญชี *" value={walletAccNo}
+                    className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-green-500 outline-none placeholder-gray-500" autoComplete="off" aria-label="ชื่อบัญชี" />
+                  <label htmlFor="rider-wallet-accno-input" className="sr-only">เลขบัญชี</label>
+                  <input id="rider-wallet-accno-input" name="walletAccNo" type="text" placeholder="เลขบัญชี *" value={walletAccNo}
                     onChange={e => setWalletAccNo(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-green-500 outline-none placeholder-gray-500" />
+                    className="w-full bg-gray-700 text-white rounded-xl px-3 py-2.5 text-sm border border-gray-600 focus:border-green-500 outline-none placeholder-gray-500" autoComplete="off" aria-label="เลขบัญชี" />
                 </div>
 
                 <button
@@ -1306,11 +1316,15 @@ export default function RiderView() {
                   </button>
                 ))}
               </div>
+              <label htmlFor="rider-cancel-reason-input" className="sr-only">เหตุผลเพิ่มเติม</label>
               <textarea
+                id="rider-cancel-reason-input"
+                name="cancelReason"
                 value={riderCancelReason}
                 onChange={e => setRiderCancelReason(e.target.value)}
                 placeholder="หรือพิมพ์เหตุผลเพิ่มเติม..."
                 className="w-full bg-gray-700 border border-gray-600 rounded-xl p-3 text-sm text-white placeholder-gray-500 resize-none h-16 focus:outline-none focus:ring-2 focus:ring-red-500"
+                autoComplete="off"
               />
             </div>
             <div className="flex gap-2 px-5 pb-5">

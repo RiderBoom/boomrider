@@ -120,11 +120,16 @@ const ChatModal = () => {
 
         {/* ── Input ── */}
         <div className="p-3 bg-white border-t flex items-center gap-2 flex-shrink-0">
+          <label htmlFor="chat-message-input" className="sr-only">พิมพ์ข้อความ</label>
           <input
+            id="chat-message-input"
+            name="chatMessage"
             ref={inputRef}
             type="text"
             placeholder="พิมพ์ข้อความ..."
             className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 transition-all"
+            autoComplete="off"
+            aria-label="พิมพ์ข้อความ"
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           />
           <button
