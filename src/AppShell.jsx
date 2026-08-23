@@ -1,8 +1,9 @@
-import React, { lazy, Suspense } from 'react';
-import { ShieldAlert } from 'lucide-react';
+import React, { lazy, Suspense, useState } from 'react';
+import { ShieldAlert, Bot } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
 import ChatModal from './components/ChatModal';
+import AIChatModal from './components/AIChatModal';
 import InstallBanner from './components/InstallBanner';
 import AuthView from './views/AuthView';
 
@@ -44,6 +45,7 @@ function AppRouter() {
     isLoggedIn, activeRole,
     toasts, removeToast,
   } = useApp();
+  const [aiChatOpen, setAiChatOpen] = useState(false);
 
   return (
     <div
@@ -58,6 +60,19 @@ function AppRouter() {
         <>
           <ToastContainer toasts={toasts} removeToast={removeToast} />
           <ChatModal />
+          <AIChatModal isOpen={aiChatOpen} onClose={() => setAiChatOpen(false)} />
+
+          {/* AI Assistant Floating Button */}
+          <button
+            type="button"
+            onClick={() => setAiChatOpen(true)}
+            className="fixed bottom-20 right-4 z-[9999] bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-3.5 rounded-full shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-1.5 group border border-purple-300/40"
+            title="คุยกับน้องบูม AI"
+          >
+            <Bot size={22} className="group-hover:rotate-12 transition-transform" />
+            <span className="text-xs font-bold pr-1 hidden sm:inline">น้องบูม AI</span>
+          </button>
+
           <Suspense fallback={<ViewLoader />}>
             {activeRole === 'customer' && <CustomerView />}
             {activeRole === 'merchant' && <MerchantView />}
