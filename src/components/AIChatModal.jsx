@@ -12,11 +12,11 @@ const SYSTEM_PROMPT = `คุณคือ "น้องบูม (BoomBot)" ผ�
 - ตอบคำถามสั้นกระชับ ชัดเจน เข้าใจง่าย ภาษาไทยเสมอ`;
 
 export default function AIChatModal({ isOpen, onClose }) {
-  const { userProfile, orders, userWallet } = useApp();
+  const { userProfile, currentUser, orders, userWallet, restaurants } = useApp();
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: `สวัสดีครับคุณ ${userProfile?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant มีอะไรให้ผมช่วยเหลือวันนี้ไหมครับ?`,
+      text: `สวัสดีครับคุณ ${userProfile?.name || currentUser?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant มีอะไรให้ผมช่วยเหลือวันนี้ไหมครับ?`,
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -55,28 +55,69 @@ export default function AIChatModal({ isOpen, onClose }) {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       let replyText = '';
 
+      const currentUserId = userProfile?.id || currentUser?.id;
+      const balanceNum = typeof userWallet === 'number' ? userWallet : Number(userWallet?.balance || 0);
+      const activeOrders = orders?.filter(
+        (o) => (o.customerId === currentUserId || (!o.customerId && currentUserId)) &&
+               o.status !== 'completed' &&
+               o.status !== 'cancelled'
+      ) || [];
+      const openShops = restaurants?.filter((r) => r.status === 'open') || [];
+
       // Check context based quick answers or Gemini API
-      if (text.includes('สถานะออเดอร์') || text.includes('เช็คออเดอร์')) {
-        const activeOrders = orders?.filter((o) => o.status !== 'completed' && o.status !== 'cancelled') || [];
+      if (text.includes('สถานะออเดอร์') || text.includes('เช็คออเดอร์') || text.includes('ออเดอร์')) {
         if (activeOrders.length === 0) {
           replyText = 'ขณะนี้คุณไม่มีออเดอร์ที่กำลังดำเนินการอยู่ครับ สามารถเลือกสั่งอาหารหรือส่งพัสดุได้เลยครับ 🛵';
         } else {
           const latest = activeOrders[0];
           const statusMap = {
             pending: 'รอร้านค้ารับออเดอร์',
-            accepted: 'ร้านค้ากำลังเตรียมสินค้า/อาหาร',
+            preparing: 'ร้านค้ากำลังเตรียมสินค้า/อาหาร',
             ready_to_pickup: 'รอไรเดอร์เข้ารับสินค้า',
+            rider_accepted: 'ไรเดอร์รับออเดอร์แล้ว',
+            picking_up: 'ไรเดอร์กำลังรับสินค้า',
             delivering: 'ไรเดอร์กำลังเดินทางไปส่ง',
+            delivered: 'จัดส่งเรียบร้อย (รอยืนยัน)',
           };
           replyText = `ออเดอร์ #${latest.id.slice(-6)} (${latest.type === 'parcel' ? 'ส่งพัสดุ' : 'อาหาร'})\nสถานะปัจจุบัน: ${
             statusMap[latest.status] || latest.status
           }\nยอดรวม: ฿${latest.total || latest.amount || 0}`;
         }
-      } else if (text.includes('Wallet') || text.includes('ยอดเงิน')) {
-        replyText = `ยอดเงินใน Wallet ของคุณในปัจจุบันคือ ฿${(userWallet?.balance || 0).toLocaleString()} ครับ สามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันที! 💳`;
+      } else if (text.includes('Wallet') || text.includes('ยอดเงิน') || text.includes('เงิน')) {
+        replyText = `ยอดเงินใน Wallet ของคุณในปัจจุบันคือ ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ครับ สามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันที! 💳`;
+      } else if (text.includes('ร้านอาหาร') || text.includes('แนะนำร้าน') || text.includes('ร้านอร่อย')) {
+        if (openShops.length === 0) {
+          replyText = 'ขณะนี้ยังไม่มีร้านค้าเปิดให้บริการครับ ลองกลับมาเช็คดูอีกครั้งภายหลังนะครับ 🍔';
+        } else {
+          const shopListStr = openShops
+            .map((r) => `• ${r.name} (${r.category || 'ทั่วไป'}) ⭐ ${r.rating || 5}`)
+            .join('\n');
+          replyText = `ร้านอาหารที่เปิดให้บริการในตอนนี้ครับ:\n${shopListStr}\n\nสามารถเลือกกดสั่งอาหารจากเมนูในแท็บสั่งอาหารได้เลยครับ! 🛵✨`;
+        }
       } else if (text.includes('ส่งพัสดุ')) {
         replyText = 'วิธีการเรียกส่งพัสดุง่ายๆ ครับ:\n1. ไปที่แท็บ "ส่งพัสดุ"\n2. ปักหมุดจุดรับของ และ จุดส่งของ บนแผนที่\n3. ใส่รายละเอียดพัสดุและเบอร์ผู้รับ\n4. กดยืนยันการเรียกไรเดอร์ได้เลยครับ 📦';
       } else if (apiKey) {
+        // Build dynamic context for Gemini
+        const dynamicContext = `
+[ข้อมูลผู้ใช้งานและบริบทปัจจุบัน]
+- ชื่อผู้ใช้: ${userProfile?.name || currentUser?.name || 'ลูกค้า'}
+- ยอดเงิน Wallet ปัจจุบัน: ฿${balanceNum.toLocaleString()}
+- ออเดอร์ที่กำลังดำเนินการของคุณ (${activeOrders.length} รายการ): ${
+          activeOrders.length > 0
+            ? activeOrders
+                .map(
+                  (o) =>
+                    `#${o.id.slice(-6)} (${o.type === 'parcel' ? 'ส่งพัสดุ' : 'อาหาร'}) สถานะ: ${o.status} ยอด: ฿${o.total || o.amount || 0}`
+                )
+                .join('; ')
+            : 'ไม่มีออเดอร์ค้างอยู่'
+        }
+- ร้านอาหารที่เปิดให้บริการ (${openShops.length} ร้าน): ${
+          openShops.length > 0
+            ? openShops.map((r) => `${r.name} (${r.category || 'อาหาร'}, เรตติ้ง ${r.rating || 5}★)`).join(', ')
+            : 'ไม่มีร้านเปิดในขณะนี้'
+        }`;
+
         // Call Google Gemini 2.0 Flash / 1.5 Flash Free API
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
@@ -87,7 +128,7 @@ export default function AIChatModal({ isOpen, onClose }) {
               contents: [
                 {
                   role: 'user',
-                  parts: [{ text: `${SYSTEM_PROMPT}\n\nผู้ใช้พูดว่า: "${text}"` }],
+                  parts: [{ text: `${SYSTEM_PROMPT}\n${dynamicContext}\n\nคำถามจากผู้ใช้: "${text}"` }],
                 },
               ],
             }),
@@ -99,7 +140,7 @@ export default function AIChatModal({ isOpen, onClose }) {
           'ขออภัยครับ เกิดปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งครับ';
       } else {
         // Smart fallback logic
-        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" สามารถสอบถามเรื่อง สั่งอาหาร, ส่งพัสดุ, หรือเช็คยอดเงิน Wallet กับผมได้เลยครับ 🛵✨`;
+        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถสอบถามเรื่อง สั่งอาหาร, แนะนำร้านอาหาร, เช็คสถานะออเดอร์, ส่งพัสดุ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) กับผมได้เลยครับ 🛵✨`;
       }
 
       setMessages((prev) => [
