@@ -1,22 +1,100 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Bot, Send, Loader2, Sparkles, User } from 'lucide-react';
+import { X, Bot, Send, Loader2, Sparkles, User, Utensils, Package, MessageSquare, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { generateId, formatDateTime, r2, playOrderNotificationSound } from '../utils';
+import { autoDispatch } from '../context/hooks/useAutoDispatch';
 
 const SYSTEM_PROMPT = `คุณคือ "น้องบูม (BoomBot)" ผู้ช่วยอัจฉริยะ AI ประจำแอปพลิเคชัน BoomRider (บริการสั่งอาหารและส่งพัสดุในประเทศไทย)
 หน้าที่ของคุณคือบริการและช่วยเหลือผู้ใช้ด้วยความเป็นกันเอง สุภาพ มีหางเสียง (ครับ/ค่ะ)
-ข้อมูลของแอป BoomRider:
-- สั่งอาหาร: เลือกร้าน ชำระเงินด้วย Wallet หรือเงินสด
-- ส่งพัสดุ: ปักหมุดจุดรับ-จุดส่ง คำนวณค่าส่งตามระยะทาง
-- ระบบ Wallet: เติมเงิน ถอนเงิน ชำระเงินสะดวก
-- ตอบคำถามสั้นกระชับ ชัดเจน เข้าใจง่าย ภาษาไทยเสมอ`;
+ความสามารถพิเศษของคุณ:
+1. เช็คสถานะออเดอร์ แนะนำร้าน และยอดเงินใน Wallet
+2. สามารถ "สั่งอาหาร" ให้ลูกค้าได้โดยตรง เมื่อลูกค้าระบุชื่อร้านค้าและรายการอาหาร
+3. สามารถ "สั่งส่งพัสดุ / เรียกไรเดอร์" ให้ลูกค้าได้โดยตรง เมื่อลูกค้าระบุจุดรับ จุดส่ง
+4. สามารถ "ส่งข้อความสื่อสาร/แจ้งเตือน" ไปยังห้องแชทของร้านค้า ไรเดอร์ หรือแอดมิน เกี่ยวกับออเดอร์ที่ดำเนินการอยู่ได้ทันที
+ตอบคำถามสั้นกระชับ ชัดเจน เข้าใจง่าย ภาษาไทยเสมอ`;
+
+const GEMINI_TOOLS = [
+  {
+    function_declarations: [
+      {
+        name: 'place_food_order',
+        description: 'สั่งอาหารจากร้านค้าโดยระบุชื่อร้านค้า รายการอาหาร วิธีชำระเงิน และหมายเหตุ',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            restaurantName: { type: 'STRING', description: 'ชื่อร้านค้า หรือคีย์เวิร์ดชื่อร้าน' },
+            items: {
+              type: 'ARRAY',
+              description: 'รายการเมนูและจำนวนที่สั่ง',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  itemName: { type: 'STRING', description: 'ชื่อเมนูอาหาร' },
+                  qty: { type: 'NUMBER', description: 'จำนวนจาน/ชิ้น' },
+                },
+                required: ['itemName', 'qty'],
+              },
+            },
+            paymentMethod: { type: 'STRING', description: "วิธีชำระเงิน 'wallet' หรือ 'cash'" },
+            notes: { type: 'STRING', description: 'หมายเหตุเพิ่มเติมถึงร้านค้า' },
+          },
+          required: ['restaurantName', 'items'],
+        },
+      },
+      {
+        name: 'place_parcel_order',
+        description: 'สั่งส่งพัสดุ/เรียกไรเดอร์มารับของ โดยระบุจุดรับ จุดส่ง เบอร์ผู้รับ',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            pickup: { type: 'STRING', description: 'จุดรับสินค้า/พัสดุ' },
+            dropoff: { type: 'STRING', description: 'จุดส่งสินค้า/พัสดุ' },
+            receiverName: { type: 'STRING', description: 'ชื่อผู้รับ' },
+            receiverPhone: { type: 'STRING', description: 'เบอร์โทรศัพท์ผู้รับ' },
+            weight: { type: 'STRING', description: 'น้ำหนักพัสดุ (กก.)' },
+            paymentMethod: { type: 'STRING', description: "วิธีชำระเงิน 'wallet' หรือ 'cash'" },
+          },
+          required: ['pickup', 'dropoff'],
+        },
+      },
+      {
+        name: 'send_order_chat_message',
+        description: 'ส่งข้อความสื่อสารหรือแจ้งเตือนไปยังห้องแชทของร้านค้า ไรเดอร์ หรือแอดมินสำหรับออเดอร์',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            orderId: { type: 'STRING', description: "ID ของออเดอร์ หรือ 'latest' สำหรับออเดอร์ล่าสุด" },
+            message: { type: 'STRING', description: 'ข้อความแจ้งเตือนหรือสื่อสารที่ต้องการส่งถึงร้านค้า/ไรเดอร์/แอดมิน' },
+          },
+          required: ['message'],
+        },
+      },
+      {
+        name: 'check_order_status',
+        description: 'เช็คสถานะออเดอร์ปัจจุบันของผู้ใช้',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            orderId: { type: 'STRING', description: 'ID ออเดอร์ (ไม่ระบุก็ได้)' },
+          },
+        },
+      },
+    ],
+  },
+];
 
 export default function AIChatModal({ isOpen, onClose }) {
-  const { userProfile, currentUser, orders, userWallet, restaurants } = useApp();
+  const {
+    userProfile, currentUser, orders, setOrders, userAddresses,
+    userWallet, creditWallet, restaurants, menuItems, appConfig,
+    notifyAdmin, notifySystem, supabase,
+  } = useApp();
+
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: `สวัสดีครับคุณ ${userProfile?.name || currentUser?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant มีอะไรให้ผมช่วยเหลือวันนี้ไหมครับ?`,
+      text: `สวัสดีครับคุณ ${userProfile?.name || currentUser?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant\nผมสามารถช่วยเช็คสถานะ, สั่งอาหาร, เรียกไรเดอร์ส่งพัสดุ หรือส่งข้อความแจ้งเตือนไปยังร้านค้าและไรเดอร์ได้ครับ! มีอะไรให้รับใช้ไหมครับ?`,
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -32,10 +110,250 @@ export default function AIChatModal({ isOpen, onClose }) {
 
   const quickPrompts = [
     '📦 เช็คสถานะออเดอร์',
-    '🍔 แนะนำร้านอาหารอร่อย',
-    '💳 สอบถามยอดเงิน Wallet',
-    '❓ วิธีเรียกส่งพัสดุ',
+    '🍔 สั่งกะเพราหมูสับ',
+    '🚚 เรียกส่งพัสดุ',
+    '💬 แจ้งร้านค้าว่าขอไม่ใส่ผัก',
+    '💳 ยอดเงิน Wallet',
   ];
+
+  const currentUserId = userProfile?.id || currentUser?.id || '';
+  const balanceNum = typeof userWallet === 'number' ? userWallet : Number(userWallet?.balance || 0);
+
+  const getActiveOrders = () => {
+    return (orders || []).filter(
+      (o) => (o.customerId === currentUserId || (!o.customerId && currentUserId)) &&
+             o.status !== 'completed' &&
+             o.status !== 'cancelled'
+    );
+  };
+
+  // ── Local Tool Execution Handlers ──────────────────────────────────────────
+
+  const executePlaceFoodOrder = async (args) => {
+    const targetRestName = args.restaurantName || '';
+    const openShops = (restaurants || []).filter((r) => r.status === 'open');
+    const matchedShop = openShops.find(
+      (r) => r.name.toLowerCase().includes(targetRestName.toLowerCase()) || targetRestName.toLowerCase().includes(r.name.toLowerCase())
+    ) || openShops[0];
+
+    if (!matchedShop) {
+      return 'ขออภัยครับ ขณะนี้ไม่มีร้านอาหารที่เปิดให้บริการครับ 🍔';
+    }
+
+    const shopMenuItems = menuItems[matchedShop.id] || [];
+    const orderedItems = [];
+    const rawItems = args.items || [];
+
+    for (const itemArg of rawItems) {
+      const argName = (itemArg.itemName || '').toLowerCase();
+      const qty = Math.max(1, Number(itemArg.qty) || 1);
+      const matchedMenu = shopMenuItems.find(
+        (m) => m.name.toLowerCase().includes(argName) || argName.includes(m.name.toLowerCase())
+      ) || shopMenuItems[0];
+
+      if (matchedMenu) {
+        orderedItems.push({
+          id: matchedMenu.id,
+          name: matchedMenu.name,
+          price: matchedMenu.price,
+          qty,
+        });
+      }
+    }
+
+    if (orderedItems.length === 0 && shopMenuItems.length > 0) {
+      const defaultMenu = shopMenuItems[0];
+      orderedItems.push({
+        id: defaultMenu.id,
+        name: defaultMenu.name,
+        price: defaultMenu.price,
+        qty: 1,
+      });
+    }
+
+    if (orderedItems.length === 0) {
+      return `ขออภัยครับ ไม่พบเมนูอาหารในร้าน ${matchedShop.name} ครับ`;
+    }
+
+    const foodTotal = orderedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const distance = 1;
+    const deliveryFee = (appConfig?.baseFee || 30) + Math.ceil(distance) * (appConfig?.perKmFee || 10);
+    const grandTotal = Math.max(0, foodTotal + deliveryFee);
+
+    const paymentMethod = args.paymentMethod === 'cash' ? 'cash' : 'wallet';
+
+    if (paymentMethod === 'wallet' && balanceNum < grandTotal) {
+      return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString()} แต่ยอดสั่งซื้อคือ ฿${grandTotal.toLocaleString()}) กรุณาเติมเงินก่อนทำรายการครับ 💳`;
+    }
+
+    const addr = userAddresses?.[0] || { address: 'ที่อยู่ปัจจุบันของลูกค้า', location: userProfile?.location };
+    const orderId = generateId();
+
+    const newOrder = {
+      id: orderId,
+      type: 'food',
+      status: 'pending',
+      customerId: currentUserId,
+      customerName: userProfile?.name || currentUser?.name || 'ลูกค้า',
+      customerPhone: userProfile?.phone || null,
+      restaurantId: matchedShop.id,
+      restaurantName: matchedShop.name,
+      restaurantOwnerId: matchedShop.ownerId || null,
+      restaurantLocation: matchedShop.location,
+      pickupLocation: matchedShop.location,
+      location: addr.location,
+      address: addr.address,
+      items: orderedItems,
+      foodTotal,
+      deliveryFee,
+      promoDiscount: 0,
+      grandTotal,
+      paymentMethod,
+      notes: args.notes || 'สั่งผ่านน้องบูม AI Assistant',
+      createdAt: formatDateTime(),
+    };
+
+    setOrders((prev) => [newOrder, ...prev]);
+    await supabase.from('orders').insert({ id: orderId, status: 'pending', data: newOrder });
+
+    if (paymentMethod === 'wallet') {
+      creditWallet(currentUserId, -grandTotal, `ชำระค่าอาหาร ออเดอร์ #${orderId.slice(-6)} (สั่งผ่าน AI)`);
+    }
+
+    notifyAdmin('🛎️ ออเดอร์ใหม่ (ผ่าน AI)', `${userProfile?.name || 'ลูกค้า'} สั่ง ${matchedShop.name} ฿${grandTotal}`, 'info');
+    notifySystem('สั่งอาหารสำเร็จ! 🎉', `ออเดอร์ #${orderId.slice(-6)} ส่งไปยังร้านแล้ว`, 'success');
+    playOrderNotificationSound();
+
+    const itemListStr = orderedItems.map((i) => `• ${i.name} x${i.qty} (฿${i.price * i.qty})`).join('\n');
+    return `✅ สั่งอาหารให้เรียบร้อยแล้วครับ! 🎉\n\nร้านค้า: ${matchedShop.name}\nรายการ:\n${itemListStr}\nค่าส่ง: ฿${deliveryFee}\nยอดรวมทั้งสิ้น: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบได้แจ้งเตือนและส่งเสียงไปยังร้านค้าเรียบร้อยแล้วครับ! 🍔🔔`;
+  };
+
+  const executePlaceParcelOrder = async (args) => {
+    const pickup = args.pickup || 'จุดรับของลูกค้า';
+    const dropoff = args.dropoff || 'จุดส่งของปลายทาง';
+    const grandTotal = (appConfig?.baseFee || 30) + (appConfig?.perKmFee || 10) * 2; // ~50 THB
+    const paymentMethod = args.paymentMethod === 'cash' ? 'cash' : 'wallet';
+
+    if (paymentMethod === 'wallet' && balanceNum < grandTotal) {
+      return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString()} แต่ค่าส่งพัสดุคือ ฿${grandTotal.toLocaleString()}) กรุณาเติมเงินก่อนครับ 💳`;
+    }
+
+    const orderId = generateId();
+    const newOrder = {
+      id: orderId,
+      type: 'parcel',
+      status: 'ready_to_pickup',
+      customerId: currentUserId,
+      customerName: userProfile?.name || currentUser?.name || 'ลูกค้า',
+      customerPhone: userProfile?.phone || null,
+      pickup,
+      dropoff,
+      pickupLocation: userProfile?.location,
+      location: userProfile?.location,
+      weight: String(args.weight || '1'),
+      receiverName: args.receiverName || 'ผู้รับ',
+      receiverPhone: args.receiverPhone || '',
+      deliveryFee: grandTotal,
+      riderIncome: r2(grandTotal * (1 - ((appConfig?.gpDelivery ?? 15) / 100))),
+      grandTotal,
+      paymentMethod,
+      notes: 'สั่งเรียกไรเดอร์ผ่านน้องบูม AI',
+      createdAt: formatDateTime(),
+    };
+
+    setOrders((prev) => [newOrder, ...prev]);
+    await supabase.from('orders').insert({ id: orderId, status: 'ready_to_pickup', data: newOrder });
+
+    if (paymentMethod === 'wallet') {
+      creditWallet(currentUserId, -grandTotal, `ค่าส่งพัสดุ ออเดอร์ #${orderId.slice(-6)} (สั่งผ่าน AI)`);
+    }
+
+    notifyAdmin('📦 พัสดุใหม่ (ผ่าน AI)', `${userProfile?.name || 'ลูกค้า'} ส่ง ${pickup} → ${dropoff}`, 'info');
+    notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
+
+    // Auto dispatch to riders immediately
+    autoDispatch(supabase, newOrder);
+
+    return `✅ เรียกส่งพัสดุเรียบร้อยแล้วครับ! 📦🛵\n\nจุดรับ: ${pickup}\nจุดส่ง: ${dropoff}\nค่าบริการ: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบกำลังกระจายงานแจ้งเตือนไปยังไรเดอร์บริเวณใกล้เคียงให้อัตโนมัติครับ! 🔔`;
+  };
+
+  const executeSendOrderChatMessage = async (args) => {
+    const activeOrders = getActiveOrders();
+    let targetOrder = null;
+
+    if (args.orderId && args.orderId !== 'latest') {
+      targetOrder = (orders || []).find((o) => o.id.endsWith(args.orderId) || o.id === args.orderId);
+    }
+    if (!targetOrder && activeOrders.length > 0) {
+      targetOrder = activeOrders[0];
+    }
+
+    if (!targetOrder) {
+      return 'ขณะนี้ไม่พบออเดอร์ที่กำลังดำเนินการอยู่ จึงไม่สามารถส่งข้อความถึงร้านค้า/ไรเดอร์ได้ครับ 🛵';
+    }
+
+    const messageText = args.message || '';
+    if (!messageText.trim()) {
+      return 'กรุณาระบุข้อความที่ต้องการส่งครับ';
+    }
+
+    const newMessage = {
+      text: `🤖 [ข้อความผ่านน้องบูม AI Assistant]: ${messageText}`,
+      sender: 'customer',
+      senderName: userProfile?.name ? `${userProfile.name} (ผ่าน AI)` : 'ลูกค้า (ผ่าน AI)',
+      time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    await supabase.rpc('append_chat_message', { p_order_id: targetOrder.id, p_message: newMessage });
+
+    notifySystem('ส่งข้อความสำเร็จ 💬', `ส่งข้อความออเดอร์ #${targetOrder.id.slice(-6)} เรียบร้อย`, 'success');
+
+    return `💬 ส่งข้อความเรียบร้อยแล้วครับ!\n\nข้อความ: "${messageText}"\nไปยังออเดอร์: #${targetOrder.id.slice(-6)} (${targetOrder.type === 'parcel' ? 'ส่งพัสดุ' : targetOrder.restaurantName || 'ร้านค้า'})\n\nข้อความถูกบันทึกลงในห้องแชทและแจ้งเตือนไปยังร้านค้า/ไรเดอร์ทันทีครับ! ✨`;
+  };
+
+  const executeCheckOrderStatus = async (args) => {
+    const activeOrders = getActiveOrders();
+    if (activeOrders.length === 0) {
+      return 'ขณะนี้คุณไม่มีออเดอร์ที่กำลังดำเนินการอยู่ครับ สามารถสั่งอาหารหรือเรียกส่งพัสดุได้เลยครับ 🛵';
+    }
+    const target = args?.orderId
+      ? activeOrders.find((o) => o.id.endsWith(args.orderId)) || activeOrders[0]
+      : activeOrders[0];
+
+    const statusMap = {
+      pending: 'รอร้านค้ารับออเดอร์',
+      preparing: 'ร้านค้ากำลังเตรียมสินค้า/อาหาร',
+      ready_to_pickup: 'รอไรเดอร์เข้ารับสินค้า',
+      rider_accepted: 'ไรเดอร์รับออเดอร์แล้ว',
+      picking_up: 'ไรเดอร์กำลังรับสินค้า',
+      delivering: 'ไรเดอร์กำลังเดินทางไปส่ง',
+      delivered: 'จัดส่งเรียบร้อย (รอยืนยัน)',
+    };
+
+    return `📦 สถานะออเดอร์ #${target.id.slice(-6)} (${target.type === 'parcel' ? 'ส่งพัสดุ' : target.restaurantName || 'อาหาร'})\nสถานะปัจจุบัน: ${
+      statusMap[target.status] || target.status
+    }\nไรเดอร์: ${target.riderName || 'กำลังค้นหาไรเดอร์...'}\nยอดรวม: ฿${target.grandTotal || target.deliveryFee || 0}`;
+  };
+
+  const executeTool = async (functionName, args) => {
+    try {
+      if (functionName === 'place_food_order') {
+        return await executePlaceFoodOrder(args);
+      } else if (functionName === 'place_parcel_order') {
+        return await executePlaceParcelOrder(args);
+      } else if (functionName === 'send_order_chat_message') {
+        return await executeSendOrderChatMessage(args);
+      } else if (functionName === 'check_order_status') {
+        return await executeCheckOrderStatus(args);
+      }
+      return 'ไม่พบฟังก์ชันที่ระบุครับ';
+    } catch (err) {
+      console.error('executeTool error:', err);
+      return 'เกิดข้อผิดพลาดในการทำรายการ กรุณาลองใหม่อีกครั้งครับ';
+    }
+  };
+
+  // ── Main Send Handler ──────────────────────────────────────────────────────
 
   const handleSend = async (textToSend) => {
     const text = textToSend || inputText.trim();
@@ -55,47 +373,33 @@ export default function AIChatModal({ isOpen, onClose }) {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       let replyText = '';
 
-      const currentUserId = userProfile?.id || currentUser?.id;
-      const balanceNum = typeof userWallet === 'number' ? userWallet : Number(userWallet?.balance || 0);
-      const activeOrders = orders?.filter(
-        (o) => (o.customerId === currentUserId || (!o.customerId && currentUserId)) &&
-               o.status !== 'completed' &&
-               o.status !== 'cancelled'
-      ) || [];
+      const activeOrders = getActiveOrders();
       const openShops = restaurants?.filter((r) => r.status === 'open') || [];
 
-      // Check context based quick answers or Gemini API
-      if (text.includes('สถานะออเดอร์') || text.includes('เช็คออเดอร์') || text.includes('ออเดอร์')) {
-        if (activeOrders.length === 0) {
-          replyText = 'ขณะนี้คุณไม่มีออเดอร์ที่กำลังดำเนินการอยู่ครับ สามารถเลือกสั่งอาหารหรือส่งพัสดุได้เลยครับ 🛵';
-        } else {
-          const latest = activeOrders[0];
-          const statusMap = {
-            pending: 'รอร้านค้ารับออเดอร์',
-            preparing: 'ร้านค้ากำลังเตรียมสินค้า/อาหาร',
-            ready_to_pickup: 'รอไรเดอร์เข้ารับสินค้า',
-            rider_accepted: 'ไรเดอร์รับออเดอร์แล้ว',
-            picking_up: 'ไรเดอร์กำลังรับสินค้า',
-            delivering: 'ไรเดอร์กำลังเดินทางไปส่ง',
-            delivered: 'จัดส่งเรียบร้อย (รอยืนยัน)',
-          };
-          replyText = `ออเดอร์ #${latest.id.slice(-6)} (${latest.type === 'parcel' ? 'ส่งพัสดุ' : 'อาหาร'})\nสถานะปัจจุบัน: ${
-            statusMap[latest.status] || latest.status
-          }\nยอดรวม: ฿${latest.total || latest.amount || 0}`;
-        }
+      // Smart Intent Matching for Direct Actions (or fallback if API key absent)
+      const isChatMessageIntent = text.includes('ส่งข้อความ') || text.includes('บอกร้าน') || text.includes('บอกไรเดอร์') || text.includes('แจ้งร้าน');
+      const isPlaceFoodIntent = text.includes('สั่งอาหาร') || text.includes('สั่งกะเพรา') || text.includes('สั่งข้าว');
+      const isPlaceParcelIntent = text.includes('สั่งส่งพัสดุ') || text.includes('เรียกไรเดอร์') || text.includes('ส่งพัสดุจาก');
+
+      if (isChatMessageIntent) {
+        const cleanMsg = text.replace(/^(ส่งข้อความถึงร้าน|บอกร้านว่า|บอกไรเดอร์ว่า|แจ้งร้านว่า|ส่งข้อความว่า)\s*/, '');
+        replyText = await executeSendOrderChatMessage({ message: cleanMsg || text });
+      } else if (isPlaceFoodIntent && (!apiKey || text.length < 30)) {
+        replyText = await executePlaceFoodOrder({
+          restaurantName: openShops[0]?.name || '',
+          items: [{ itemName: text, qty: 1 }],
+          paymentMethod: 'wallet',
+        });
+      } else if (isPlaceParcelIntent && !apiKey) {
+        replyText = await executePlaceParcelOrder({
+          pickup: 'จุดรับของปัจจุบัน',
+          dropoff: 'จุดส่งของปลายทาง',
+          paymentMethod: 'wallet',
+        });
+      } else if (text.includes('สถานะออเดอร์') || text.includes('เช็คออเดอร์')) {
+        replyText = await executeCheckOrderStatus({});
       } else if (text.includes('Wallet') || text.includes('ยอดเงิน') || text.includes('เงิน')) {
         replyText = `ยอดเงินใน Wallet ของคุณในปัจจุบันคือ ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ครับ สามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันที! 💳`;
-      } else if (text.includes('ร้านอาหาร') || text.includes('แนะนำร้าน') || text.includes('ร้านอร่อย')) {
-        if (openShops.length === 0) {
-          replyText = 'ขณะนี้ยังไม่มีร้านค้าเปิดให้บริการครับ ลองกลับมาเช็คดูอีกครั้งภายหลังนะครับ 🍔';
-        } else {
-          const shopListStr = openShops
-            .map((r) => `• ${r.name} (${r.category || 'ทั่วไป'}) ⭐ ${r.rating || 5}`)
-            .join('\n');
-          replyText = `ร้านอาหารที่เปิดให้บริการในตอนนี้ครับ:\n${shopListStr}\n\nสามารถเลือกกดสั่งอาหารจากเมนูในแท็บสั่งอาหารได้เลยครับ! 🛵✨`;
-        }
-      } else if (text.includes('ส่งพัสดุ')) {
-        replyText = 'วิธีการเรียกส่งพัสดุง่ายๆ ครับ:\n1. ไปที่แท็บ "ส่งพัสดุ"\n2. ปักหมุดจุดรับของ และ จุดส่งของ บนแผนที่\n3. ใส่รายละเอียดพัสดุและเบอร์ผู้รับ\n4. กดยืนยันการเรียกไรเดอร์ได้เลยครับ 📦';
       } else if (apiKey) {
         // Build dynamic context for Gemini
         const dynamicContext = `
@@ -107,40 +411,52 @@ export default function AIChatModal({ isOpen, onClose }) {
             ? activeOrders
                 .map(
                   (o) =>
-                    `#${o.id.slice(-6)} (${o.type === 'parcel' ? 'ส่งพัสดุ' : 'อาหาร'}) สถานะ: ${o.status} ยอด: ฿${o.total || o.amount || 0}`
+                    `#${o.id.slice(-6)} (${o.type === 'parcel' ? 'ส่งพัสดุ' : 'อาหาร'}) สถานะ: ${o.status} ยอด: ฿${o.grandTotal || o.deliveryFee || 0}`
                 )
                 .join('; ')
             : 'ไม่มีออเดอร์ค้างอยู่'
         }
 - ร้านอาหารที่เปิดให้บริการ (${openShops.length} ร้าน): ${
           openShops.length > 0
-            ? openShops.map((r) => `${r.name} (${r.category || 'อาหาร'}, เรตติ้ง ${r.rating || 5}★)`).join(', ')
+            ? openShops.map((r) => `${r.name} (${r.category || 'อาหาร'})`).join(', ')
             : 'ไม่มีร้านเปิดในขณะนี้'
         }`;
 
-        // Call Google Gemini 2.0 Flash / 1.5 Flash Free API
+        // Call Google Gemini API with Function Calling Tools
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: `${SYSTEM_PROMPT}\n${dynamicContext}` }],
+              },
               contents: [
                 {
                   role: 'user',
-                  parts: [{ text: `${SYSTEM_PROMPT}\n${dynamicContext}\n\nคำถามจากผู้ใช้: "${text}"` }],
+                  parts: [{ text }],
                 },
               ],
+              tools: GEMINI_TOOLS,
             }),
           }
         );
+
         const data = await response.json();
-        replyText =
-          data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-          'ขออภัยครับ เกิดปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งครับ';
+        const candidate = data?.candidates?.[0];
+        const functionCallPart = candidate?.content?.parts?.find((p) => p.functionCall);
+
+        if (functionCallPart?.functionCall) {
+          const { name: fnName, args: fnArgs } = functionCallPart.functionCall;
+          replyText = await executeTool(fnName, fnArgs);
+        } else {
+          replyText =
+            candidate?.content?.parts?.[0]?.text ||
+            'ขออภัยครับ เกิดปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งครับ';
+        }
       } else {
-        // Smart fallback logic
-        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถสอบถามเรื่อง สั่งอาหาร, แนะนำร้านอาหาร, เช็คสถานะออเดอร์, ส่งพัสดุ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) กับผมได้เลยครับ 🛵✨`;
+        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถให้ผมสั่งอาหาร, เรียกส่งพัสดุ, ส่งข้อความแจ้งร้านค้า/ไรเดอร์ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) ได้เลยครับ 🛵✨`;
       }
 
       setMessages((prev) => [
@@ -181,7 +497,7 @@ export default function AIChatModal({ isOpen, onClose }) {
                 <h3 className="font-bold text-base">น้องบูม AI Assistant</h3>
                 <Sparkles size={14} className="text-amber-300 animate-pulse" />
               </div>
-              <p className="text-[11px] text-purple-200">ผู้ช่วยอัจฉริยะ 24 ชม.</p>
+              <p className="text-[11px] text-purple-200">สั่งอาหาร • เรียกพัสดุ • แจ้งเตือนร้าน/ไรเดอร์</p>
             </div>
           </div>
           <button
@@ -234,7 +550,7 @@ export default function AIChatModal({ isOpen, onClose }) {
           {loading && (
             <div className="flex gap-2 items-center text-xs text-purple-600 bg-purple-50 p-3 rounded-2xl w-fit animate-pulse border border-purple-100">
               <Loader2 size={16} className="animate-spin" />
-              <span>น้องบูมกำลังพิมพ์...</span>
+              <span>น้องบูมกำลังประมวลผลคำสั่ง...</span>
             </div>
           )}
 
@@ -267,7 +583,7 @@ export default function AIChatModal({ isOpen, onClose }) {
                 handleSend();
               }
             }}
-            placeholder="พิมพ์คำถามถึงน้องบูม AI..."
+            placeholder="สั่งอาหาร, เรียกพัสดุ หรือส่งข้อความ..."
             className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
           />
           <button

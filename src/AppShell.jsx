@@ -6,6 +6,7 @@ import ChatModal from './components/ChatModal';
 import AIChatModal from './components/AIChatModal';
 import InstallBanner from './components/InstallBanner';
 import AuthView from './views/AuthView';
+import { USER_LOCATION } from './constants';
 
 // Lazy load — each role loads its own chunk on first login
 const CustomerView = lazy(() => import('./views/CustomerView'));
@@ -23,7 +24,7 @@ function ViewLoader() {
 }
 
 function RoleSwitcher() {
-  const { activeRole, setActiveRole, pendingRequests, isAdmin } = useApp();
+  const { activeRole, setActiveRole, pendingRequests, isAdmin, isLoggedIn } = useApp();
   if (!import.meta.env.DEV) return null;
   return (
     <div className="fixed top-0 left-0 right-0 bg-gray-900 text-white p-2 z-50 flex justify-between items-center text-xs sm:text-sm shadow-md overflow-x-auto">
