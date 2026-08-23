@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Bot, Send, Loader2, Sparkles, User, Utensils, Package, MessageSquare, CheckCircle2 } from 'lucide-react';
+import { X, Bot, Send, Loader2, Sparkles, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { generateId, formatDateTime, r2, playOrderNotificationSound } from '../utils';
 import { autoDispatch } from '../context/hooks/useAutoDispatch';
 
- feature/smart-map-osrm-nominatim-332908018281973793
 const STATUS_MAP = {
   pending: 'รอร้านค้ารับออเดอร์',
   preparing: 'ร้านกำลังเตรียมอาหาร',
@@ -17,10 +16,6 @@ const STATUS_MAP = {
   completed: 'เสร็จสิ้นเรียบร้อย',
   cancelled: 'ยกเลิกแล้ว',
 };
-
-export default function AIChatModal({ isOpen, onClose }) {
-  const { userProfile, orders, userWallet, restaurants, activeRole } = useApp();
-  const [messages, setMessages] = useState([]);
 
 const SYSTEM_PROMPT = `คุณคือ "น้องบูม (BoomBot)" ผู้ช่วยอัจฉริยะ AI ประจำแอปพลิเคชัน BoomRider (บริการสั่งอาหารและส่งพัสดุในประเทศไทย)
 หน้าที่ของคุณคือบริการและช่วยเหลือผู้ใช้ด้วยความเป็นกันเอง สุภาพ มีหางเสียง (ครับ/ค่ะ)
@@ -103,9 +98,20 @@ const GEMINI_TOOLS = [
 
 export default function AIChatModal({ isOpen, onClose }) {
   const {
-    userProfile, currentUser, orders, setOrders, userAddresses,
-    userWallet, creditWallet, restaurants, menuItems, appConfig,
-    notifyAdmin, notifySystem, supabase,
+    userProfile,
+    currentUser,
+    orders,
+    setOrders,
+    userAddresses,
+    userWallet,
+    creditWallet,
+    restaurants,
+    menuItems,
+    appConfig,
+    notifyAdmin,
+    notifySystem,
+    supabase,
+    activeRole,
   } = useApp();
 
   const [messages, setMessages] = useState([
@@ -115,23 +121,22 @@ export default function AIChatModal({ isOpen, onClose }) {
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
- main
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
 
-  // Initialize initial welcome message
+  // Initialize initial welcome message if empty
   useEffect(() => {
     if (messages.length === 0) {
       setMessages([
         {
           sender: 'bot',
-          text: `สวัสดีครับคุณ ${userProfile?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant พร้อมดึงข้อมูลออเดอร์ ยอดเงิน Wallet และร้านอาหารมาช่วยดูแลคุณครับ วันนี้มีอะไรให้ผมช่วยไหมครับ?`,
+          text: `สวัสดีครับคุณ ${userProfile?.name || currentUser?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant พร้อมดึงข้อมูลออเดอร์ ยอดเงิน Wallet และร้านอาหารมาช่วยดูแลคุณครับ วันนี้มีอะไรให้ผมช่วยไหมครับ?`,
           time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
     }
-  }, [userProfile?.name, messages.length]);
+  }, [userProfile?.name, currentUser?.name, messages.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -141,29 +146,36 @@ export default function AIChatModal({ isOpen, onClose }) {
 
   const quickPrompts = [
     '📦 เช็คสถานะออเดอร์',
- feature/smart-map-osrm-nominatim-332908018281973793
-    '💳 สอบถามยอดเงิน Wallet',
-    '🍔 แนะนำร้านอาหารอร่อย',
-    '❓ วิธีเรียกส่งพัสดุ',
+    '💳 ยอดเงิน Wallet',
+    '🍔 สั่งกะเพราหมูสับ',
+    '🚚 เรียกส่งพัสดุ',
+    '💬 แจ้งร้านค้าว่าขอไม่ใส่ผัก',
   ];
 
-  // Get user's own active and recent orders
-  const myOrders = (orders || []).filter(
-    (o) => o.customerId === userProfile?.id || o.riderUserId === userProfile?.id
-  );
-  const activeOrders = myOrders.filter(
-    (o) => o.status !== 'completed' && o.status !== 'cancelled'
-  );
+  const currentUserId = userProfile?.id || currentUser?.id || '';
+  const balanceNum = typeof userWallet === 'number' ? userWallet : Number(userWallet?.balance || 0);
+
+  const getActiveOrders = () => {
+    return (orders || []).filter(
+      (o) =>
+        (o.customerId === currentUserId || (!o.customerId && currentUserId)) &&
+        o.status !== 'completed' &&
+        o.status !== 'cancelled'
+    );
+  };
+
+  const activeOrders = getActiveOrders();
 
   // Format real-time context for System Prompt
   const buildContextPrompt = () => {
-    const walletBalance = typeof userWallet === 'number' ? userWallet : 0;
-    const activeOrderSummary = activeOrders.map((o, idx) => {
-      const typeStr = o.type === 'parcel' ? 'ส่งพัสดุ' : `สั่งอาหาร (${o.restaurantName || 'ร้านค้า'})`;
-      const statusStr = STATUS_MAP[o.status] || o.status;
-      const riderStr = o.riderName ? ` | ไรเดอร์: ${o.riderName}` : '';
-      return `${idx + 1}. ออเดอร์ #${o.id.slice(-6)} [${typeStr}] - สถานะ: ${statusStr} - ยอดรวม: ฿${o.total || o.amount || 0}${riderStr}`;
-    }).join('\n');
+    const activeOrderSummary = activeOrders
+      .map((o, idx) => {
+        const typeStr = o.type === 'parcel' ? 'ส่งพัสดุ' : `สั่งอาหาร (${o.restaurantName || 'ร้านค้า'})`;
+        const statusStr = STATUS_MAP[o.status] || o.status;
+        const riderStr = o.riderName ? ` | ไรเดอร์: ${o.riderName}` : '';
+        return `${idx + 1}. ออเดอร์ #${o.id.slice(-6)} [${typeStr}] - สถานะ: ${statusStr} - ยอดรวม: ฿${o.grandTotal || o.total || o.amount || 0}${riderStr}`;
+      })
+      .join('\n');
 
     const openShops = (restaurants || [])
       .filter((r) => r.status === 'open')
@@ -175,10 +187,10 @@ export default function AIChatModal({ isOpen, onClose }) {
 หน้าที่ของคุณคือช่วยเหลือผู้ใช้อย่างเป็นกันเอง สุภาพ มีหางเสียง (ครับ/ค่ะ) โดยอ้างอิงข้อมูลจริงจากระบบดังนี้:
 
 [ข้อมูลผู้ใช้ปัจจุบัน]
-- ชื่อ: ${userProfile?.name || 'ลูกค้า'}
+- ชื่อ: ${userProfile?.name || currentUser?.name || 'ลูกค้า'}
 - เบอร์โทร: ${userProfile?.phone || 'ไม่ระบุ'}
 - บทบาท: ${activeRole || 'customer'}
-- ยอดเงินคงเหลือใน Wallet: ฿${walletBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+- ยอดเงินคงเหลือใน Wallet: ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 
 [สถานะออเดอร์ปัจจุบันของคุณ (${activeOrders.length} รายการ)]
 ${activeOrderSummary || 'ไม่มีออเดอร์ที่กำลังดำเนินการในขณะนี้'}
@@ -186,25 +198,7 @@ ${activeOrderSummary || 'ไม่มีออเดอร์ที่กำล�
 [ร้านอาหารที่เปิดให้บริการขณะนี้]
 ${openShops || 'ไม่มีข้อมูลร้านค้า'}
 
-คำสั่งสถิติตอบให้ตรงกับข้อมูลจริงด้านบนเสมอ หากผู้ใช้ถามเรื่องยอดเงิน ให้ตอบ ฿${walletBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} หากถามออเดอร์ ให้ระบุสถานะและเลขท้ายออเดอร์ตรงตามข้อมูลจริงสั้นกระชับเข้าใจง่ายครับ`;
-  };
-
-
-    '🍔 สั่งกะเพราหมูสับ',
-    '🚚 เรียกส่งพัสดุ',
-    '💬 แจ้งร้านค้าว่าขอไม่ใส่ผัก',
-    '💳 ยอดเงิน Wallet',
-  ];
-
-  const currentUserId = userProfile?.id || currentUser?.id || '';
-  const balanceNum = typeof userWallet === 'number' ? userWallet : Number(userWallet?.balance || 0);
-
-  const getActiveOrders = () => {
-    return (orders || []).filter(
-      (o) => (o.customerId === currentUserId || (!o.customerId && currentUserId)) &&
-             o.status !== 'completed' &&
-             o.status !== 'cancelled'
-    );
+คำสั่งสถิติตอบให้ตรงกับข้อมูลจริงด้านบนเสมอ หากผู้ใช้ถามเรื่องยอดเงิน ให้ตอบ ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} หากถามออเดอร์ ให้ระบุสถานะและเลขท้ายออเดอร์ตรงตามข้อมูลจริงสั้นกระชับเข้าใจง่ายครับ`;
   };
 
   // ── Local Tool Execution Handlers ──────────────────────────────────────────
@@ -212,9 +206,12 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
   const executePlaceFoodOrder = async (args) => {
     const targetRestName = args.restaurantName || '';
     const openShops = (restaurants || []).filter((r) => r.status === 'open');
-    const matchedShop = openShops.find(
-      (r) => r.name.toLowerCase().includes(targetRestName.toLowerCase()) || targetRestName.toLowerCase().includes(r.name.toLowerCase())
-    ) || openShops[0];
+    const matchedShop =
+      openShops.find(
+        (r) =>
+          r.name.toLowerCase().includes(targetRestName.toLowerCase()) ||
+          targetRestName.toLowerCase().includes(r.name.toLowerCase())
+      ) || openShops[0];
 
     if (!matchedShop) {
       return 'ขออภัยครับ ขณะนี้ไม่มีร้านอาหารที่เปิดให้บริการครับ 🍔';
@@ -227,9 +224,10 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     for (const itemArg of rawItems) {
       const argName = (itemArg.itemName || '').toLowerCase();
       const qty = Math.max(1, Number(itemArg.qty) || 1);
-      const matchedMenu = shopMenuItems.find(
-        (m) => m.name.toLowerCase().includes(argName) || argName.includes(m.name.toLowerCase())
-      ) || shopMenuItems[0];
+      const matchedMenu =
+        shopMenuItems.find(
+          (m) => m.name.toLowerCase().includes(argName) || argName.includes(m.name.toLowerCase())
+        ) || shopMenuItems[0];
 
       if (matchedMenu) {
         orderedItems.push({
@@ -311,7 +309,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
   const executePlaceParcelOrder = async (args) => {
     const pickup = args.pickup || 'จุดรับของลูกค้า';
     const dropoff = args.dropoff || 'จุดส่งของปลายทาง';
-    const grandTotal = (appConfig?.baseFee || 30) + (appConfig?.perKmFee || 10) * 2; // ~50 THB
+    const grandTotal = (appConfig?.baseFee || 30) + (appConfig?.perKmFee || 10) * 2;
     const paymentMethod = args.paymentMethod === 'cash' ? 'cash' : 'wallet';
 
     if (paymentMethod === 'wallet' && balanceNum < grandTotal) {
@@ -334,7 +332,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       receiverName: args.receiverName || 'ผู้รับ',
       receiverPhone: args.receiverPhone || '',
       deliveryFee: grandTotal,
-      riderIncome: r2(grandTotal * (1 - ((appConfig?.gpDelivery ?? 15) / 100))),
+      riderIncome: r2(grandTotal * (1 - (appConfig?.gpDelivery ?? 15) / 100)),
       grandTotal,
       paymentMethod,
       notes: 'สั่งเรียกไรเดอร์ผ่านน้องบูม AI',
@@ -351,21 +349,20 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     notifyAdmin('📦 พัสดุใหม่ (ผ่าน AI)', `${userProfile?.name || 'ลูกค้า'} ส่ง ${pickup} → ${dropoff}`, 'info');
     notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
 
-    // Auto dispatch to riders immediately
     autoDispatch(supabase, newOrder);
 
     return `✅ เรียกส่งพัสดุเรียบร้อยแล้วครับ! 📦🛵\n\nจุดรับ: ${pickup}\nจุดส่ง: ${dropoff}\nค่าบริการ: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบกำลังกระจายงานแจ้งเตือนไปยังไรเดอร์บริเวณใกล้เคียงให้อัตโนมัติครับ! 🔔`;
   };
 
   const executeSendOrderChatMessage = async (args) => {
-    const activeOrders = getActiveOrders();
+    const currentActiveOrders = getActiveOrders();
     let targetOrder = null;
 
     if (args.orderId && args.orderId !== 'latest') {
       targetOrder = (orders || []).find((o) => o.id.endsWith(args.orderId) || o.id === args.orderId);
     }
-    if (!targetOrder && activeOrders.length > 0) {
-      targetOrder = activeOrders[0];
+    if (!targetOrder && currentActiveOrders.length > 0) {
+      targetOrder = currentActiveOrders[0];
     }
 
     if (!targetOrder) {
@@ -392,27 +389,17 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
   };
 
   const executeCheckOrderStatus = async (args) => {
-    const activeOrders = getActiveOrders();
-    if (activeOrders.length === 0) {
+    const currentActiveOrders = getActiveOrders();
+    if (currentActiveOrders.length === 0) {
       return 'ขณะนี้คุณไม่มีออเดอร์ที่กำลังดำเนินการอยู่ครับ สามารถสั่งอาหารหรือเรียกส่งพัสดุได้เลยครับ 🛵';
     }
     const target = args?.orderId
-      ? activeOrders.find((o) => o.id.endsWith(args.orderId)) || activeOrders[0]
-      : activeOrders[0];
-
-    const statusMap = {
-      pending: 'รอร้านค้ารับออเดอร์',
-      preparing: 'ร้านค้ากำลังเตรียมสินค้า/อาหาร',
-      ready_to_pickup: 'รอไรเดอร์เข้ารับสินค้า',
-      rider_accepted: 'ไรเดอร์รับออเดอร์แล้ว',
-      picking_up: 'ไรเดอร์กำลังรับสินค้า',
-      delivering: 'ไรเดอร์กำลังเดินทางไปส่ง',
-      delivered: 'จัดส่งเรียบร้อย (รอยืนยัน)',
-    };
+      ? currentActiveOrders.find((o) => o.id.endsWith(args.orderId)) || currentActiveOrders[0]
+      : currentActiveOrders[0];
 
     return `📦 สถานะออเดอร์ #${target.id.slice(-6)} (${target.type === 'parcel' ? 'ส่งพัสดุ' : target.restaurantName || 'อาหาร'})\nสถานะปัจจุบัน: ${
-      statusMap[target.status] || target.status
-    }\nไรเดอร์: ${target.riderName || 'กำลังค้นหาไรเดอร์...'}\nยอดรวม: ฿${target.grandTotal || target.deliveryFee || 0}`;
+      STATUS_MAP[target.status] || target.status
+    }\nไรเดอร์: ${target.riderName || 'กำลังค้นหาไรเดอร์...'}\nยอดรวม: ฿${target.grandTotal || target.deliveryFee || target.total || 0}`;
   };
 
   const executeTool = async (functionName, args) => {
@@ -435,7 +422,6 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
 
   // ── Main Send Handler ──────────────────────────────────────────────────────
 
- main
   const handleSend = async (textToSend) => {
     const text = textToSend || inputText.trim();
     if (!text || loading) return;
@@ -453,53 +439,23 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       let replyText = '';
-      const walletBalance = typeof userWallet === 'number' ? userWallet : 0;
 
- feature/smart-map-osrm-nominatim-332908018281973793
-      // Direct intent checks with real system context
-      if (text.includes('สถานะออเดอร์') || text.includes('เช็คออเดอร์')) {
-        if (activeOrders.length === 0) {
-          replyText = 'ขณะนี้คุณไม่มีออเดอร์ที่กำลังดำเนินการอยู่ครับ สามารถเลือกสั่งอาหารหรือส่งพัสดุได้เลยครับ 🛵';
-        } else {
-          const listStr = activeOrders
-            .map((o) => {
-              const typeStr = o.type === 'parcel' ? '📦 ส่งพัสดุ' : `🍔 สั่งอาหารจาก ${o.restaurantName || 'ร้านค้า'}`;
-              const statusText = STATUS_MAP[o.status] || o.status;
-              const riderInfo = o.riderName ? `\n   🛵 ไรเดอร์: ${o.riderName} (${o.riderPhone || ''})` : '';
-              return `• ออเดอร์ #${o.id.slice(-6)} (${typeStr})\n   📌 สถานะ: ${statusText}\n   💰 ยอดรวม: ฿${o.total || o.amount || 0}${riderInfo}`;
-            })
-            .join('\n\n');
-          replyText = `ขณะนี้คุณมีออเดอร์กำลังดำเนินการ ${activeOrders.length} รายการครับ:\n\n${listStr}`;
-        }
-      } else if (text.includes('Wallet') || text.includes('ยอดเงิน')) {
-        replyText = `ยอดเงินคงเหลือใน Wallet ของคุณ ${userProfile?.name || ''} ในขณะนี้คือ ฿${walletBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ครับ 💳\n\nสามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันทีเลยครับ!`;
-      } else if (text.includes('ร้านอาหาร') || text.includes('แนะนำร้าน')) {
-        const openShops = (restaurants || []).filter((r) => r.status === 'open');
-        if (openShops.length === 0) {
-          replyText = 'ขณะนี้ยังไม่มีร้านอาหารเปิดให้บริการครับ กรุณาลองเช็คใหม่อีกครั้งในภายหลังครับ 🍔';
-        } else {
-          const shopList = openShops
-            .slice(0, 5)
-            .map((r) => `• ${r.name} (⭐ ${r.rating || 5.0} | ค่าส่ง ฿${r.deliveryFee ?? 15})`)
-            .join('\n');
-          replyText = `ร้านอาหารที่เปิดให้บริการอยู่ในขณะนี้ครับ:\n\n${shopList}\n\nกดเลือกดูเมนูและสั่งผ่านหน้าแรกได้เลยครับ! 🛵`;
-        }
-      } else if (text.includes('ส่งพัสดุ')) {
-        replyText = 'วิธีการเรียกส่งพัสดุง่ายๆ ครับ:\n1. ไปที่แท็บ "ส่งพัสดุ"\n2. ปักหมุดจุดรับของ และ จุดส่งของ บนแผนที่\n3. ใส่รายละเอียดพัสดุและเบอร์ผู้รับ\n4. กดยืนยันการเรียกไรเดอร์ได้เลยครับ 📦';
-      } else if (apiKey) {
-        // Call Google Gemini API with Real Context System Prompt
-        const systemPromptWithContext = buildContextPrompt();
+      const openShops = (restaurants || []).filter((r) => r.status === 'open');
 
-      const activeOrders = getActiveOrders();
-      const openShops = restaurants?.filter((r) => r.status === 'open') || [];
-
-      // Smart Intent Matching for Direct Actions (or fallback if API key absent)
-      const isChatMessageIntent = text.includes('ส่งข้อความ') || text.includes('บอกร้าน') || text.includes('บอกไรเดอร์') || text.includes('แจ้งร้าน');
+      const isChatMessageIntent =
+        text.includes('ส่งข้อความ') ||
+        text.includes('บอกร้าน') ||
+        text.includes('บอกไรเดอร์') ||
+        text.includes('แจ้งร้าน');
       const isPlaceFoodIntent = text.includes('สั่งอาหาร') || text.includes('สั่งกะเพรา') || text.includes('สั่งข้าว');
-      const isPlaceParcelIntent = text.includes('สั่งส่งพัสดุ') || text.includes('เรียกไรเดอร์') || text.includes('ส่งพัสดุจาก');
+      const isPlaceParcelIntent =
+        text.includes('สั่งส่งพัสดุ') || text.includes('เรียกไรเดอร์') || text.includes('ส่งพัสดุจาก');
 
       if (isChatMessageIntent) {
-        const cleanMsg = text.replace(/^(ส่งข้อความถึงร้าน|บอกร้านว่า|บอกไรเดอร์ว่า|แจ้งร้านว่า|ส่งข้อความว่า)\s*/, '');
+        const cleanMsg = text.replace(
+          /^(ส่งข้อความถึงร้าน|บอกร้านว่า|บอกไรเดอร์ว่า|แจ้งร้านว่า|ส่งข้อความว่า)\s*/,
+          ''
+        );
         replyText = await executeSendOrderChatMessage({ message: cleanMsg || text });
       } else if (isPlaceFoodIntent && (!apiKey || text.length < 30)) {
         replyText = await executePlaceFoodOrder({
@@ -516,31 +472,13 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       } else if (text.includes('สถานะออเดอร์') || text.includes('เช็คออเดอร์')) {
         replyText = await executeCheckOrderStatus({});
       } else if (text.includes('Wallet') || text.includes('ยอดเงิน') || text.includes('เงิน')) {
-        replyText = `ยอดเงินใน Wallet ของคุณในปัจจุบันคือ ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ครับ สามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันที! 💳`;
+        replyText = `ยอดเงินใน Wallet ของคุณในปัจจุบันคือ ฿${balanceNum.toLocaleString('th-TH', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })} ครับ สามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันที! 💳`;
       } else if (apiKey) {
-        // Build dynamic context for Gemini
-        const dynamicContext = `
-[ข้อมูลผู้ใช้งานและบริบทปัจจุบัน]
-- ชื่อผู้ใช้: ${userProfile?.name || currentUser?.name || 'ลูกค้า'}
-- ยอดเงิน Wallet ปัจจุบัน: ฿${balanceNum.toLocaleString()}
-- ออเดอร์ที่กำลังดำเนินการของคุณ (${activeOrders.length} รายการ): ${
-          activeOrders.length > 0
-            ? activeOrders
-                .map(
-                  (o) =>
-                    `#${o.id.slice(-6)} (${o.type === 'parcel' ? 'ส่งพัสดุ' : 'อาหาร'}) สถานะ: ${o.status} ยอด: ฿${o.grandTotal || o.deliveryFee || 0}`
-                )
-                .join('; ')
-            : 'ไม่มีออเดอร์ค้างอยู่'
-        }
-- ร้านอาหารที่เปิดให้บริการ (${openShops.length} ร้าน): ${
-          openShops.length > 0
-            ? openShops.map((r) => `${r.name} (${r.category || 'อาหาร'})`).join(', ')
-            : 'ไม่มีร้านเปิดในขณะนี้'
-        }`;
+        const systemPromptWithContext = buildContextPrompt();
 
-        // Call Google Gemini API with Function Calling Tools
- main
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
           {
@@ -548,16 +486,12 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               systemInstruction: {
-                parts: [{ text: `${SYSTEM_PROMPT}\n${dynamicContext}` }],
+                parts: [{ text: `${SYSTEM_PROMPT}\n\n${systemPromptWithContext}` }],
               },
               contents: [
                 {
                   role: 'user',
- feature/smart-map-osrm-nominatim-332908018281973793
-                  parts: [{ text: `${systemPromptWithContext}\n\nคำถามจากผู้ใช้: "${text}"` }],
-
                   parts: [{ text }],
- main
                 },
               ],
               tools: GEMINI_TOOLS,
@@ -578,12 +512,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
             'ขออภัยครับ เกิดปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งครับ';
         }
       } else {
- feature/smart-map-osrm-nominatim-332908018281973793
-        // Smart fallback logic using real context
-        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถถามข้อมูลจริงกับผมได้เลยครับ เช่น:\n- "เช็คสถานะออเดอร์"\n- "สอบถามยอดเงิน Wallet" (ปัจจุบัน: ฿${walletBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})\n- "แนะนำร้านอาหาร" 🛵✨`;
-
         replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถให้ผมสั่งอาหาร, เรียกส่งพัสดุ, ส่งข้อความแจ้งร้านค้า/ไรเดอร์ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) ได้เลยครับ 🛵✨`;
- main
       }
 
       setMessages((prev) => [
@@ -624,11 +553,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
                 <h3 className="font-bold text-base">น้องบูม AI Assistant</h3>
                 <Sparkles size={14} className="text-amber-300 animate-pulse" />
               </div>
- feature/smart-map-osrm-nominatim-332908018281973793
-              <p className="text-[11px] text-purple-200">เชื่อมต่อข้อมูลเรียลไทม์ 24 ชม.</p>
-
               <p className="text-[11px] text-purple-200">สั่งอาหาร • เรียกพัสดุ • แจ้งเตือนร้าน/ไรเดอร์</p>
- main
             </div>
           </div>
           <button
@@ -681,11 +606,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
           {loading && (
             <div className="flex gap-2 items-center text-xs text-purple-600 bg-purple-50 p-3 rounded-2xl w-fit animate-pulse border border-purple-100">
               <Loader2 size={16} className="animate-spin" />
- feature/smart-map-osrm-nominatim-332908018281973793
-              <span>น้องบูมกำลังดึงข้อมูลและพิมพ์คำตอบ...</span>
-
               <span>น้องบูมกำลังประมวลผลคำสั่ง...</span>
- main
             </div>
           )}
 
