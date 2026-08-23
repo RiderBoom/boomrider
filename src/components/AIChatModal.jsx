@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Bot, Send, Loader2, Sparkles, User, Utensils, Package, MessageSquare, CheckCircle2 } from 'lucide-react';
+import { X, Bot, Send, Loader2, Sparkles, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { generateId, formatDateTime, r2, playOrderNotificationSound } from '../utils';
+import { USER_LOCATION } from '../constants';
 import { autoDispatch } from '../context/hooks/useAutoDispatch';
 
 const SYSTEM_PROMPT = `คุณคือ "น้องบูม (BoomBot)" ผู้ช่วยอัจฉริยะ AI ประจำแอปพลิเคชัน BoomRider (บริการสั่งอาหารและส่งพัสดุในประเทศไทย)
 หน้าที่ของคุณคือบริการและช่วยเหลือผู้ใช้ด้วยความเป็นกันเอง สุภาพ มีหางเสียง (ครับ/ค่ะ)
 ความสามารถพิเศษของคุณ:
 1. เช็คสถานะออเดอร์ แนะนำร้าน และยอดเงินใน Wallet
-2. สามารถ "สั่งอาหาร" ให้ลูกค้าได้โดยตรง เมื่อลูกค้าระบุชื่อร้านค้าและรายการอาหาร
-3. สามารถ "สั่งส่งพัสดุ / เรียกไรเดอร์" ให้ลูกค้าได้โดยตรง เมื่อลูกค้าระบุจุดรับ จุดส่ง
+2. สามารถ "สั่งอาหาร" ให้ลูกค้าได้โดยตรง โดยผู้ใช้ระบุชื่อร้านค้าและเมนูอาหารจากร้านนั้นๆ
+3. สามารถ "สั่งส่งพัสดุ / เรียกไรเดอร์" ให้ลูกค้าได้โดยตรง เมื่อผู้ใช้ระบุจุดรับ จุดส่ง เบอร์ผู้รับ
 4. สามารถ "ส่งข้อความสื่อสาร/แจ้งเตือน" ไปยังห้องแชทของร้านค้า ไรเดอร์ หรือแอดมิน เกี่ยวกับออเดอร์ที่ดำเนินการอยู่ได้ทันที
 ตอบคำถามสั้นกระชับ ชัดเจน เข้าใจง่าย ภาษาไทยเสมอ`;
 
@@ -23,10 +24,10 @@ const GEMINI_TOOLS = [
         parameters: {
           type: 'OBJECT',
           properties: {
-            restaurantName: { type: 'STRING', description: 'ชื่อร้านค้า หรือคีย์เวิร์ดชื่อร้าน' },
+            restaurantName: { type: 'STRING', description: 'ชื่อร้านค้าที่ต้องการสั่งอาหาร' },
             items: {
               type: 'ARRAY',
-              description: 'รายการเมนูและจำนวนที่สั่ง',
+              description: 'รายการเมนูและจำนวนที่ต้องการสั่งจากร้านค้านั้น',
               items: {
                 type: 'OBJECT',
                 properties: {
@@ -44,15 +45,15 @@ const GEMINI_TOOLS = [
       },
       {
         name: 'place_parcel_order',
-        description: 'สั่งส่งพัสดุ/เรียกไรเดอร์มารับของ โดยระบุจุดรับ จุดส่ง เบอร์ผู้รับ',
+        description: 'สั่งส่งพัสดุหรือเรียกไรเดอร์มารับของ โดยระบุจุดรับ จุดส่ง ชื่อและเบอร์ผู้รับ',
         parameters: {
           type: 'OBJECT',
           properties: {
             pickup: { type: 'STRING', description: 'จุดรับสินค้า/พัสดุ' },
             dropoff: { type: 'STRING', description: 'จุดส่งสินค้า/พัสดุ' },
-            receiverName: { type: 'STRING', description: 'ชื่อผู้รับ' },
+            receiverName: { type: 'STRING', description: 'ชื่อผู้รับพัสดุ' },
             receiverPhone: { type: 'STRING', description: 'เบอร์โทรศัพท์ผู้รับ' },
-            weight: { type: 'STRING', description: 'น้ำหนักพัสดุ (กก.)' },
+            weight: { type: 'STRING', description: 'น้ำหนักพัสดุประมาณ (กก.)' },
             paymentMethod: { type: 'STRING', description: "วิธีชำระเงิน 'wallet' หรือ 'cash'" },
           },
           required: ['pickup', 'dropoff'],
@@ -94,7 +95,7 @@ export default function AIChatModal({ isOpen, onClose }) {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: `สวัสดีครับคุณ ${userProfile?.name || currentUser?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant\nผมสามารถช่วยเช็คสถานะ, สั่งอาหาร, เรียกไรเดอร์ส่งพัสดุ หรือส่งข้อความแจ้งเตือนไปยังร้านค้าและไรเดอร์ได้ครับ! มีอะไรให้รับใช้ไหมครับ?`,
+      text: `สวัสดีครับคุณ ${userProfile?.name || currentUser?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant\nผมสามารถช่วยเช็คสถานะ, สั่งอาหารจากร้านระบุเมนู, เรียกไรเดอร์ส่งพัสดุ หรือส่งข้อความแจ้งเตือนไปยังร้านค้าและไรเดอร์ได้ครับ! มีอะไรให้รับใช้ไหมครับ?`,
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -130,26 +131,46 @@ export default function AIChatModal({ isOpen, onClose }) {
   // ── Local Tool Execution Handlers ──────────────────────────────────────────
 
   const executePlaceFoodOrder = async (args) => {
-    const targetRestName = args.restaurantName || '';
+    const targetRestName = (args.restaurantName || '').trim();
     const openShops = (restaurants || []).filter((r) => r.status === 'open');
-    const matchedShop = openShops.find(
-      (r) => r.name.toLowerCase().includes(targetRestName.toLowerCase()) || targetRestName.toLowerCase().includes(r.name.toLowerCase())
-    ) || openShops[0];
 
-    if (!matchedShop) {
+    if (openShops.length === 0) {
       return 'ขออภัยครับ ขณะนี้ไม่มีร้านอาหารที่เปิดให้บริการครับ 🍔';
     }
 
+    // Match restaurant by name
+    let matchedShop = null;
+    if (targetRestName) {
+      matchedShop = openShops.find(
+        (r) => r.name.toLowerCase().includes(targetRestName.toLowerCase()) || targetRestName.toLowerCase().includes(r.name.toLowerCase())
+      );
+    }
+
+    if (!matchedShop && targetRestName) {
+      const openNamesStr = openShops.map((r) => `• ${r.name}`).join('\n');
+      return `ขออภัยครับ ไม่พบบ้านหรือร้านอาหารที่ชื่อ "${targetRestName}" หรือขณะนี้ร้านปิดให้บริการครับ 🍔\n\nร้านค้าที่เปิดให้บริการในขณะนี้:\n${openNamesStr}`;
+    }
+
+    if (!matchedShop) {
+      matchedShop = openShops[0];
+    }
+
     const shopMenuItems = menuItems[matchedShop.id] || [];
+    if (shopMenuItems.length === 0) {
+      return `ขออภัยครับ ร้าน ${matchedShop.name} ยังไม่มีรายการเมนูอาหารพร้อมขายในขณะนี้ครับ`;
+    }
+
     const orderedItems = [];
+    const unmatchedItemNames = [];
     const rawItems = args.items || [];
 
     for (const itemArg of rawItems) {
-      const argName = (itemArg.itemName || '').toLowerCase();
+      const argName = (itemArg.itemName || '').trim().toLowerCase();
       const qty = Math.max(1, Number(itemArg.qty) || 1);
+
       const matchedMenu = shopMenuItems.find(
         (m) => m.name.toLowerCase().includes(argName) || argName.includes(m.name.toLowerCase())
-      ) || shopMenuItems[0];
+      );
 
       if (matchedMenu) {
         orderedItems.push({
@@ -158,21 +179,14 @@ export default function AIChatModal({ isOpen, onClose }) {
           price: matchedMenu.price,
           qty,
         });
+      } else if (argName) {
+        unmatchedItemNames.push(itemArg.itemName);
       }
     }
 
-    if (orderedItems.length === 0 && shopMenuItems.length > 0) {
-      const defaultMenu = shopMenuItems[0];
-      orderedItems.push({
-        id: defaultMenu.id,
-        name: defaultMenu.name,
-        price: defaultMenu.price,
-        qty: 1,
-      });
-    }
-
     if (orderedItems.length === 0) {
-      return `ขออภัยครับ ไม่พบเมนูอาหารในร้าน ${matchedShop.name} ครับ`;
+      const availableMenuListStr = shopMenuItems.map((m) => `• ${m.name} (฿${m.price})`).join('\n');
+      return `ขออภัยครับ ไม่พบเมนูที่ระบุ (${rawItems.map((i) => i.itemName).join(', ')}) ในร้าน "${matchedShop.name}" ครับ 🍔\n\nเมนูที่มีให้บริการในร้าน ${matchedShop.name}:\n${availableMenuListStr}`;
     }
 
     const foodTotal = orderedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
@@ -186,7 +200,7 @@ export default function AIChatModal({ isOpen, onClose }) {
       return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString()} แต่ยอดสั่งซื้อคือ ฿${grandTotal.toLocaleString()}) กรุณาเติมเงินก่อนทำรายการครับ 💳`;
     }
 
-    const addr = userAddresses?.[0] || { address: 'ที่อยู่ปัจจุบันของลูกค้า', location: userProfile?.location };
+    const addr = userAddresses?.[0] || { address: 'ที่อยู่ปัจจุบันของลูกค้า', location: userProfile?.location || USER_LOCATION };
     const orderId = generateId();
 
     const newOrder = {
@@ -199,9 +213,9 @@ export default function AIChatModal({ isOpen, onClose }) {
       restaurantId: matchedShop.id,
       restaurantName: matchedShop.name,
       restaurantOwnerId: matchedShop.ownerId || null,
-      restaurantLocation: matchedShop.location,
-      pickupLocation: matchedShop.location,
-      location: addr.location,
+      restaurantLocation: matchedShop.location || USER_LOCATION,
+      pickupLocation: matchedShop.location || USER_LOCATION,
+      location: addr.location || USER_LOCATION,
       address: addr.address,
       items: orderedItems,
       foodTotal,
@@ -221,16 +235,21 @@ export default function AIChatModal({ isOpen, onClose }) {
     }
 
     notifyAdmin('🛎️ ออเดอร์ใหม่ (ผ่าน AI)', `${userProfile?.name || 'ลูกค้า'} สั่ง ${matchedShop.name} ฿${grandTotal}`, 'info');
-    notifySystem('สั่งอาหารสำเร็จ! 🎉', `ออเดอร์ #${orderId.slice(-6)} ส่งไปยังร้านแล้ว`, 'success');
+    notifySystem('สั่งอาหารสำเร็จ! 🎉', `ออเดอร์ #${orderId.slice(-6)} ส่งไปยังร้าน ${matchedShop.name} แล้ว`, 'success');
     playOrderNotificationSound();
 
     const itemListStr = orderedItems.map((i) => `• ${i.name} x${i.qty} (฿${i.price * i.qty})`).join('\n');
-    return `✅ สั่งอาหารให้เรียบร้อยแล้วครับ! 🎉\n\nร้านค้า: ${matchedShop.name}\nรายการ:\n${itemListStr}\nค่าส่ง: ฿${deliveryFee}\nยอดรวมทั้งสิ้น: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบได้แจ้งเตือนและส่งเสียงไปยังร้านค้าเรียบร้อยแล้วครับ! 🍔🔔`;
+    let noteWarn = '';
+    if (unmatchedItemNames.length > 0) {
+      noteWarn = `\n⚠️ หมายเหตุ: ไม่พบเมนู (${unmatchedItemNames.join(', ')}) ในร้าน จึงไม่ได้เพิ่มรายการดังกล่าว`;
+    }
+
+    return `✅ สั่งอาหารให้เรียบร้อยแล้วครับ! 🎉\n\nร้านค้า: ${matchedShop.name}\nรายการที่สั่ง:\n${itemListStr}\nค่าส่ง: ฿${deliveryFee}\nยอดรวมทั้งสิ้น: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}${noteWarn}\n\nระบบได้แจ้งเตือนและส่งเสียงไปยังร้านค้าเรียบร้อยแล้วครับ! 🍔🔔`;
   };
 
   const executePlaceParcelOrder = async (args) => {
-    const pickup = args.pickup || 'จุดรับของลูกค้า';
-    const dropoff = args.dropoff || 'จุดส่งของปลายทาง';
+    const pickup = args.pickup || 'จุดรับพัสดุ';
+    const dropoff = args.dropoff || 'จุดส่งพัสดุ';
     const grandTotal = (appConfig?.baseFee || 30) + (appConfig?.perKmFee || 10) * 2; // ~50 THB
     const paymentMethod = args.paymentMethod === 'cash' ? 'cash' : 'wallet';
 
@@ -238,7 +257,10 @@ export default function AIChatModal({ isOpen, onClose }) {
       return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString()} แต่ค่าส่งพัสดุคือ ฿${grandTotal.toLocaleString()}) กรุณาเติมเงินก่อนครับ 💳`;
     }
 
+    // Ensure valid lat/lng coordinates for autoDispatch radius calculation
+    const userLoc = userProfile?.location?.lat ? userProfile.location : USER_LOCATION;
     const orderId = generateId();
+
     const newOrder = {
       id: orderId,
       type: 'parcel',
@@ -248,10 +270,10 @@ export default function AIChatModal({ isOpen, onClose }) {
       customerPhone: userProfile?.phone || null,
       pickup,
       dropoff,
-      pickupLocation: userProfile?.location,
-      location: userProfile?.location,
+      pickupLocation: userLoc,
+      location: userLoc,
       weight: String(args.weight || '1'),
-      receiverName: args.receiverName || 'ผู้รับ',
+      receiverName: args.receiverName || 'ผู้รับพัสดุ',
       receiverPhone: args.receiverPhone || '',
       deliveryFee: grandTotal,
       riderIncome: r2(grandTotal * (1 - ((appConfig?.gpDelivery ?? 15) / 100))),
@@ -271,10 +293,12 @@ export default function AIChatModal({ isOpen, onClose }) {
     notifyAdmin('📦 พัสดุใหม่ (ผ่าน AI)', `${userProfile?.name || 'ลูกค้า'} ส่ง ${pickup} → ${dropoff}`, 'info');
     notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
 
-    // Auto dispatch to riders immediately
+    // Auto dispatch to riders immediately via RPC
     autoDispatch(supabase, newOrder);
 
-    return `✅ เรียกส่งพัสดุเรียบร้อยแล้วครับ! 📦🛵\n\nจุดรับ: ${pickup}\nจุดส่ง: ${dropoff}\nค่าบริการ: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบกำลังกระจายงานแจ้งเตือนไปยังไรเดอร์บริเวณใกล้เคียงให้อัตโนมัติครับ! 🔔`;
+    const receiverInfo = args.receiverName ? `\nผู้รับ: ${args.receiverName}${args.receiverPhone ? ` (${args.receiverPhone})` : ''}` : '';
+
+    return `✅ เรียกส่งพัสดุเรียบร้อยแล้วครับ! 📦🛵\n\nจุดรับ: ${pickup}\nจุดส่ง: ${dropoff}${receiverInfo}\nค่าบริการ: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบกำลังกระจายงานแจ้งเตือนไปยังไรเดอร์บริเวณใกล้เคียงให้อัตโนมัติครับ! 🔔`;
   };
 
   const executeSendOrderChatMessage = async (args) => {
@@ -384,7 +408,7 @@ export default function AIChatModal({ isOpen, onClose }) {
       if (isChatMessageIntent) {
         const cleanMsg = text.replace(/^(ส่งข้อความถึงร้าน|บอกร้านว่า|บอกไรเดอร์ว่า|แจ้งร้านว่า|ส่งข้อความว่า)\s*/, '');
         replyText = await executeSendOrderChatMessage({ message: cleanMsg || text });
-      } else if (isPlaceFoodIntent && (!apiKey || text.length < 30)) {
+      } else if (isPlaceFoodIntent && (!apiKey || text.length < 25)) {
         replyText = await executePlaceFoodOrder({
           restaurantName: openShops[0]?.name || '',
           items: [{ itemName: text, qty: 1 }],
@@ -401,7 +425,17 @@ export default function AIChatModal({ isOpen, onClose }) {
       } else if (text.includes('Wallet') || text.includes('ยอดเงิน') || text.includes('เงิน')) {
         replyText = `ยอดเงินใน Wallet ของคุณในปัจจุบันคือ ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ครับ สามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันที! 💳`;
       } else if (apiKey) {
-        // Build dynamic context for Gemini
+        // Build rich shop and menu context for Gemini
+        const openShopsWithMenus = openShops
+          .map((r) => {
+            const items = menuItems[r.id] || [];
+            const itemListStr = items.length > 0
+              ? items.map((m) => `${m.name} (฿${m.price})`).join(', ')
+              : 'ไม่มีรายการเมนู';
+            return `• ร้าน: "${r.name}" -> เมนูที่มี: [${itemListStr}]`;
+          })
+          .join('\n');
+
         const dynamicContext = `
 [ข้อมูลผู้ใช้งานและบริบทปัจจุบัน]
 - ชื่อผู้ใช้: ${userProfile?.name || currentUser?.name || 'ลูกค้า'}
@@ -416,11 +450,8 @@ export default function AIChatModal({ isOpen, onClose }) {
                 .join('; ')
             : 'ไม่มีออเดอร์ค้างอยู่'
         }
-- ร้านอาหารที่เปิดให้บริการ (${openShops.length} ร้าน): ${
-          openShops.length > 0
-            ? openShops.map((r) => `${r.name} (${r.category || 'อาหาร'})`).join(', ')
-            : 'ไม่มีร้านเปิดในขณะนี้'
-        }`;
+- รายชื่อร้านอาหารที่เปิดให้บริการและรายการเมนูในร้าน (${openShops.length} ร้าน):
+${openShopsWithMenus || 'ไม่มีร้านเปิดในขณะนี้'}`;
 
         // Call Google Gemini API with Function Calling Tools
         const response = await fetch(
@@ -456,7 +487,7 @@ export default function AIChatModal({ isOpen, onClose }) {
             'ขออภัยครับ เกิดปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งครับ';
         }
       } else {
-        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถให้ผมสั่งอาหาร, เรียกส่งพัสดุ, ส่งข้อความแจ้งร้านค้า/ไรเดอร์ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) ได้เลยครับ 🛵✨`;
+        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถให้ผมสั่งอาหารระบุร้าน/เมนู, เรียกส่งพัสดุ, ส่งข้อความแจ้งร้านค้า/ไรเดอร์ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) ได้เลยครับ 🛵✨`;
       }
 
       setMessages((prev) => [
