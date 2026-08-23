@@ -5,6 +5,23 @@ import { useApp } from '../context/AppContext';
 import { generateId, formatDateTime, r2, playOrderNotificationSound } from '../utils';
 import { autoDispatch } from '../context/hooks/useAutoDispatch';
 
+ feature/smart-map-osrm-nominatim-332908018281973793
+const STATUS_MAP = {
+  pending: 'รอร้านค้ารับออเดอร์',
+  preparing: 'ร้านกำลังเตรียมอาหาร',
+  ready_to_pickup: 'รอไรเดอร์เข้ารับสินค้า',
+  rider_accepted: 'ไรเดอร์รับงานแล้ว',
+  picking_up: 'ไรเดอร์กำลังรับสินค้า',
+  delivering: 'ไรเดอร์กำลังเดินทางไปส่ง',
+  delivered: 'จัดส่งแล้ว (รอคุณยืนยัน)',
+  completed: 'เสร็จสิ้นเรียบร้อย',
+  cancelled: 'ยกเลิกแล้ว',
+};
+
+export default function AIChatModal({ isOpen, onClose }) {
+  const { userProfile, orders, userWallet, restaurants, activeRole } = useApp();
+  const [messages, setMessages] = useState([]);
+
 const SYSTEM_PROMPT = `คุณคือ "น้องบูม (BoomBot)" ผู้ช่วยอัจฉริยะ AI ประจำแอปพลิเคชัน BoomRider (บริการสั่งอาหารและส่งพัสดุในประเทศไทย)
 หน้าที่ของคุณคือบริการและช่วยเหลือผู้ใช้ด้วยความเป็นกันเอง สุภาพ มีหางเสียง (ครับ/ค่ะ)
 ความสามารถพิเศษของคุณ:
@@ -98,9 +115,23 @@ export default function AIChatModal({ isOpen, onClose }) {
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
+ main
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
+
+  // Initialize initial welcome message
+  useEffect(() => {
+    if (messages.length === 0) {
+      setMessages([
+        {
+          sender: 'bot',
+          text: `สวัสดีครับคุณ ${userProfile?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant พร้อมดึงข้อมูลออเดอร์ ยอดเงิน Wallet และร้านอาหารมาช่วยดูแลคุณครับ วันนี้มีอะไรให้ผมช่วยไหมครับ?`,
+          time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+        },
+      ]);
+    }
+  }, [userProfile?.name, messages.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -110,6 +141,55 @@ export default function AIChatModal({ isOpen, onClose }) {
 
   const quickPrompts = [
     '📦 เช็คสถานะออเดอร์',
+ feature/smart-map-osrm-nominatim-332908018281973793
+    '💳 สอบถามยอดเงิน Wallet',
+    '🍔 แนะนำร้านอาหารอร่อย',
+    '❓ วิธีเรียกส่งพัสดุ',
+  ];
+
+  // Get user's own active and recent orders
+  const myOrders = (orders || []).filter(
+    (o) => o.customerId === userProfile?.id || o.riderUserId === userProfile?.id
+  );
+  const activeOrders = myOrders.filter(
+    (o) => o.status !== 'completed' && o.status !== 'cancelled'
+  );
+
+  // Format real-time context for System Prompt
+  const buildContextPrompt = () => {
+    const walletBalance = typeof userWallet === 'number' ? userWallet : 0;
+    const activeOrderSummary = activeOrders.map((o, idx) => {
+      const typeStr = o.type === 'parcel' ? 'ส่งพัสดุ' : `สั่งอาหาร (${o.restaurantName || 'ร้านค้า'})`;
+      const statusStr = STATUS_MAP[o.status] || o.status;
+      const riderStr = o.riderName ? ` | ไรเดอร์: ${o.riderName}` : '';
+      return `${idx + 1}. ออเดอร์ #${o.id.slice(-6)} [${typeStr}] - สถานะ: ${statusStr} - ยอดรวม: ฿${o.total || o.amount || 0}${riderStr}`;
+    }).join('\n');
+
+    const openShops = (restaurants || [])
+      .filter((r) => r.status === 'open')
+      .slice(0, 5)
+      .map((r) => `- ${r.name} (⭐ ${r.rating || 5.0}, ค่าส่ง ฿${r.deliveryFee ?? 15})`)
+      .join('\n');
+
+    return `คุณคือ "น้องบูม (BoomBot)" AI Assistant ประจำแอปพลิเคชัน BoomRider
+หน้าที่ของคุณคือช่วยเหลือผู้ใช้อย่างเป็นกันเอง สุภาพ มีหางเสียง (ครับ/ค่ะ) โดยอ้างอิงข้อมูลจริงจากระบบดังนี้:
+
+[ข้อมูลผู้ใช้ปัจจุบัน]
+- ชื่อ: ${userProfile?.name || 'ลูกค้า'}
+- เบอร์โทร: ${userProfile?.phone || 'ไม่ระบุ'}
+- บทบาท: ${activeRole || 'customer'}
+- ยอดเงินคงเหลือใน Wallet: ฿${walletBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+[สถานะออเดอร์ปัจจุบันของคุณ (${activeOrders.length} รายการ)]
+${activeOrderSummary || 'ไม่มีออเดอร์ที่กำลังดำเนินการในขณะนี้'}
+
+[ร้านอาหารที่เปิดให้บริการขณะนี้]
+${openShops || 'ไม่มีข้อมูลร้านค้า'}
+
+คำสั่งสถิติตอบให้ตรงกับข้อมูลจริงด้านบนเสมอ หากผู้ใช้ถามเรื่องยอดเงิน ให้ตอบ ฿${walletBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} หากถามออเดอร์ ให้ระบุสถานะและเลขท้ายออเดอร์ตรงตามข้อมูลจริงสั้นกระชับเข้าใจง่ายครับ`;
+  };
+
+
     '🍔 สั่งกะเพราหมูสับ',
     '🚚 เรียกส่งพัสดุ',
     '💬 แจ้งร้านค้าว่าขอไม่ใส่ผัก',
@@ -355,6 +435,7 @@ export default function AIChatModal({ isOpen, onClose }) {
 
   // ── Main Send Handler ──────────────────────────────────────────────────────
 
+ main
   const handleSend = async (textToSend) => {
     const text = textToSend || inputText.trim();
     if (!text || loading) return;
@@ -372,6 +453,42 @@ export default function AIChatModal({ isOpen, onClose }) {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       let replyText = '';
+      const walletBalance = typeof userWallet === 'number' ? userWallet : 0;
+
+ feature/smart-map-osrm-nominatim-332908018281973793
+      // Direct intent checks with real system context
+      if (text.includes('สถานะออเดอร์') || text.includes('เช็คออเดอร์')) {
+        if (activeOrders.length === 0) {
+          replyText = 'ขณะนี้คุณไม่มีออเดอร์ที่กำลังดำเนินการอยู่ครับ สามารถเลือกสั่งอาหารหรือส่งพัสดุได้เลยครับ 🛵';
+        } else {
+          const listStr = activeOrders
+            .map((o) => {
+              const typeStr = o.type === 'parcel' ? '📦 ส่งพัสดุ' : `🍔 สั่งอาหารจาก ${o.restaurantName || 'ร้านค้า'}`;
+              const statusText = STATUS_MAP[o.status] || o.status;
+              const riderInfo = o.riderName ? `\n   🛵 ไรเดอร์: ${o.riderName} (${o.riderPhone || ''})` : '';
+              return `• ออเดอร์ #${o.id.slice(-6)} (${typeStr})\n   📌 สถานะ: ${statusText}\n   💰 ยอดรวม: ฿${o.total || o.amount || 0}${riderInfo}`;
+            })
+            .join('\n\n');
+          replyText = `ขณะนี้คุณมีออเดอร์กำลังดำเนินการ ${activeOrders.length} รายการครับ:\n\n${listStr}`;
+        }
+      } else if (text.includes('Wallet') || text.includes('ยอดเงิน')) {
+        replyText = `ยอดเงินคงเหลือใน Wallet ของคุณ ${userProfile?.name || ''} ในขณะนี้คือ ฿${walletBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ครับ 💳\n\nสามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันทีเลยครับ!`;
+      } else if (text.includes('ร้านอาหาร') || text.includes('แนะนำร้าน')) {
+        const openShops = (restaurants || []).filter((r) => r.status === 'open');
+        if (openShops.length === 0) {
+          replyText = 'ขณะนี้ยังไม่มีร้านอาหารเปิดให้บริการครับ กรุณาลองเช็คใหม่อีกครั้งในภายหลังครับ 🍔';
+        } else {
+          const shopList = openShops
+            .slice(0, 5)
+            .map((r) => `• ${r.name} (⭐ ${r.rating || 5.0} | ค่าส่ง ฿${r.deliveryFee ?? 15})`)
+            .join('\n');
+          replyText = `ร้านอาหารที่เปิดให้บริการอยู่ในขณะนี้ครับ:\n\n${shopList}\n\nกดเลือกดูเมนูและสั่งผ่านหน้าแรกได้เลยครับ! 🛵`;
+        }
+      } else if (text.includes('ส่งพัสดุ')) {
+        replyText = 'วิธีการเรียกส่งพัสดุง่ายๆ ครับ:\n1. ไปที่แท็บ "ส่งพัสดุ"\n2. ปักหมุดจุดรับของ และ จุดส่งของ บนแผนที่\n3. ใส่รายละเอียดพัสดุและเบอร์ผู้รับ\n4. กดยืนยันการเรียกไรเดอร์ได้เลยครับ 📦';
+      } else if (apiKey) {
+        // Call Google Gemini API with Real Context System Prompt
+        const systemPromptWithContext = buildContextPrompt();
 
       const activeOrders = getActiveOrders();
       const openShops = restaurants?.filter((r) => r.status === 'open') || [];
@@ -423,6 +540,7 @@ export default function AIChatModal({ isOpen, onClose }) {
         }`;
 
         // Call Google Gemini API with Function Calling Tools
+ main
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
           {
@@ -435,7 +553,11 @@ export default function AIChatModal({ isOpen, onClose }) {
               contents: [
                 {
                   role: 'user',
+ feature/smart-map-osrm-nominatim-332908018281973793
+                  parts: [{ text: `${systemPromptWithContext}\n\nคำถามจากผู้ใช้: "${text}"` }],
+
                   parts: [{ text }],
+ main
                 },
               ],
               tools: GEMINI_TOOLS,
@@ -456,7 +578,12 @@ export default function AIChatModal({ isOpen, onClose }) {
             'ขออภัยครับ เกิดปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งครับ';
         }
       } else {
+ feature/smart-map-osrm-nominatim-332908018281973793
+        // Smart fallback logic using real context
+        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถถามข้อมูลจริงกับผมได้เลยครับ เช่น:\n- "เช็คสถานะออเดอร์"\n- "สอบถามยอดเงิน Wallet" (ปัจจุบัน: ฿${walletBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})\n- "แนะนำร้านอาหาร" 🛵✨`;
+
         replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถให้ผมสั่งอาหาร, เรียกส่งพัสดุ, ส่งข้อความแจ้งร้านค้า/ไรเดอร์ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) ได้เลยครับ 🛵✨`;
+ main
       }
 
       setMessages((prev) => [
@@ -497,7 +624,11 @@ export default function AIChatModal({ isOpen, onClose }) {
                 <h3 className="font-bold text-base">น้องบูม AI Assistant</h3>
                 <Sparkles size={14} className="text-amber-300 animate-pulse" />
               </div>
+ feature/smart-map-osrm-nominatim-332908018281973793
+              <p className="text-[11px] text-purple-200">เชื่อมต่อข้อมูลเรียลไทม์ 24 ชม.</p>
+
               <p className="text-[11px] text-purple-200">สั่งอาหาร • เรียกพัสดุ • แจ้งเตือนร้าน/ไรเดอร์</p>
+ main
             </div>
           </div>
           <button
@@ -523,7 +654,7 @@ export default function AIChatModal({ isOpen, onClose }) {
                   </div>
                 )}
                 <div
-                  className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed whitespace-pre-line shadow-sm ${
+                  className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed whitespace-pre-line shadow-sm ${
                     isBot
                       ? 'bg-white text-gray-800 rounded-tl-xs border border-purple-50/80'
                       : 'bg-purple-600 text-white rounded-tr-xs'
@@ -550,7 +681,11 @@ export default function AIChatModal({ isOpen, onClose }) {
           {loading && (
             <div className="flex gap-2 items-center text-xs text-purple-600 bg-purple-50 p-3 rounded-2xl w-fit animate-pulse border border-purple-100">
               <Loader2 size={16} className="animate-spin" />
+ feature/smart-map-osrm-nominatim-332908018281973793
+              <span>น้องบูมกำลังดึงข้อมูลและพิมพ์คำตอบ...</span>
+
               <span>น้องบูมกำลังประมวลผลคำสั่ง...</span>
+ main
             </div>
           )}
 
