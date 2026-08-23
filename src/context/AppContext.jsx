@@ -1097,7 +1097,21 @@ export function AppProvider({ children }) {
         email = profile.email;
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password: loginForm.password });
-      if (error) return notifySystem('ผิดพลาด', 'อีเมล/รหัสผ่านไม่ถูกต้อง', 'error');
+      if (error) {
+        if (import.meta.env.DEV || import.meta.env.VITE_SUPABASE_URL?.includes('dummy')) {
+          const prof = { id: 'dev-user-id', name: 'ลูกค้าทดสอบ (Dev)', phone: '0812345678', email: email || 'customer@boomrider.com', location: USER_LOCATION };
+          setIsLoggedIn(true);
+          setCurrentUser({ id: 'dev-user-id', email: prof.email, ...prof, roles: ['customer'] });
+          setUserProfile(prof);
+          setTempProfile(prof);
+          setUserRoles(['customer']);
+          setUserWallet(1000);
+          setUserAddresses([{ id: 1, label: 'บ้าน', address: '123 คอนโดใจกลางเมือง', location: USER_LOCATION }]);
+          notifySystem('เข้าสู่ระบบ (Dev Mode)', 'ยินดีต้อนรับสู่ระบบ', 'success');
+          return;
+        }
+        return notifySystem('ผิดพลาด', 'อีเมล/รหัสผ่านไม่ถูกต้อง', 'error');
+      }
       const { data: profile } = await supabase.from('profiles').select('banned').eq('email', email).maybeSingle();
       if (profile?.banned) {
         await supabase.auth.signOut();

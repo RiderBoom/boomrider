@@ -170,6 +170,12 @@ export default function AdminView() {
   };
 
   useEffect(() => {
+    if (appConfig) {
+      setEditConfig(appConfig);
+    }
+  }, [appConfig]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     if (adminTab === 'users') loadAllUsers();
     if (adminTab === 'dashboard') loadWalletOverview();
     if (adminTab === 'approvals') {
@@ -266,7 +272,18 @@ export default function AdminView() {
   };
 
   const saveConfig = () => {
-    setAppConfig(editConfig);
+    const cleanedConfig = {
+      ...editConfig,
+      appRadius: isNaN(parseFloat(editConfig.appRadius)) ? 15 : parseFloat(editConfig.appRadius),
+      restaurantRadius: isNaN(parseFloat(editConfig.restaurantRadius)) ? 10 : parseFloat(editConfig.restaurantRadius),
+      riderRadius: isNaN(parseFloat(editConfig.riderRadius)) ? 5 : parseFloat(editConfig.riderRadius),
+      baseFee: isNaN(parseFloat(editConfig.baseFee)) ? 20 : parseFloat(editConfig.baseFee),
+      perKmFee: isNaN(parseFloat(editConfig.perKmFee)) ? 10 : parseFloat(editConfig.perKmFee),
+      gpFood: isNaN(parseFloat(editConfig.gpFood)) ? 30 : parseFloat(editConfig.gpFood),
+      gpDelivery: isNaN(parseFloat(editConfig.gpDelivery)) ? 15 : parseFloat(editConfig.gpDelivery),
+    };
+    setAppConfig(cleanedConfig);
+    setEditConfig(cleanedConfig);
     notifySystem('สำเร็จ', 'บันทึกการตั้งค่าระบบเรียบร้อยแล้ว', 'success');
   };
 
@@ -1509,25 +1526,25 @@ export default function AdminView() {
           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-8">
             <h3 className="font-bold text-blue-700 border-b border-blue-200 pb-2 mb-4 flex items-center gap-2"><CreditCard size={18} /> บัญชีรับเงิน</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label htmlFor="admin-bank-name" className="block text-sm font-medium mb-1">ชื่อธนาคาร</label><input id="admin-bank-name" name="adminBankName" type="text" value={editConfig.adminBankName} onChange={e => setEditConfig({ ...editConfig, adminBankName: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
-              <div><label htmlFor="admin-bank-account" className="block text-sm font-medium mb-1">เลขที่บัญชี</label><input id="admin-bank-account" name="adminBankAccount" type="text" value={editConfig.adminBankAccount} onChange={e => setEditConfig({ ...editConfig, adminBankAccount: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
-              <div><label htmlFor="admin-account-name" className="block text-sm font-medium mb-1">ชื่อบัญชี</label><input id="admin-account-name" name="adminAccountName" type="text" value={editConfig.adminAccountName} onChange={e => setEditConfig({ ...editConfig, adminAccountName: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-bank-name" className="block text-sm font-medium mb-1">ชื่อธนาคาร</label><input id="admin-bank-name" name="adminBankName" type="text" value={editConfig.adminBankName || ''} onChange={e => setEditConfig({ ...editConfig, adminBankName: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-bank-account" className="block text-sm font-medium mb-1">เลขที่บัญชี</label><input id="admin-bank-account" name="adminBankAccount" type="text" value={editConfig.adminBankAccount || ''} onChange={e => setEditConfig({ ...editConfig, adminBankAccount: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-account-name" className="block text-sm font-medium mb-1">ชื่อบัญชี</label><input id="admin-account-name" name="adminAccountName" type="text" value={editConfig.adminAccountName || ''} onChange={e => setEditConfig({ ...editConfig, adminAccountName: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
               <div><label htmlFor="admin-promptpay-id" className="block text-sm font-medium mb-1">เบอร์ / เลขบัตร PromptPay</label><input id="admin-promptpay-id" name="adminPromptPayId" type="text" value={editConfig.adminPromptPayId || ''} onChange={e => setEditConfig({ ...editConfig, adminPromptPayId: e.target.value })} className="w-full border p-2 rounded" placeholder="0xx-xxx-xxxx หรือ 13 หลัก" autoComplete="off" /></div>
-              <div><label htmlFor="admin-qr-code" className="block text-sm font-medium mb-1">QR Code URL (สำรอง)</label><input id="admin-qr-code" name="adminQrCode" type="text" value={editConfig.adminQrCode} onChange={e => setEditConfig({ ...editConfig, adminQrCode: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-qr-code" className="block text-sm font-medium mb-1">QR Code URL (สำรอง)</label><input id="admin-qr-code" name="adminQrCode" type="text" value={editConfig.adminQrCode || ''} onChange={e => setEditConfig({ ...editConfig, adminQrCode: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="space-y-4">
               <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><MapIcon size={16} /> รัศมีให้บริการ (กม.)</h3>
-              <div><label htmlFor="admin-app-radius" className="block text-sm font-medium mb-1">App Service Radius</label><input id="admin-app-radius" name="appRadius" type="number" value={editConfig.appRadius} onChange={e => setEditConfig({ ...editConfig, appRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
-              <div><label htmlFor="admin-restaurant-radius" className="block text-sm font-medium mb-1">Restaurant Delivery Radius</label><input id="admin-restaurant-radius" name="restaurantRadius" type="number" value={editConfig.restaurantRadius} onChange={e => setEditConfig({ ...editConfig, restaurantRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
-              <div><label htmlFor="admin-rider-radius" className="block text-sm font-medium mb-1">Rider Job Radius</label><input id="admin-rider-radius" name="riderRadius" type="number" value={editConfig.riderRadius} onChange={e => setEditConfig({ ...editConfig, riderRadius: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-app-radius" className="block text-sm font-medium mb-1">App Service Radius</label><input id="admin-app-radius" name="appRadius" type="number" value={editConfig.appRadius ?? ''} onChange={e => setEditConfig({ ...editConfig, appRadius: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-restaurant-radius" className="block text-sm font-medium mb-1">Restaurant Delivery Radius</label><input id="admin-restaurant-radius" name="restaurantRadius" type="number" value={editConfig.restaurantRadius ?? ''} onChange={e => setEditConfig({ ...editConfig, restaurantRadius: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-rider-radius" className="block text-sm font-medium mb-1">Rider Job Radius</label><input id="admin-rider-radius" name="riderRadius" type="number" value={editConfig.riderRadius ?? ''} onChange={e => setEditConfig({ ...editConfig, riderRadius: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
             </div>
             <div className="space-y-4">
               <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><DollarSign size={16} /> ค่าบริการขนส่ง</h3>
-              <div><label htmlFor="admin-base-fee" className="block text-sm font-medium mb-1">Base Fee (฿)</label><input id="admin-base-fee" name="baseFee" type="number" value={editConfig.baseFee} onChange={e => setEditConfig({ ...editConfig, baseFee: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
-              <div><label htmlFor="admin-per-km-fee" className="block text-sm font-medium mb-1">Per Km Fee (฿/กม.)</label><input id="admin-per-km-fee" name="perKmFee" type="number" value={editConfig.perKmFee} onChange={e => setEditConfig({ ...editConfig, perKmFee: parseFloat(e.target.value) })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-base-fee" className="block text-sm font-medium mb-1">Base Fee (฿)</label><input id="admin-base-fee" name="baseFee" type="number" value={editConfig.baseFee ?? ''} onChange={e => setEditConfig({ ...editConfig, baseFee: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-per-km-fee" className="block text-sm font-medium mb-1">Per Km Fee (฿/กม.)</label><input id="admin-per-km-fee" name="perKmFee" type="number" value={editConfig.perKmFee ?? ''} onChange={e => setEditConfig({ ...editConfig, perKmFee: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
             </div>
           </div>
 
@@ -1537,14 +1554,14 @@ export default function AdminView() {
               <div>
                 <label htmlFor="admin-gp-food" className="block text-sm font-medium mb-1 text-orange-600">GP ร้านค้า (Food)</label>
                 <div className="flex items-center">
-                  <input id="admin-gp-food" name="gpFood" type="number" value={editConfig.gpFood} onChange={e => setEditConfig({ ...editConfig, gpFood: parseFloat(e.target.value) })} className="w-full border p-2 rounded-l" autoComplete="off" />
+                  <input id="admin-gp-food" name="gpFood" type="number" value={editConfig.gpFood ?? ''} onChange={e => setEditConfig({ ...editConfig, gpFood: e.target.value })} className="w-full border p-2 rounded-l" autoComplete="off" />
                   <span className="bg-gray-100 border border-l-0 p-2 rounded-r text-gray-500">%</span>
                 </div>
               </div>
               <div>
                 <label htmlFor="admin-gp-delivery" className="block text-sm font-medium mb-1 text-blue-600">GP ไรเดอร์ (Delivery)</label>
                 <div className="flex items-center">
-                  <input id="admin-gp-delivery" name="gpDelivery" type="number" value={editConfig.gpDelivery} onChange={e => setEditConfig({ ...editConfig, gpDelivery: parseFloat(e.target.value) })} className="w-full border p-2 rounded-l" autoComplete="off" />
+                  <input id="admin-gp-delivery" name="gpDelivery" type="number" value={editConfig.gpDelivery ?? ''} onChange={e => setEditConfig({ ...editConfig, gpDelivery: e.target.value })} className="w-full border p-2 rounded-l" autoComplete="off" />
                   <span className="bg-gray-100 border border-l-0 p-2 rounded-r text-gray-500">%</span>
                 </div>
               </div>
