@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, Navigation } from 'lucide-react';
+import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
 
 // CARTO Voyager — ฟรี, สวย, ไม่ต้อง API key
 const TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
@@ -71,11 +71,20 @@ export default function InteractiveMap({
   className = '',
   trackingMode = false,       // ใช้ animated rider icon + auto-follow
   autoFollow = false,         // pan map ตามไรเดอร์ real-time
+  showRoute = true,           // วาดเส้นทางถนน OSRM อัตโนมัติ ( view mode )
 }) {
   const containerRef  = useRef(null);
   const mapRef        = useRef(null);
   const markersRef    = useRef({});     // { pin, secondary, user, shop, rider }
+  const polylineRef   = useRef(null);   // OSRM route polyline
   const leafletRef    = useRef(null);
+
+  // Search state (Nominatim)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchDebounceRef = useRef(null);
 
   // Always-fresh refs — updated every render so stale closures see current values
   const onLocationSelectRef   = useRef(onLocationSelect);
@@ -206,6 +215,61 @@ export default function InteractiveMap({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── OSRM Routing (View Mode) ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current || !leafletRef.current || mode !== 'view' || !showRoute) return;
+    const L = leafletRef.current;
+    const map = mapRef.current;
+
+    // คำนวณเส้นทาง OSRM ระหว่างจุดรับและจุดส่ง หรือ ไรเดอร์
+    let waypoints = [];
+    if (riderLocation && shopLocation) {
+      waypoints = [riderLocation, shopLocation];
+      if (userLocation) waypoints.push(userLocation);
+    } else if (shopLocation && userLocation) {
+      waypoints = [shopLocation, userLocation];
+    }
+
+    if (waypoints.length < 2) {
+      if (polylineRef.current) {
+        polylineRef.current.remove();
+        polylineRef.current = null;
+      }
+      return;
+    }
+
+    const coordsStr = waypoints.map(w => `${w.lng},${w.lat}`).join(';');
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
+
+    let active = true;
+    fetch(osrmUrl)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active || !data.routes || !data.routes[0]) return;
+        const routeCoords = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+        if (polylineRef.current) {
+          polylineRef.current.setLatLngs(routeCoords);
+        } else {
+          polylineRef.current = L.polyline(routeCoords, {
+            color: '#3b82f6',
+            weight: 5,
+            opacity: 0.8,
+            lineCap: 'round',
+            lineJoin: 'round',
+            dashArray: '1, 8',
+          }).addTo(map);
+        }
+      })
+      .catch((err) => {
+        console.warn('OSRM Route fetch error:', err);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [mode, showRoute, userLocation?.lat, userLocation?.lng, shopLocation?.lat, shopLocation?.lng, riderLocation?.lat, riderLocation?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── อัปเดต rider marker แบบ real-time (view mode) ────────────────────────
   useEffect(() => {
     if (!mapRef.current || !leafletRef.current || mode !== 'view') return;
@@ -318,6 +382,71 @@ export default function InteractiveMap({
     }
   }, [activeParcelTarget, shopLocation, userLocation, isParcel, mode]);  
 
+  // ── Nominatim Address Search ──────────────────────────────────────────────
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (!val.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    searchDebounceRef.current = setTimeout(() => {
+      fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          val
+        )}&countrycodes=th&limit=5&accept-language=th`
+      )
+        .then((res) => res.json())
+        .then((data) => {
+          setSearchResults(data || []);
+          setShowSearchResults(true);
+        })
+        .catch(() => setSearchResults([]))
+        .finally(() => setIsSearching(false));
+    }, 500);
+  };
+
+  const handleSelectSearchResult = (result) => {
+    const loc = { lat: parseFloat(result.lat), lng: parseFloat(result.lon) };
+    const target = activeParcelTargetRef.current;
+    const color = target === 'dropoff' ? '#ef4444' : '#22c55e';
+    const emoji = target === 'dropoff' ? '🏁' : '📍';
+
+    setPinned(loc);
+    onLocationSelectRef.current?.(loc);
+    setShowSearchResults(false);
+    setSearchQuery(result.display_name.split(',')[0] || result.display_name);
+
+    if (!mapRef.current || !leafletRef.current) return;
+    const L = leafletRef.current;
+    const map = mapRef.current;
+
+    map.setView([loc.lat, loc.lng], 16, { animate: true });
+
+    if (markersRef.current.pin) {
+      markersRef.current.pin.setLatLng([loc.lat, loc.lng]);
+      markersRef.current.pin.setIcon(makeIcon(L, color, emoji));
+    } else {
+      const m = L.marker([loc.lat, loc.lng], {
+        icon: makeIcon(L, color, emoji),
+        draggable: true,
+      }).addTo(map);
+      m.on('dragend', (e) => {
+        const p = e.target.getLatLng();
+        const newLoc = { lat: p.lat, lng: p.lng };
+        setPinned(newLoc);
+        onLocationSelectRef.current?.(newLoc);
+      });
+      markersRef.current.pin = m;
+    }
+  };
+
   // ── GPS ──────────────────────────────────────────────────────────────────
   const useGPS = () => {
     if (!navigator.geolocation) return;
@@ -383,9 +512,59 @@ export default function InteractiveMap({
 
       {mode === 'select' && (
         <>
+          {/* ช่องค้นหาที่อยู่ภาษาไทย (Nominatim) */}
+          <div className="absolute top-2 left-2 right-2 z-[1000]">
+            <div className="relative flex items-center bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200">
+              <Search size={16} className="text-gray-400 ml-3 shrink-0" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                placeholder="ค้นหาชื่อสถานที่, ถนน, ซอย..."
+                className="w-full py-2 px-2 text-xs text-gray-800 bg-transparent border-none focus:outline-none"
+              />
+              {isSearching ? (
+                <Loader2 size={16} className="animate-spin text-green-500 mr-3 shrink-0" />
+              ) : searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    setShowSearchResults(false);
+                  }}
+                  className="p-1 mr-2 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
+
+            {/* ผลการค้นหา Dropdown */}
+            {showSearchResults && searchResults.length > 0 && (
+              <div className="mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-48 overflow-y-auto divide-y divide-gray-100">
+                {searchResults.map((res) => (
+                  <button
+                    key={res.place_id}
+                    type="button"
+                    onClick={() => handleSelectSearchResult(res)}
+                    className="w-full text-left px-3 py-2 hover:bg-green-50 transition-colors text-xs text-gray-700 flex flex-col"
+                  >
+                    <span className="font-semibold text-gray-900 truncate">
+                      {res.display_name.split(',')[0]}
+                    </span>
+                    <span className="text-[10px] text-gray-400 truncate">
+                      {res.display_name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* คำแนะนำบนสุด */}
           <div
-            className={`absolute top-2 left-1/2 -translate-x-1/2 text-white text-xs px-3 py-1 rounded-full shadow pointer-events-none z-[1000] whitespace-nowrap backdrop-blur-sm ${
+            className={`absolute top-12 left-1/2 -translate-x-1/2 text-white text-xs px-3 py-1 rounded-full shadow pointer-events-none z-[999] whitespace-nowrap backdrop-blur-sm ${
               isParcel && activeParcelTarget === 'dropoff' ? 'bg-red-600/90' : 'bg-green-600/90'
             }`}
           >
