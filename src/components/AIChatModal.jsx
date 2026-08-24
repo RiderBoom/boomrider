@@ -169,10 +169,8 @@ export default function AIChatModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const quickPrompts = [
-    '📋 ดูเมนูอาหาร',
     '📦 เช็คสถานะออเดอร์',
     '💳 ยอดเงิน Wallet',
-    '🍔 สั่งกะเพราหมูสับ',
     '🚚 เรียกส่งพัสดุ',
   ];
 
