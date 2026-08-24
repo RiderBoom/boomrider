@@ -84,7 +84,7 @@ export function useWalletActions(deps) {
     setWalletAllEntries(prev => [_makeEntry(amount, description), ...prev]);
   };
 
-  const requestTopUp = (amount, slipImage, _walletType = null, bankInfo = {}) => {
+  const requestTopUp = (amount, slipImage, bankInfo = {}) => {
     const uid = userProfile.id || currentUser?.id || '';
     const newReq = {
       id: generateId(), type: 'topup',
@@ -108,7 +108,7 @@ export function useWalletActions(deps) {
     notifyAdmin('💰 เติมเงินใหม่', `${userProfile.name || 'ผู้ใช้'} แจ้งเติม ฿${amount}`, 'warning');
   };
 
-  const requestWithdraw = (amount, bankInfo, _walletType = null) => {
+  const requestWithdraw = (amount, bankInfo) => {
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) return notifySystem('ผิดพลาด', 'กรุณาระบุจำนวนเงิน', 'error');
     const uid = userProfile.id || currentUser?.id || '';

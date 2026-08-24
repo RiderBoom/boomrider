@@ -17,7 +17,7 @@ const CACHE_KEYS = [
 ];
 
 function clearCacheAndReload() {
-  CACHE_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+  CACHE_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch { void 0; } });
   window.location.reload();
 }
 

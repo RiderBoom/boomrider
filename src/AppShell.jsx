@@ -24,7 +24,7 @@ function ViewLoader() {
 }
 
 function RoleSwitcher() {
-  const { activeRole, setActiveRole, pendingRequests, isAdmin, isLoggedIn } = useApp();
+  const { activeRole, setActiveRole, pendingRequests, isAdmin } = useApp();
   if (!import.meta.env.DEV) return null;
   return (
     <div className="fixed top-0 left-0 right-0 bg-gray-900 text-white p-2 z-50 flex justify-between items-center text-xs sm:text-sm shadow-md overflow-x-auto">

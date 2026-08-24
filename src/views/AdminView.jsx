@@ -55,14 +55,13 @@ function SimpleBar({ label, value, max, color = '#22c55e' }) {
 // ─── Main Component ─────────────────────────────────────────────────────────
 export default function AdminView() {
   const {
-    activeRole, setActiveRole,
+    setActiveRole,
     adminTab, setAdminTab,
     orders, restaurants, riders, pendingRequests,
     appConfig, setAppConfig,
     editConfig, setEditConfig,
     chats,
     globalWallets,
-    userProfile,
     userWallet,
     walletHistory,
     editingShop, setEditingShop,
@@ -84,7 +83,7 @@ export default function AdminView() {
     promoCodes, createPromoCode, togglePromoCode, deletePromoCode,
     // Admin tools
     adminAdjustWallet, adminBanUser,
-    creditWallet, grantRole, revokeRole,
+    grantRole, revokeRole,
     setOrders, setRestaurants, setRiders, setPendingRequests, setGlobalWallets,
     isDataLoading,
   } = useApp();
@@ -95,7 +94,6 @@ export default function AdminView() {
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustDesc, setAdjustDesc] = useState('');
   const [resetPwdUserId, setResetPwdUserId] = useState(null);
-  const [resetPwdValue, setResetPwdValue] = useState('');
   const [userWalletEntries, setUserWalletEntries] = useState({});
   const [userWalletLoading, setUserWalletLoading] = useState({});
 
@@ -387,7 +385,6 @@ export default function AdminView() {
     });
     if (error) return notifySystem('ผิดพลาด', error.message, 'error');
     setResetPwdUserId(null);
-    setResetPwdValue('');
     notifySystem('สำเร็จ', `ส่งอีเมลรีเซ็ตรหัสผ่านไปยัง ${user.email} แล้ว`, 'success');
   };
 
@@ -427,23 +424,26 @@ export default function AdminView() {
 
         {/* Tab bar — horizontal scroll */}
         <div className="flex gap-1 bg-white p-1 rounded-xl shadow-sm overflow-x-auto max-w-full scrollbar-hide w-full md:w-auto">
-          {TABS.map(({ id, label, icon: Icon, badge }) => (
-            <button
-              key={id}
-              onClick={() => setAdminTab(id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-semibold text-xs whitespace-nowrap transition-all ${
-                adminTab === id ? 'bg-green-600 text-white shadow' : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Icon size={13} />
-              {label}
-              {badge > 0 && (
-                <span className={`ml-0.5 px-1.5 rounded-full text-[10px] font-bold ${adminTab === id ? 'bg-white text-green-700' : 'bg-red-500 text-white'}`}>
-                  {badge}
-                </span>
-              )}
-            </button>
-          ))}
+          {TABS.map(({ id, label, icon, badge }) => {
+            const IconComp = icon;
+            return (
+              <button
+                key={id}
+                onClick={() => setAdminTab(id)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-semibold text-xs whitespace-nowrap transition-all ${
+                  adminTab === id ? 'bg-green-600 text-white shadow' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <IconComp size={13} />
+                {label}
+                {badge > 0 && (
+                  <span className={`ml-0.5 px-1.5 rounded-full text-[10px] font-bold ${adminTab === id ? 'bg-white text-green-700' : 'bg-red-500 text-white'}`}>
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1066,7 +1066,7 @@ export default function AdminView() {
                           {user.banned ? 'ปลดแบน' : 'แบน'}
                         </button>
                         <button
-                          onClick={() => { setResetPwdUserId(resetPwdUserId === user.id ? null : user.id); setResetPwdValue(''); }}
+                          onClick={() => setResetPwdUserId(resetPwdUserId === user.id ? null : user.id)}
                           className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg font-bold hover:bg-purple-200"
                         >รีเซ็ต PW</button>
                       </div>
@@ -1104,7 +1104,7 @@ export default function AdminView() {
                         <p className="text-xs font-bold text-purple-700 mb-1">รีเซ็ตรหัสผ่านของ {user.name}</p>
                         <p className="text-xs text-gray-500 mb-3">ระบบจะส่งลิงก์รีเซ็ตรหัสผ่านไปยัง <strong>{user.email}</strong> ทางอีเมล</p>
                         <div className="flex gap-2">
-                          <button onClick={() => { setResetPwdUserId(null); setResetPwdValue(''); }} className="flex-1 bg-gray-200 py-2 rounded text-sm">ยกเลิก</button>
+                          <button onClick={() => setResetPwdUserId(null)} className="flex-1 bg-gray-200 py-2 rounded text-sm">ยกเลิก</button>
                           <button onClick={handleResetPassword} className="flex-1 bg-purple-600 text-white py-2 rounded text-sm font-bold">ส่งอีเมลรีเซ็ต</button>
                         </div>
                       </div>

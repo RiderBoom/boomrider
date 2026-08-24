@@ -15,7 +15,7 @@ export function usePromoActions({ notifySystem, supabase }) {
     return { valid: true, discount: Math.round(discount), promo };
   }, [promoCodes]);
 
-  const usePromoCode = useCallback((code) => {
+  const applyPromoCode = useCallback((code) => {
     setPromoCodes(prev => {
       const next = prev.map(p => p.code.toUpperCase() === code.toUpperCase()
         ? { ...p, usedCount: (p.usedCount || 0) + 1 }
@@ -32,7 +32,7 @@ export function usePromoActions({ notifySystem, supabase }) {
     setPromoCodes(prev => [newCode, ...prev]);
     supabase.from('promo_codes').insert({ id: newCode.id, data: newCode }).then(() => {});
     notifySystem('สำเร็จ', `สร้างโค้ด "${data.code.toUpperCase()}" เรียบร้อย`, 'success');
-  }, [supabase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notifySystem, supabase]);
 
   const togglePromoCode = useCallback((id) => {
     setPromoCodes(prev => {
@@ -48,5 +48,5 @@ export function usePromoActions({ notifySystem, supabase }) {
     supabase.from('promo_codes').delete().eq('id', id).then(() => {});
   }, [supabase]);
 
-  return { promoCodes, setPromoCodes, validatePromoCode, usePromoCode, createPromoCode, togglePromoCode, deletePromoCode };
+  return { promoCodes, setPromoCodes, validatePromoCode, applyPromoCode, createPromoCode, togglePromoCode, deletePromoCode };
 }

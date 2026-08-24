@@ -73,7 +73,7 @@ export const playNotificationSound = (type = 'order') => {
       osc.stop(t + d);
       t += d + 0.02;
     });
-  } catch {}
+  } catch { void 0; }
 };
 
 export const hashPassword = async (plain) => {
@@ -97,7 +97,7 @@ export const safeLocalSet = (key, value) => {
         typeof v === 'string' && v.startsWith('data:') ? '[image]' : v,
       ));
       localStorage.setItem(key, JSON.stringify(stripped));
-    } catch {}
+    } catch { void 0; }
   }
 };
 
@@ -111,7 +111,7 @@ export const setMerchantNotifSound = (base64OrNull) => {
   try {
     if (base64OrNull) localStorage.setItem(_NOTIF_SOUND_KEY, base64OrNull);
     else localStorage.removeItem(_NOTIF_SOUND_KEY);
-  } catch {}
+  } catch { void 0; }
 };
 
 export const playOrderNotificationSound = () => {
@@ -123,7 +123,7 @@ export const playOrderNotificationSound = () => {
       audio.play().catch(() => playNotificationSound('order'));
       return;
     }
-  } catch {}
+  } catch { void 0; }
   playNotificationSound('order');
 };
 

@@ -3,7 +3,7 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, ADMIN_EMAIL,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, playNotificationSound, playOrderNotificationSound, formatDateTime, r2, safeLocalSet } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, playNotificationSound, playOrderNotificationSound, formatDateTime, r2 } from '../utils';
 import { supabase } from '../lib/supabase';
 
 import { useWalletActions }  from './hooks/useWalletActions';
@@ -26,6 +26,7 @@ const canApplyOrderUpdate = (existing, incoming) => {
   return (ORDER_STATUS_RANK[incoming.status] ?? -1) >= (ORDER_STATUS_RANK[existing.status] ?? -1);
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
   return useContext(AppContext);
 }
@@ -277,7 +278,7 @@ export function AppProvider({ children }) {
   // ── Promo actions hook ──────────────────────────────────────────────────
   const {
     promoCodes, setPromoCodes,
-    validatePromoCode, usePromoCode, createPromoCode, togglePromoCode, deletePromoCode,
+    validatePromoCode, applyPromoCode, createPromoCode, togglePromoCode, deletePromoCode,
   } = usePromoActions({ notifySystem, supabase });
 
   // ── Load app data from Supabase on mount ────────────────────────────────
@@ -1350,7 +1351,7 @@ export function AppProvider({ children }) {
 
     // Promo
     promoCodes, setPromoCodes,
-    validatePromoCode, usePromoCode, createPromoCode, togglePromoCode, deletePromoCode,
+    validatePromoCode, applyPromoCode, createPromoCode, togglePromoCode, deletePromoCode,
 
     // Admin
     handleApproveRequest,

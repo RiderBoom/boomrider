@@ -1,4 +1,4 @@
-import { generateId, formatDateTime, r2, safeLocalSet } from '../../utils';
+import { generateId, formatDateTime, r2 } from '../../utils';
 import { ADMIN_EMAIL, USER_LOCATION } from '../../constants';
 import { autoDispatch } from './useAutoDispatch';
 
@@ -9,8 +9,8 @@ export function useOrderActions(deps) {
     restaurants, riders, appConfig,
     currentUser, userProfile, userAddresses, userWallet,
     parcelDetails, setParcelDetails,
-    parcelDistance, parcelEstimate,
-    paymentMethod, setPaymentMethod,
+    parcelEstimate,
+    paymentMethod,
     pendingRequests, setPendingRequests,
     selectedOrderToCancel, setSelectedOrderToCancel,
     cancelReasonInput, setCancelReasonInput,
@@ -18,8 +18,7 @@ export function useOrderActions(deps) {
     setSelectedRestaurant, setActiveTab,
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
-    seenOrderIdsRef,
-    creditWallet, creditWalletLocal, processTransaction, setUserWallet,
+    creditWallet, creditWalletLocal,
     notifySystem, notifyAdmin,
     supabase,
   } = deps;
@@ -272,7 +271,7 @@ export function useOrderActions(deps) {
 
     // ── Settlement: use SQL RPC first, fall back to JS wallet credits ────────
     if (newStatus === 'completed') {
-      const { foodTotal, deliveryFee, gpAmount, merchantIncome, riderIncome: calcRiderIncome } = _settlementAmounts(order);
+      const { foodTotal, gpAmount, merchantIncome, riderIncome: calcRiderIncome } = _settlementAmounts(order);
       const riderUid     = order.riderUserId || riders.find(r => r.id === order.riderId)?.userId;
       const shopOwnerUid = order.restaurantOwnerId || restaurants.find(r => r.id === order.restaurantId)?.ownerId;
 
@@ -353,7 +352,6 @@ export function useOrderActions(deps) {
     const orderId = selectedOrderToCancel;
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
-    const cancelled = { ...order, status: 'cancelled', cancelReason: cancelReasonInput || 'ลูกค้ายกเลิก' };
     await _updateOrder(orderId, { status: 'cancelled', cancelReason: cancelReasonInput || 'ลูกค้ายกเลิก' });
     setShowCancelModal(false);
     setSelectedOrderToCancel(null);
