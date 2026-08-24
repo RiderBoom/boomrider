@@ -24,7 +24,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
     handleParcelMapSelect,
     getCurrentLocationForParcel,
     notifySystem,
-    validatePromoCode, usePromoCode,
+    validatePromoCode, applyPromoCode,
     selectedRestaurant, setSelectedRestaurant,
     isDataLoading,
   } = useApp();
@@ -234,7 +234,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-2 text-sm rounded-xl border font-bold transition-all ${paymentMethod === 'cash' ? 'bg-blue-500 text-white border-blue-500 shadow-md' : 'bg-white text-gray-600 border-gray-200'}`}>เงินสด</button>
             </div>
             <button
-              onClick={() => { if (promoResult?.valid) usePromoCode(promoInput); placeOrder(promoDiscount, orderNotes); setOrderNotes(''); }}
+              onClick={() => { if (promoResult?.valid) applyPromoCode(promoInput); placeOrder(promoDiscount, orderNotes); setOrderNotes(''); }}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-xl shadow-orange-200 active:scale-95 transition-transform"
             >
               สั่งอาหาร ฿{Math.max(0, calculateFoodTotal() + calculateDeliveryFee(cart[0].distance) - promoDiscount).toLocaleString()}

@@ -1,4 +1,3 @@
-import { generateId, formatDateTime } from '../../utils';
 import { USER_LOCATION } from '../../constants';
 
 export function useAdminActions(deps) {
@@ -6,9 +5,9 @@ export function useAdminActions(deps) {
     orders, setOrders,
     riders, setRiders,
     restaurants, setRestaurants,
-    menuItems, setMenuItems,
+    setMenuItems,
     pendingRequests, setPendingRequests,
-    globalWallets, setGlobalWallets,
+    globalWallets,
     editingShop, shopEditForm, setEditingShop,
     selectedRequestToReject, setSelectedRequestToReject,
     setShowRejectModal,

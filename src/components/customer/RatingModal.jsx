@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Star, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -27,11 +27,14 @@ export default function RatingModal() {
   const [riderStars, setRiderStars] = useState(5);
   const [comment, setComment] = useState('');
 
-  useEffect(() => {
-    if (ratingOrderData) { setRestaurantStars(5); setRiderStars(5); setComment(''); }
-  }, [ratingOrderData]);
-
   if (!showRatingModal || !ratingOrderData) return null;
+
+  const handleClose = () => {
+    setShowRatingModal(false);
+    setRestaurantStars(5);
+    setRiderStars(5);
+    setComment('');
+  };
 
   const o = ratingOrderData;
   const isFood = o.type === 'food';
@@ -47,7 +50,7 @@ export default function RatingModal() {
             <h3 className="text-lg font-black text-gray-900">ให้คะแนนรีวิว ⭐</h3>
             <p className="text-xs text-gray-400">{isFood ? o.restaurantName : '📦 ' + (o.dropoff || 'พัสดุ')}</p>
           </div>
-          <button onClick={() => setShowRatingModal(false)} className="p-2 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200">
+          <button onClick={handleClose} className="p-2 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200">
             <X size={18} />
           </button>
         </div>
@@ -71,20 +74,25 @@ export default function RatingModal() {
           autoComplete="off"
         />
         <button
-          onClick={() => submitRating({
-            orderId:          o.id,
-            restaurantId:     isFood ? o.restaurantId : null,
-            riderId:          o.riderId || null,
-            restaurantRating: isFood ? restaurantStars : null,
-            riderRating:      o.riderId ? riderStars : null,
-            comment,
-          })}
+          onClick={() => {
+            submitRating({
+              orderId:          o.id,
+              restaurantId:     isFood ? o.restaurantId : null,
+              riderId:          o.riderId || null,
+              restaurantRating: isFood ? restaurantStars : null,
+              riderRating:      o.riderId ? riderStars : null,
+              comment,
+            });
+            setRestaurantStars(5);
+            setRiderStars(5);
+            setComment('');
+          }}
           className="w-full bg-yellow-400 text-yellow-900 py-3.5 rounded-2xl font-black text-base hover:bg-yellow-300 active:scale-95 transition-all shadow-lg shadow-yellow-200"
         >
           ส่งรีวิว 🌟
         </button>
         <button
-          onClick={() => setShowRatingModal(false)}
+          onClick={handleClose}
           className="w-full mt-2 text-gray-400 text-sm py-2 hover:text-gray-600"
         >
           ข้ามไปก่อน

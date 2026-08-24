@@ -56,7 +56,7 @@ export default function ActivityTab() {
     ['pending', 'preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up', 'delivering', 'delivered'].includes(o.status),
   );
 
-  const now = Date.now();
+  const [now] = useState(() => Date.now());
   const justDone = myOrders.filter(o => {
     if (o.status !== 'completed') return false;
     if (!o.completedAt) return true;

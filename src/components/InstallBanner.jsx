@@ -19,6 +19,7 @@ function isDismissed() {
     if (!raw) return false;
     return Date.now() - parseInt(raw, 10) < DISMISSED_TTL;
   } catch {
+    void 0;
     return false;
   }
 }
@@ -26,22 +27,19 @@ function isDismissed() {
 function saveDismissed() {
   try {
     localStorage.setItem(DISMISSED_KEY, String(Date.now()));
-  } catch {}
+  } catch { void 0; }
 }
 
 export default function InstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showBanner, setShowBanner] = useState(false);
+  const [showBanner, setShowBanner] = useState(() => {
+    if (isInStandaloneMode() || isDismissed()) return false;
+    return isIOS();
+  });
   const [showIOSHint, setShowIOSHint] = useState(false);
 
   useEffect(() => {
-    if (isInStandaloneMode()) return;
-    if (isDismissed()) return;
-
-    if (isIOS()) {
-      setShowBanner(true);
-      return;
-    }
+    if (isInStandaloneMode() || isDismissed() || isIOS()) return;
 
     const handler = (e) => {
       e.preventDefault();

@@ -13,7 +13,7 @@ import InteractiveMap from '../components/InteractiveMap';
 
 export default function MerchantView() {
   const {
-    activeRole, setActiveRole,
+    setActiveRole,
     merchantTab, setMerchantTab,
     orders, restaurants, riders, menuItems,
     userProfile, currentUser,
@@ -25,12 +25,11 @@ export default function MerchantView() {
     handleDeleteMenuItem, handleToggleItemAvailability,
     handleShopPhotoChange,
     handleMenuPhotoSelect,
-    openChatWindow,
     updateOrderStatus,
     notifySystem,
-    profileSubView, setProfileSubView,
+    setProfileSubView,
     setActiveTab,
-    syncRoles, grantRole, userRoles,
+    syncRoles, userRoles,
     handleUpdateShopLocation,
     initiateCancelOrder,
     requestCancelByRole,

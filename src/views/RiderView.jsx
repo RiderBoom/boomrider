@@ -12,7 +12,7 @@ import { useJobOffer } from '../context/hooks/useJobOffer';
 
 export default function RiderView() {
   const {
-    activeRole, setActiveRole,
+    setActiveRole,
     riderTab, setRiderTab,
     orders, riders, restaurants, appConfig,
     userProfile, currentUser,
@@ -93,7 +93,6 @@ export default function RiderView() {
   const riderIdRef    = React.useRef(null);
   const riderUidRef   = React.useRef(null);
   const activeJobRef  = React.useRef(null);   // { id, status } ของงานที่กำลังทำอยู่
-  const lastWriteRef  = React.useRef(0);      // throttle timestamp
 
   // ── Sync refs ทุก render (synchronous — ไม่ใช้ useEffect เพื่อลด overhead) ──
   const _uid = userProfile.id || currentUser?.id;
@@ -585,8 +584,8 @@ export default function RiderView() {
                 setAcceptingId(job.id);
                 try {
                   await acceptOrder(job.id, me.id, myLocation);
-                } catch (_) {
-                  // error handled inside acceptOrder; always reset spinner
+                } catch (err) {
+                  void err; // error handled inside acceptOrder; always reset spinner
                 } finally {
                   setAcceptingId(null);
                 }

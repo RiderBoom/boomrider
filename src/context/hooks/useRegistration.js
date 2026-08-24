@@ -38,10 +38,10 @@ export function useRegistration({
     let idCardImage = data.idCardImage;
     let shopImage   = data.shopImage;
     if (data._idCardImageFile) {
-      try { idCardImage = await compressImage(data._idCardImageFile, 1200, 900, 0.75); } catch {}
+      try { idCardImage = await compressImage(data._idCardImageFile, 1200, 900, 0.75); } catch { void 0; }
     }
     if (data._shopImageFile) {
-      try { shopImage = await compressImage(data._shopImageFile, 800, 600, 0.65); } catch {}
+      try { shopImage = await compressImage(data._shopImageFile, 800, 600, 0.65); } catch { void 0; }
     }
 
     const { _idCardImageFile, _shopImageFile, ...dataNoFiles } = data;
@@ -69,10 +69,10 @@ export function useRegistration({
     let idCardImage  = data.idCardImage;
     let profileImage = data.profileImage;
     if (data._idCardImageFile) {
-      try { idCardImage = await compressImage(data._idCardImageFile, 1200, 900, 0.75); } catch {}
+      try { idCardImage  = await compressImage(data._idCardImageFile, 1200, 900, 0.75); } catch { void 0; }
     }
     if (data._profileImageFile) {
-      try { profileImage = await compressImage(data._profileImageFile, 400, 400, 0.7); } catch {}
+      try { profileImage = await compressImage(data._profileImageFile, 400, 400, 0.7); } catch { void 0; }
     }
 
     const { _idCardImageFile, _profileImageFile, ...dataNoFiles } = data;

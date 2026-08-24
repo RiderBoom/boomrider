@@ -86,12 +86,12 @@ export default function ProfileTab() {
       'boomrider_admin_last_check',
     ];
     cacheKeys.forEach(k => {
-      try { localStorage.removeItem(k); } catch {}
+      try { localStorage.removeItem(k); } catch { void 0; }
     });
     if ('caches' in window) {
       caches.keys().then(names => {
         names.forEach(name => { caches.delete(name); });
-      }).catch(() => {});
+      }).catch(() => { void 0; });
     }
     notifySystem('ล้างแคชสำเร็จ', 'กำลังรีโหลดแอปพลิเคชัน...', 'success');
     setTimeout(() => {
