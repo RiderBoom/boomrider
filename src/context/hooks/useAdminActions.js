@@ -84,13 +84,26 @@ export function useAdminActions(deps) {
       notifySystem('Admin', 'อนุมัติไรเดอร์เรียบร้อย', 'success');
 
     } else if (req.type === 'cancel_order') {
-      const targetOrder = orders.find(o => o.id === req.data.orderId);
+      const { data: latestOrderRow } = await supabase.from('orders').select('data').eq('id', req.data.orderId).maybeSingle();
+      const targetOrder = latestOrderRow?.data || orders.find(o => o.id === req.data.orderId);
       const roleName = req.data.requestedBy === 'rider' ? 'ไรเดอร์' : req.data.requestedBy === 'merchant' ? 'ร้านค้า' : 'ลูกค้า';
       const cancelReason = `${roleName}ขอยกเลิก: ${req.data.reason}`;
       if (targetOrder && !['cancelled', 'completed'].includes(targetOrder.status)) {
         const cancelledOrder = { ...targetOrder, status: 'cancelled', cancelReason };
-        setOrders(prev => prev.map(o => o.id === req.data.orderId ? cancelledOrder : o));
+        setOrders(prev => {
+          const idx = prev.findIndex(o => o.id === req.data.orderId);
+          if (idx === -1) return [cancelledOrder, ...prev];
+          const next = [...prev];
+          next[idx] = cancelledOrder;
+          return next;
+        });
         await supabase.from('orders').update({ status: 'cancelled', data: cancelledOrder }).eq('id', req.data.orderId);
+        if (cancelledOrder.riderId) {
+          const riderRow = riders.find(r => r.id === cancelledOrder.riderId);
+          if (riderRow) {
+            await supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id);
+          }
+        }
       }
       if (req.data.paymentMethod === 'wallet' && req.data.grandTotal > 0) {
         const refundTo = targetOrder?.customerId || req.data.customerId || req.userId;

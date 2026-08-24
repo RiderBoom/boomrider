@@ -212,7 +212,7 @@ export default function RiderView() {
   );
 
   const historyJobs = orders.filter(o =>
-    ['delivered', 'completed'].includes(o.status) && o.riderId === me.id,
+    ['delivered', 'completed', 'cancelled'].includes(o.status) && o.riderId === me.id,
   );
 
   // Earnings stats
