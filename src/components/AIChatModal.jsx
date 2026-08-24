@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Bot, Send, Loader2, Sparkles, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { generateId, formatDateTime, r2, playOrderNotificationSound } from '../utils';
+import { generateId, formatDateTime, r2, playOrderNotificationSound, getDistanceFromLatLonInKm } from '../utils';
 import { autoDispatch } from '../context/hooks/useAutoDispatch';
 
 const STATUS_MAP = {
@@ -204,30 +204,49 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
   // ── Local Tool Execution Handlers ──────────────────────────────────────────
 
   const executePlaceFoodOrder = async (args) => {
-    const targetRestName = args.restaurantName || '';
+    const targetRestName = (args.restaurantName || '').trim();
     const openShops = (restaurants || []).filter((r) => r.status === 'open');
-    const matchedShop =
-      openShops.find(
-        (r) =>
-          r.name.toLowerCase().includes(targetRestName.toLowerCase()) ||
-          targetRestName.toLowerCase().includes(r.name.toLowerCase())
-      ) || openShops[0];
 
-    if (!matchedShop) {
+    if (openShops.length === 0) {
       return 'ขออภัยครับ ขณะนี้ไม่มีร้านอาหารที่เปิดให้บริการครับ 🍔';
     }
 
+    let matchedShop = null;
+    if (targetRestName) {
+      matchedShop = openShops.find(
+        (r) =>
+          r.name.toLowerCase().includes(targetRestName.toLowerCase()) ||
+          targetRestName.toLowerCase().includes(r.name.toLowerCase())
+      );
+    }
+
+    if (!matchedShop) {
+      if (targetRestName) {
+        const availableShopNames = openShops.map((r) => `• ${r.name}`).join('\n');
+        return `ขออภัยครับ ไม่พบร้าน "${targetRestName}" ที่เปิดให้บริการขณะนี้\n\nร้านที่เปิดให้บริการอยู่ในขณะนี้:\n${availableShopNames}`;
+      }
+      matchedShop = openShops[0];
+    }
+
     const shopMenuItems = menuItems[matchedShop.id] || [];
+    if (shopMenuItems.length === 0) {
+      return `ขออภัยครับ ร้าน "${matchedShop.name}" ยังไม่มีรายการเมนูอาหารในระบบครับ`;
+    }
+
     const orderedItems = [];
+    const missingItems = [];
     const rawItems = args.items || [];
 
     for (const itemArg of rawItems) {
-      const argName = (itemArg.itemName || '').toLowerCase();
+      const argName = (itemArg.itemName || '').trim().toLowerCase();
       const qty = Math.max(1, Number(itemArg.qty) || 1);
-      const matchedMenu =
-        shopMenuItems.find(
-          (m) => m.name.toLowerCase().includes(argName) || argName.includes(m.name.toLowerCase())
-        ) || shopMenuItems[0];
+      if (!argName) continue;
+
+      const matchedMenu = shopMenuItems.find(
+        (m) =>
+          m.name.toLowerCase().includes(argName) ||
+          argName.includes(m.name.toLowerCase())
+      );
 
       if (matchedMenu) {
         orderedItems.push({
@@ -236,35 +255,38 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
           price: matchedMenu.price,
           qty,
         });
+      } else {
+        missingItems.push(itemArg.itemName);
       }
     }
 
-    if (orderedItems.length === 0 && shopMenuItems.length > 0) {
-      const defaultMenu = shopMenuItems[0];
-      orderedItems.push({
-        id: defaultMenu.id,
-        name: defaultMenu.name,
-        price: defaultMenu.price,
-        qty: 1,
-      });
+    if (orderedItems.length === 0) {
+      const availableMenuNames = shopMenuItems.slice(0, 8).map((m) => `• ${m.name} (฿${m.price})`).join('\n');
+      return `ขออภัยครับ ไม่พบเมนูที่คุณระบุในร้าน "${matchedShop.name}"\n\nเมนูแนะนำของร้าน ${matchedShop.name}:\n${availableMenuNames}`;
     }
 
-    if (orderedItems.length === 0) {
-      return `ขออภัยครับ ไม่พบเมนูอาหารในร้าน ${matchedShop.name} ครับ`;
+    // Calculate real distance using coordinates
+    const custLoc = userAddresses?.[0]?.location || userProfile?.location || { lat: 13.7563, lng: 100.5018 };
+    const shopLoc = matchedShop.location || { lat: 13.7563, lng: 100.5018 };
+    let distance = 1;
+    if (custLoc?.lat && custLoc?.lng && shopLoc?.lat && shopLoc?.lng) {
+      distance = getDistanceFromLatLonInKm(custLoc.lat, custLoc.lng, shopLoc.lat, shopLoc.lng);
+      if (distance <= 0) distance = 1;
     }
 
     const foodTotal = orderedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-    const distance = 1;
-    const deliveryFee = (appConfig?.baseFee || 30) + Math.ceil(distance) * (appConfig?.perKmFee || 10);
+    const baseFee = appConfig?.baseFee || 30;
+    const perKmFee = appConfig?.perKmFee || 10;
+    const deliveryFee = baseFee + Math.ceil(distance) * perKmFee;
     const grandTotal = Math.max(0, foodTotal + deliveryFee);
 
     const paymentMethod = args.paymentMethod === 'cash' ? 'cash' : 'wallet';
 
     if (paymentMethod === 'wallet' && balanceNum < grandTotal) {
-      return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString()} แต่ยอดสั่งซื้อคือ ฿${grandTotal.toLocaleString()}) กรุณาเติมเงินก่อนทำรายการครับ 💳`;
+      return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} แต่ยอดสั่งซื้อคือ ฿${grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) กรุณาเติมเงินก่อนทำรายการครับ 💳`;
     }
 
-    const addr = userAddresses?.[0] || { address: 'ที่อยู่ปัจจุบันของลูกค้า', location: userProfile?.location };
+    const addr = userAddresses?.[0] || { address: 'ที่อยู่ปัจจุบันของลูกค้า', location: custLoc };
     const orderId = generateId();
 
     const newOrder = {
@@ -277,8 +299,8 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       restaurantId: matchedShop.id,
       restaurantName: matchedShop.name,
       restaurantOwnerId: matchedShop.ownerId || null,
-      restaurantLocation: matchedShop.location,
-      pickupLocation: matchedShop.location,
+      restaurantLocation: shopLoc,
+      pickupLocation: shopLoc,
       location: addr.location,
       address: addr.address,
       items: orderedItems,
@@ -303,17 +325,25 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     playOrderNotificationSound();
 
     const itemListStr = orderedItems.map((i) => `• ${i.name} x${i.qty} (฿${i.price * i.qty})`).join('\n');
-    return `✅ สั่งอาหารให้เรียบร้อยแล้วครับ! 🎉\n\nร้านค้า: ${matchedShop.name}\nรายการ:\n${itemListStr}\nค่าส่ง: ฿${deliveryFee}\nยอดรวมทั้งสิ้น: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบได้แจ้งเตือนและส่งเสียงไปยังร้านค้าเรียบร้อยแล้วครับ! 🍔🔔`;
+    let missingNote = '';
+    if (missingItems.length > 0) {
+      missingNote = `\n\n⚠️ หมายเหตุ: ไม่พบเมนู (${missingItems.join(', ')}) จึงเว้นรายการดังกล่าวไว้ครับ`;
+    }
+
+    return `✅ สั่งอาหารให้เรียบร้อยแล้วครับ! 🎉\n\nร้านค้า: ${matchedShop.name}\nรายการที่สั่ง:\n${itemListStr}\nค่าอาหาร: ฿${foodTotal}\nค่าจัดส่ง (${distance.toFixed(1)} กม.): ฿${deliveryFee}\nยอดรวมทั้งสิ้น: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}${missingNote}\n\nระบบได้ส่งคำสั่งซื้อและแจ้งเตือนไปยังร้านค้าเรียบร้อยแล้วครับ! 🍔🔔`;
   };
 
   const executePlaceParcelOrder = async (args) => {
     const pickup = args.pickup || 'จุดรับของลูกค้า';
     const dropoff = args.dropoff || 'จุดส่งของปลายทาง';
-    const grandTotal = (appConfig?.baseFee || 30) + (appConfig?.perKmFee || 10) * 2;
+    const distance = 2;
+    const baseFee = appConfig?.baseFee || 30;
+    const perKmFee = appConfig?.perKmFee || 10;
+    const grandTotal = baseFee + Math.ceil(distance) * perKmFee;
     const paymentMethod = args.paymentMethod === 'cash' ? 'cash' : 'wallet';
 
     if (paymentMethod === 'wallet' && balanceNum < grandTotal) {
-      return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString()} แต่ค่าส่งพัสดุคือ ฿${grandTotal.toLocaleString()}) กรุณาเติมเงินก่อนครับ 💳`;
+      return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} แต่ค่าส่งพัสดุคือ ฿${grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) กรุณาเติมเงินก่อนครับ 💳`;
     }
 
     const orderId = generateId();
@@ -351,7 +381,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
 
     autoDispatch(supabase, newOrder);
 
-    return `✅ เรียกส่งพัสดุเรียบร้อยแล้วครับ! 📦🛵\n\nจุดรับ: ${pickup}\nจุดส่ง: ${dropoff}\nค่าบริการ: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบกำลังกระจายงานแจ้งเตือนไปยังไรเดอร์บริเวณใกล้เคียงให้อัตโนมัติครับ! 🔔`;
+    return `✅ เรียกส่งพัสดุเรียบร้อยแล้วครับ! 📦🛵\n\nจุดรับ: ${pickup}\nจุดส่ง: ${dropoff}\nผู้รับ: ${args.receiverName || 'ไม่ระบุ'} (${args.receiverPhone || 'ไม่ระบุเบอร์'})\nค่าบริการจัดส่ง: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบกำลังกระจายงานแจ้งเตือนไปยังไรเดอร์บริเวณใกล้เคียงให้อัตโนมัติครับ! 🔔`;
   };
 
   const executeSendOrderChatMessage = async (args) => {
@@ -389,17 +419,45 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
   };
 
   const executeCheckOrderStatus = async (args) => {
-    const currentActiveOrders = getActiveOrders();
-    if (currentActiveOrders.length === 0) {
-      return 'ขณะนี้คุณไม่มีออเดอร์ที่กำลังดำเนินการอยู่ครับ สามารถสั่งอาหารหรือเรียกส่งพัสดุได้เลยครับ 🛵';
-    }
-    const target = args?.orderId
-      ? currentActiveOrders.find((o) => o.id.endsWith(args.orderId)) || currentActiveOrders[0]
-      : currentActiveOrders[0];
+    const userOrders = (orders || []).filter(
+      (o) => o.customerId === currentUserId || (!o.customerId && currentUserId)
+    );
 
-    return `📦 สถานะออเดอร์ #${target.id.slice(-6)} (${target.type === 'parcel' ? 'ส่งพัสดุ' : target.restaurantName || 'อาหาร'})\nสถานะปัจจุบัน: ${
-      STATUS_MAP[target.status] || target.status
-    }\nไรเดอร์: ${target.riderName || 'กำลังค้นหาไรเดอร์...'}\nยอดรวม: ฿${target.grandTotal || target.deliveryFee || target.total || 0}`;
+    if (userOrders.length === 0) {
+      return 'ขณะนี้คุณยังไม่มีประวัติออเดอร์ในระบบครับ คุณสามารถสั่งอาหารหรือเรียกส่งพัสดุผ่านผมได้เลยครับ! 🛵✨';
+    }
+
+    const targetId = args?.orderId;
+    if (targetId && targetId !== 'latest') {
+      const matched = userOrders.find((o) => o.id.endsWith(targetId) || o.id === targetId);
+      if (matched) {
+        const typeStr = matched.type === 'parcel' ? 'ส่งพัสดุ' : `อาหาร (${matched.restaurantName || 'ร้านค้า'})`;
+        const statusStr = STATUS_MAP[matched.status] || matched.status;
+        const riderStr = matched.riderName ? `\nไรเดอร์: ${matched.riderName} (${matched.riderPhone || 'มีเบอร์ในระบบ'})` : '\nไรเดอร์: กำลังค้นหาไรเดอร์...';
+        const itemsStr = matched.items ? `\nรายการ: ${matched.items.map((i) => `${i.name} x${i.qty}`).join(', ')}` : '';
+        const routeStr = matched.type === 'parcel' ? `\nจุดรับ: ${matched.pickup}\nจุดส่ง: ${matched.dropoff}` : '';
+
+        return `📦 รายละเอียดออเดอร์ #${matched.id.slice(-6)} [${typeStr}]\nสถานะปัจจุบัน: ${statusStr}${riderStr}${itemsStr}${routeStr}\nยอดรวมทั้งสิ้น: ฿${matched.grandTotal || matched.deliveryFee || 0}\nเวลาสั่ง: ${matched.createdAt || 'ไม่ระบุ'}`;
+      }
+    }
+
+    const activeList = getActiveOrders();
+    if (activeList.length > 0) {
+      const summaryList = activeList
+        .map((o, idx) => {
+          const typeStr = o.type === 'parcel' ? 'ส่งพัสดุ' : `อาหาร (${o.restaurantName || 'ร้านค้า'})`;
+          const statusStr = STATUS_MAP[o.status] || o.status;
+          const riderStr = o.riderName ? ` | ไรเดอร์: ${o.riderName}` : '';
+          return `${idx + 1}. #${o.id.slice(-6)} [${typeStr}]\n   • สถานะ: ${statusStr}${riderStr}\n   • ยอดรวม: ฿${o.grandTotal || o.deliveryFee || 0}`;
+        })
+        .join('\n\n');
+
+      return `🛵 สถานะออเดอร์ที่กำลังดำเนินการ (${activeList.length} รายการ):\n\n${summaryList}\n\nต้องการดูรายละเอียดเพิ่มเติมของออเดอร์ไหน พิมพ์ระบุเลขท้ายออเดอร์ได้เลยครับ!`;
+    }
+
+    const latest = userOrders[0];
+    const latestStatus = STATUS_MAP[latest.status] || latest.status;
+    return `ขณะนี้ไม่มีออเดอร์ที่กำลังดำเนินการครับ\n\nออเดอร์ล่าสุดของคุณคือ #${latest.id.slice(-6)} (${latest.type === 'parcel' ? 'ส่งพัสดุ' : latest.restaurantName || 'อาหาร'})\nสถานะ: ${latestStatus}\nเวลาสั่ง: ${latest.createdAt || 'ไม่ระบุ'}\n\nคุณสามารถสั่งอาหารหรือเรียกส่งพัสดุรายการใหม่ได้เลยครับ! 🍔📦`;
   };
 
   const executeTool = async (functionName, args) => {
