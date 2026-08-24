@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Bot, Send, Loader2, Sparkles, User } from 'lucide-react';
+import { X, Bot, Send, Loader2, Sparkles, User, ShoppingBag, Star, Store, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { generateId, formatDateTime, r2, playOrderNotificationSound, getDistanceFromLatLonInKm } from '../utils';
 import { autoDispatch } from '../context/hooks/useAutoDispatch';
@@ -20,7 +20,7 @@ const STATUS_MAP = {
 const SYSTEM_PROMPT = `คุณคือ "น้องบูม (BoomBot)" ผู้ช่วยอัจฉริยะ AI ประจำแอปพลิเคชัน BoomRider (บริการสั่งอาหารและส่งพัสดุในประเทศไทย)
 หน้าที่ของคุณคือบริการและช่วยเหลือผู้ใช้ด้วยความเป็นกันเอง สุภาพ มีหางเสียง (ครับ/ค่ะ)
 ความสามารถพิเศษของคุณ:
-1. เช็คสถานะออเดอร์ แนะนำร้าน และยอดเงินใน Wallet
+1. เช็คสถานะออเดอร์ แนะนำร้าน แสดงชื่อร้าน และดึงรายการเมนูอาหารของร้านค้านั้นๆ พร้อมราคาและปุ่มกดสั่งได้
 2. สามารถ "สั่งอาหาร" ให้ลูกค้าได้โดยตรง เมื่อลูกค้าระบุชื่อร้านค้าและรายการอาหาร
 3. สามารถ "สั่งส่งพัสดุ / เรียกไรเดอร์" ให้ลูกค้าได้โดยตรง เมื่อลูกค้าระบุจุดรับ จุดส่ง
 4. สามารถ "ส่งข้อความสื่อสาร/แจ้งเตือน" ไปยังห้องแชทของร้านค้า ไรเดอร์ หรือแอดมิน เกี่ยวกับออเดอร์ที่ดำเนินการอยู่ได้ทันที
@@ -29,6 +29,17 @@ const SYSTEM_PROMPT = `คุณคือ "น้องบูม (BoomBot)" ผ�
 const GEMINI_TOOLS = [
   {
     function_declarations: [
+      {
+        name: 'get_restaurant_menu',
+        description: 'ค้นหาชื่อร้านค้าและแสดงรายการเมนูทั้งหมดของร้านค้านั้นๆ เพื่อให้ลูกค้าดูและเลือกกดสั่งซื้อ',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            restaurantName: { type: 'STRING', description: 'ชื่อร้านค้า หรือคีย์เวิร์ดชื่อร้าน' },
+          },
+          required: ['restaurantName'],
+        },
+      },
       {
         name: 'place_food_order',
         description: 'สั่งอาหารจากร้านค้าโดยระบุชื่อร้านค้า รายการอาหาร วิธีชำระเงิน และหมายเหตุ',
@@ -112,12 +123,14 @@ export default function AIChatModal({ isOpen, onClose }) {
     notifySystem,
     supabase,
     activeRole,
+    setSelectedRestaurant,
+    addToCart,
   } = useApp();
 
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: `สวัสดีครับคุณ ${userProfile?.name || currentUser?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant\nผมสามารถช่วยเช็คสถานะ, สั่งอาหาร, เรียกไรเดอร์ส่งพัสดุ หรือส่งข้อความแจ้งเตือนไปยังร้านค้าและไรเดอร์ได้ครับ! มีอะไรให้รับใช้ไหมครับ?`,
+      text: `สวัสดีครับคุณ ${userProfile?.name || currentUser?.name || 'ลูกค้า'}! 🛵✨ ผมน้องบูม AI Assistant\nผมสามารถช่วยเช็คสถานะ, ดูเมนูร้านค้า, สั่งอาหาร, เรียกไรเดอร์ส่งพัสดุ หรือส่งข้อความแจ้งเตือนไปยังร้านค้าและไรเดอร์ได้ครับ! มีอะไรให้รับใช้ไหมครับ?`,
       time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -145,11 +158,11 @@ export default function AIChatModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const quickPrompts = [
+    '📋 ดูเมนูอาหาร',
     '📦 เช็คสถานะออเดอร์',
     '💳 ยอดเงิน Wallet',
     '🍔 สั่งกะเพราหมูสับ',
     '🚚 เรียกส่งพัสดุ',
-    '💬 แจ้งร้านค้าว่าขอไม่ใส่ผัก',
   ];
 
   const currentUserId = userProfile?.id || currentUser?.id || '';
@@ -202,6 +215,78 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
   };
 
   // ── Local Tool Execution Handlers ──────────────────────────────────────────
+
+  const executeGetRestaurantMenu = async (args) => {
+    const targetRestName = (args?.restaurantName || '').trim();
+    const openShops = (restaurants || []).filter((r) => r.status === 'open');
+
+    if (openShops.length === 0) {
+      return {
+        text: 'ขออภัยครับ ขณะนี้ไม่มีร้านอาหารที่เปิดให้บริการในระบบครับ 🍔',
+      };
+    }
+
+    let matchedShop = null;
+    if (targetRestName) {
+      matchedShop = openShops.find(
+        (r) =>
+          r.name.toLowerCase().includes(targetRestName.toLowerCase()) ||
+          targetRestName.toLowerCase().includes(r.name.toLowerCase())
+      );
+    }
+
+    if (!matchedShop && targetRestName) {
+      const anyMatched = (restaurants || []).find(
+        (r) =>
+          r.name.toLowerCase().includes(targetRestName.toLowerCase()) ||
+          targetRestName.toLowerCase().includes(r.name.toLowerCase())
+      );
+      if (anyMatched && anyMatched.status !== 'open') {
+        return {
+          text: `ขออภัยครับ ร้าน "${anyMatched.name}" ขณะนี้ปิดให้บริการอยู่ครับ 🔴`,
+        };
+      }
+      const availableShopNames = openShops.map((r) => `• ${r.name}`).join('\n');
+      return {
+        text: `ขออภัยครับ ไม่พบร้าน "${targetRestName}" ที่เปิดให้บริการขณะนี้\n\nร้านที่เปิดให้บริการอยู่ในขณะนี้:\n${availableShopNames}`,
+      };
+    }
+
+    if (!matchedShop) {
+      matchedShop = openShops[0];
+    }
+
+    const shopMenuItems = (menuItems[matchedShop.id] || []).filter((m) => m.available !== false);
+
+    const custLoc = userAddresses?.[0]?.location || userProfile?.location || { lat: 13.7563, lng: 100.5018 };
+    const shopLoc = matchedShop.location || { lat: 13.7563, lng: 100.5018 };
+    let distance = 1;
+    if (custLoc?.lat && custLoc?.lng && shopLoc?.lat && shopLoc?.lng) {
+      distance = getDistanceFromLatLonInKm(custLoc.lat, custLoc.lng, shopLoc.lat, shopLoc.lng);
+      if (distance <= 0) distance = 1;
+    }
+
+    const baseFee = appConfig?.baseFee || 30;
+    const perKmFee = appConfig?.perKmFee || 10;
+    const deliveryFee = baseFee + Math.ceil(distance) * perKmFee;
+
+    if (shopMenuItems.length === 0) {
+      return {
+        text: `ร้าน "${matchedShop.name}" ยังไม่มีรายการเมนูอาหารในระบบขณะนี้ครับ 🍔`,
+      };
+    }
+
+    return {
+      text: `นี่คือชื่อร้านและรายการเมนูของ "${matchedShop.name}" ครับ 😋\nคุณสามารถกดสั่งซื้อเมนูที่ต้องการ หรือกดใส่ตะกร้าได้ทันทีครับ!`,
+      cardData: {
+        type: 'restaurant_menu',
+        restaurant: matchedShop,
+        items: shopMenuItems,
+        distance: distance.toFixed(1),
+        deliveryFee,
+      },
+    };
+  };
 
   const executePlaceFoodOrder = async (args) => {
     const targetRestName = (args.restaurantName || '').trim();
@@ -462,19 +547,25 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
 
   const executeTool = async (functionName, args) => {
     try {
-      if (functionName === 'place_food_order') {
-        return await executePlaceFoodOrder(args);
+      if (functionName === 'get_restaurant_menu') {
+        return await executeGetRestaurantMenu(args);
+      } else if (functionName === 'place_food_order') {
+        const res = await executePlaceFoodOrder(args);
+        return typeof res === 'string' ? { text: res } : res;
       } else if (functionName === 'place_parcel_order') {
-        return await executePlaceParcelOrder(args);
+        const res = await executePlaceParcelOrder(args);
+        return typeof res === 'string' ? { text: res } : res;
       } else if (functionName === 'send_order_chat_message') {
-        return await executeSendOrderChatMessage(args);
+        const res = await executeSendOrderChatMessage(args);
+        return typeof res === 'string' ? { text: res } : res;
       } else if (functionName === 'check_order_status') {
-        return await executeCheckOrderStatus(args);
+        const res = await executeCheckOrderStatus(args);
+        return typeof res === 'string' ? { text: res } : res;
       }
-      return 'ไม่พบฟังก์ชันที่ระบุครับ';
+      return { text: 'ไม่พบฟังก์ชันที่ระบุครับ' };
     } catch (err) {
       console.error('executeTool error:', err);
-      return 'เกิดข้อผิดพลาดในการทำรายการ กรุณาลองใหม่อีกครั้งครับ';
+      return { text: 'เกิดข้อผิดพลาดในการทำรายการ กรุณาลองใหม่อีกครั้งครับ' };
     }
   };
 
@@ -500,16 +591,38 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
 
       const openShops = (restaurants || []).filter((r) => r.status === 'open');
 
+      let replyCardData = null;
+
+      const isMenuIntent =
+        text.includes('ขอเมนู') ||
+        text.includes('ดูเมนู') ||
+        text.includes('แสดงเมนู') ||
+        text.includes('มีเมนูอะไรบ้าง') ||
+        text.includes('รายการอาหาร') ||
+        text.includes('เมนูร้าน');
+
       const isChatMessageIntent =
         text.includes('ส่งข้อความ') ||
         text.includes('บอกร้าน') ||
         text.includes('บอกไรเดอร์') ||
         text.includes('แจ้งร้าน');
-      const isPlaceFoodIntent = text.includes('สั่งอาหาร') || text.includes('สั่งกะเพรา') || text.includes('สั่งข้าว');
+
+      const isPlaceFoodIntent =
+        !isMenuIntent &&
+        (text.includes('สั่งอาหาร') || text.includes('สั่งกะเพรา') || text.includes('สั่งข้าว'));
+
       const isPlaceParcelIntent =
         text.includes('สั่งส่งพัสดุ') || text.includes('เรียกไรเดอร์') || text.includes('ส่งพัสดุจาก');
 
-      if (isChatMessageIntent) {
+      if (isMenuIntent) {
+        let cleanShopName = text
+          .replace(/^(ขอเมนู|ดูเมนู|แสดงเมนู|ขอเมนูอาหาร|มีเมนูอะไรบ้าง|รายการอาหาร|เมนูร้าน)\s*/g, '')
+          .replace(/(ของร้าน|ร้าน|หน่อยครับ|หน่อยค่ะ|หน่อย|ครับ|ค่ะ)/g, '')
+          .trim();
+        const res = await executeGetRestaurantMenu({ restaurantName: cleanShopName });
+        replyText = res.text;
+        replyCardData = res.cardData || null;
+      } else if (isChatMessageIntent) {
         const cleanMsg = text.replace(
           /^(ส่งข้อความถึงร้าน|บอกร้านว่า|บอกไรเดอร์ว่า|แจ้งร้านว่า|ส่งข้อความว่า)\s*/,
           ''
@@ -563,14 +676,16 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
 
         if (functionCallPart?.functionCall) {
           const { name: fnName, args: fnArgs } = functionCallPart.functionCall;
-          replyText = await executeTool(fnName, fnArgs);
+          const toolRes = await executeTool(fnName, fnArgs);
+          replyText = toolRes.text;
+          replyCardData = toolRes.cardData || null;
         } else {
           replyText =
             candidate?.content?.parts?.[0]?.text ||
             'ขออภัยครับ เกิดปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งครับ';
         }
       } else {
-        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถให้ผมสั่งอาหาร, เรียกส่งพัสดุ, ส่งข้อความแจ้งร้านค้า/ไรเดอร์ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) ได้เลยครับ 🛵✨`;
+        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถให้ผมสั่งอาหาร, ดูเมนูร้านค้า, เรียกส่งพัสดุ, ส่งข้อความแจ้งร้านค้า/ไรเดอร์ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) ได้เลยครับ 🛵✨`;
       }
 
       setMessages((prev) => [
@@ -578,6 +693,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
         {
           sender: 'bot',
           text: replyText,
+          cardData: replyCardData,
           time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -644,6 +760,93 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
                   }`}
                 >
                   {msg.text}
+
+                  {/* Render Restaurant & Menu Card if present */}
+                  {msg.cardData && msg.cardData.type === 'restaurant_menu' && (
+                    <div className="mt-2.5 pt-2.5 border-t border-purple-100 space-y-2">
+                      <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Store size={16} className="text-purple-600 shrink-0" />
+                          <div>
+                            <div className="font-bold text-purple-900 text-xs">{msg.cardData.restaurant.name}</div>
+                            <div className="text-[10px] text-purple-600 flex items-center gap-1">
+                              <Star size={10} className="fill-purple-500 text-purple-500" />
+                              <span>{msg.cardData.restaurant.rating || 5.0}</span>
+                              <span>• {msg.cardData.distance} กม.</span>
+                              <span>• ค่าส่ง ฿{msg.cardData.deliveryFee}</span>
+                            </div>
+                          </div>
+                        </div>
+                        {setSelectedRestaurant && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedRestaurant(msg.cardData.restaurant);
+                              onClose();
+                            }}
+                            className="bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-xs active:scale-95 transition-all shrink-0"
+                          >
+                            ดูหน้าร้าน
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                        {msg.cardData.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="bg-white p-2 rounded-xl border border-gray-100 shadow-2xs flex items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {item.image && (
+                                <img
+                                  src={item.image}
+                                  alt={item.name}
+                                  className="w-10 h-10 object-cover rounded-lg shrink-0 bg-gray-50"
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <div className="font-semibold text-gray-800 text-[11px] truncate">{item.name}</div>
+                                {item.desc && <div className="text-[9px] text-gray-400 truncate">{item.desc}</div>}
+                                <div className="text-xs font-bold text-purple-700">฿{item.price}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSend(`สั่ง ${item.name} จากร้าน ${msg.cardData.restaurant.name} 1 จาน`)
+                                }
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded-lg text-[10px] font-medium flex items-center gap-0.5 shadow-xs active:scale-95 transition-all"
+                              >
+                                <ShoppingBag size={10} />
+                                <span>สั่งซื้อ</span>
+                              </button>
+                              {addToCart && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    addToCart(
+                                      item,
+                                      msg.cardData.restaurant.id,
+                                      msg.cardData.restaurant.name,
+                                      Number(msg.cardData.distance)
+                                    );
+                                    notifySystem('เพิ่มลงตระกร้าแล้ว 🛒', `${item.name} ถูกเพิ่มลงในตะกร้าแล้ว`);
+                                  }}
+                                  className="bg-purple-100 hover:bg-purple-200 text-purple-700 p-1 rounded-lg text-[10px] font-medium shadow-xs active:scale-95 transition-all"
+                                  title="ใส่ตะกร้า"
+                                >
+                                  <Plus size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <span
                     className={`block text-[9px] mt-1 text-right ${
                       isBot ? 'text-gray-400' : 'text-purple-200'
