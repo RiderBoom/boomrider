@@ -69,6 +69,36 @@ export default function ProfileTab() {
   const MERCHANT_FORM_INIT = { shopName: '', category: 'Street Food', realName: '', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, shopImage: null, location: null };
   const RIDER_FORM_INIT    = { realName: '', vehicle: 'Motorcycle', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, profileImage: null };
 
+  const handleClearCache = () => {
+    if (!window.confirm('คุณต้องการล้างข้อมูลแคชและโหลดแอปใหม่หรือไม่?')) return;
+    const cacheKeys = [
+      'boomrider_orders',
+      'boomrider_pending_requests',
+      'boomrider_riders',
+      'boomrider_restaurants',
+      'boomrider_menu_items',
+      'boomrider_appconfig',
+      'boomrider_wallets',
+      'boomrider_user_roles',
+      'boomrider_chats',
+      'boomrider_promo_codes',
+      'boomrider_admin_notifs',
+      'boomrider_admin_last_check',
+    ];
+    cacheKeys.forEach(k => {
+      try { localStorage.removeItem(k); } catch {}
+    });
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        names.forEach(name => { caches.delete(name); });
+      }).catch(() => {});
+    }
+    notifySystem('ล้างแคชสำเร็จ', 'กำลังรีโหลดแอปพลิเคชัน...', 'success');
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
   return (
     <div className="p-4 min-h-screen pb-24">
       {profileSubView === 'main' ? (
@@ -159,8 +189,11 @@ export default function ProfileTab() {
               </div>
               <ChevronRight size={20} className="text-gray-400" />
             </button>
-            <button onClick={() => setProfileSubView('address')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 border-b">
-              <div className="flex items-center"><div className="bg-gray-100 p-2 rounded-lg text-gray-600 mr-3"><MapPin size={20} /></div><span>ที่อยู่ของฉัน</span></div>
+            <button onClick={handleClearCache} className="w-full p-4 flex items-center justify-between hover:bg-red-50 border-b">
+              <div className="flex items-center">
+                <div className="bg-red-50 p-2 rounded-lg text-red-500 mr-3"><Trash2 size={20} /></div>
+                <span className="text-gray-800 font-medium">ล้างแคช</span>
+              </div>
               <ChevronRight size={20} className="text-gray-400" />
             </button>
             <button onClick={() => setProfileSubView('edit_profile')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 border-b">
@@ -248,9 +281,9 @@ export default function ProfileTab() {
 
       ) : profileSubView === 'pin_location' ? (
         <div className="p-4 pt-0">
-          <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-4 mb-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-4 mb-6">
             <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-2">
-              <MapPin size={18} className="text-blue-500" /> ตำแหน่งของฉัน
+              <MapPin size={18} className="text-blue-500" /> ตำแหน่งปัจจุบันของฉัน
             </h3>
             <p className="text-xs text-gray-500 mb-3">
               ตำแหน่งนี้ใช้คำนวณระยะทางร้านค้าใกล้บ้าน และเป็นที่อยู่เริ่มต้นสำหรับสั่งอาหาร
@@ -311,189 +344,192 @@ export default function ProfileTab() {
                 : <><MapPin size={16} /> บันทึกตำแหน่งของฉัน</>}
             </button>
           </div>
+
+          {/* ควบรวมที่อยู่ของฉันไว้ในหน้าเดียวกัน */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-gray-800 flex items-center gap-1.5">
+                <MapPin size={18} className="text-green-500" /> ที่อยู่บันทึกไว้ของฉัน
+              </h3>
+              <button
+                onClick={() => { setNewAddrMode(v => !v); setEditingAddrId(null); }}
+                className={`text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 ${newAddrMode ? 'bg-gray-200 text-gray-600' : 'bg-green-500 text-white'}`}
+              >
+                {newAddrMode ? '✕ ยกเลิก' : <><Plus size={14} /> เพิ่มที่อยู่</>}
+              </button>
+            </div>
+
+            <div className="space-y-3 mb-3">
+              {userAddresses.map(addr => (
+                <div key={addr.id}>
+                  <div className={`border-2 rounded-xl overflow-hidden transition-all ${editingAddrId === addr.id ? 'border-blue-400' : 'border-gray-200'}`}>
+                    <div className="p-3 flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold flex items-center gap-1">
+                          <MapPin size={15} className="text-green-500 flex-shrink-0" />
+                          {addr.label}
+                        </div>
+                        <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">{addr.address}</p>
+                        {addr.location && (
+                          <p className="text-gray-400 text-[10px] mt-0.5">
+                            {addr.location.lat.toFixed(4)}, {addr.location.lng.toFixed(4)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-1 ml-2 flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            if (editingAddrId === addr.id) {
+                              setEditingAddrId(null); setEditAddrPinLoc(null);
+                            } else {
+                              setEditingAddrId(addr.id);
+                              setEditAddrPinLoc(null);
+                              setNewAddrMode(false);
+                            }
+                          }}
+                          className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-0.5 ${editingAddrId === addr.id ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-500'}`}
+                        >
+                          <MapPin size={13} /> {editingAddrId === addr.id ? 'ปิด' : 'แก้หมุด'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteAddress(addr.id)}
+                          className="p-1.5 rounded-lg bg-red-50 text-red-400 hover:bg-red-100"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {editingAddrId === addr.id && (
+                      <div className="border-t border-blue-100 bg-blue-50 p-3">
+                        <p className="text-xs text-blue-700 font-bold mb-2">📍 แตะแผนที่เพื่อย้ายหมุดที่อยู่นี้</p>
+                        <div className="rounded-xl overflow-hidden border-2 border-blue-300 mb-2">
+                          <InteractiveMap
+                            mode="select"
+                            userLocation={editAddrPinLoc || addr.location || userProfile.location}
+                            onLocationSelect={loc => setEditAddrPinLoc(loc)}
+                            className="h-56"
+                          />
+                        </div>
+                        {editAddrPinLoc && (
+                          <p className="text-xs text-blue-600 font-bold mb-2 text-center">
+                            🔵 เลือกแล้ว: {editAddrPinLoc.lat.toFixed(4)}, {editAddrPinLoc.lng.toFixed(4)}
+                          </p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              navigator.geolocation?.getCurrentPosition(
+                                pos => setEditAddrPinLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                                () => notifySystem('ไม่สามารถดึง GPS', 'กรุณาแตะแผนที่แทน', 'error'),
+                                { enableHighAccuracy: true, timeout: 8000 },
+                              );
+                            }}
+                            className="flex-1 py-2 rounded-lg bg-white border border-blue-200 text-blue-600 text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-50"
+                          >
+                            <Crosshair size={13} /> GPS ปัจจุบัน
+                          </button>
+                          <button
+                            disabled={!editAddrPinLoc || editAddrSaving}
+                            onClick={async () => {
+                              if (!editAddrPinLoc) return;
+                              setEditAddrSaving(true);
+                              await handleUpdateAddress(addr.id, editAddrPinLoc);
+                              setEditAddrSaving(false);
+                              setEditingAddrId(null);
+                              setEditAddrPinLoc(null);
+                            }}
+                            className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                              editAddrPinLoc && !editAddrSaving
+                                ? 'bg-blue-500 text-white hover:bg-blue-400 active:scale-95'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {editAddrSaving
+                              ? <><Save size={13} className="animate-spin" /> บันทึก...</>
+                              : <><Save size={13} /> บันทึกหมุด</>}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {userAddresses.length === 0 && !newAddrMode && (
+                <div className="text-center py-6 text-gray-400">
+                  <MapPin size={32} className="mx-auto mb-1 opacity-30" />
+                  <p className="text-xs">ยังไม่มีที่อยู่บันทึกไว้ กดปุ่ม "เพิ่มที่อยู่" ด้านบนเพื่อเพิ่ม</p>
+                </div>
+              )}
+            </div>
+
+            {newAddrMode && (
+              <div className="bg-gray-50 border-2 border-green-200 p-3 rounded-2xl mt-2">
+                <h4 className="font-bold text-green-700 mb-2 flex items-center gap-1 text-sm"><MapPin size={14} /> เพิ่มที่อยู่ใหม่</h4>
+                <div className="rounded-xl overflow-hidden border-2 border-green-300 mb-2">
+                  <InteractiveMap
+                    mode="select"
+                    userLocation={newAddr.location || userProfile.location}
+                    onLocationSelect={handleMapLocationSelect}
+                    className="h-56"
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400 text-center mb-2">แตะบนแผนที่เพื่อปักหมุดตำแหน่ง</p>
+                <button
+                  onClick={getCurrentLocationForForm}
+                  className="w-full py-2 rounded-lg bg-white border border-green-200 text-green-600 text-xs font-bold mb-2 flex items-center justify-center gap-1 hover:bg-green-50 active:scale-95 transition-all"
+                >
+                  <Crosshair size={13} /> ใช้ GPS ตำแหน่งปัจจุบัน
+                </button>
+                {newAddr.location && (
+                  <p className="text-xs text-green-600 font-bold text-center mb-2">
+                    ✅ ปักหมุดแล้ว: {newAddr.location.lat.toFixed(4)}, {newAddr.location.lng.toFixed(4)}
+                  </p>
+                )}
+                <label htmlFor="new-addr-label-input" className="sr-only">ชื่อสถานที่</label>
+                <input
+                  id="new-addr-label-input"
+                  name="label"
+                  value={newAddr.label}
+                  onChange={e => setNewAddr({ ...newAddr, label: e.target.value })}
+                  placeholder="ชื่อสถานที่ เช่น บ้าน, ที่ทำงาน"
+                  className="w-full p-2 border rounded-lg mb-2 text-xs"
+                  autoComplete="off"
+                />
+                <label htmlFor="new-addr-full-input" className="sr-only">รายละเอียดเพิ่มเติม</label>
+                <textarea
+                  id="new-addr-full-input"
+                  name="fullAddr"
+                  value={newAddr.fullAddr}
+                  onChange={e => setNewAddr({ ...newAddr, fullAddr: e.target.value })}
+                  placeholder="รายละเอียดเพิ่มเติม / จุดสังเกต (ไม่บังคับ)"
+                  rows={2}
+                  className="w-full p-2 border rounded-lg mb-2 text-xs resize-none"
+                  autoComplete="off"
+                />
+                <button
+                  onClick={() => {
+                    if (!newAddr.label) return notifySystem('ผิดพลาด', 'กรุณาใส่ชื่อสถานที่', 'error');
+                    if (!newAddr.location) return notifySystem('ผิดพลาด', 'กรุณาปักหมุดบนแผนที่ก่อน', 'error');
+                    const addrText = newAddr.fullAddr || `${newAddr.location.lat.toFixed(5)}, ${newAddr.location.lng.toFixed(5)}`;
+                    handleAddAddress({ ...newAddr, fullAddr: addrText });
+                    setNewAddr({ label: '', fullAddr: '', location: null });
+                    setNewAddrMode(false);
+                  }}
+                  className="w-full bg-green-600 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-green-500 active:scale-95 transition-all"
+                >
+                  <Save size={15} /> บันทึกที่อยู่
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-1">
             <p className="font-bold">📋 ตำแหน่งของฉันมีผลต่อ:</p>
             <p>• <strong>ร้านค้า</strong> — เรียงตามระยะทางจากตำแหน่งของคุณ</p>
             <p>• <strong>ค่าส่ง</strong> — คำนวณจากตำแหน่งร้านถึงตำแหน่งของคุณ</p>
             <p>• <strong>ส่งพัสดุ</strong> — ใช้เป็นตำแหน่งเริ่มต้นของจุดรับ</p>
           </div>
-        </div>
-
-      ) : profileSubView === 'address' ? (
-        <div className="p-4 pt-0">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-lg">ที่อยู่ของฉัน</h3>
-            <button
-              onClick={() => { setNewAddrMode(v => !v); setEditingAddrId(null); }}
-              className={`text-sm font-bold px-3 py-1.5 rounded-full flex items-center gap-1 ${newAddrMode ? 'bg-gray-200 text-gray-600' : 'bg-green-500 text-white'}`}
-            >
-              {newAddrMode ? '✕ ยกเลิก' : <><Plus size={14} /> เพิ่มที่อยู่</>}
-            </button>
-          </div>
-
-          <div className="space-y-3 mb-5">
-            {userAddresses.map(addr => (
-              <div key={addr.id}>
-                <div className={`border-2 rounded-xl overflow-hidden transition-all ${editingAddrId === addr.id ? 'border-blue-400' : 'border-gray-200'}`}>
-                  <div className="p-3 flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold flex items-center gap-1">
-                        <MapPin size={15} className="text-green-500 flex-shrink-0" />
-                        {addr.label}
-                      </div>
-                      <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">{addr.address}</p>
-                      {addr.location && (
-                        <p className="text-gray-400 text-[10px] mt-0.5">
-                          {addr.location.lat.toFixed(4)}, {addr.location.lng.toFixed(4)}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-1 ml-2 flex-shrink-0">
-                      <button
-                        onClick={() => {
-                          if (editingAddrId === addr.id) {
-                            setEditingAddrId(null); setEditAddrPinLoc(null);
-                          } else {
-                            setEditingAddrId(addr.id);
-                            setEditAddrPinLoc(null);
-                            setNewAddrMode(false);
-                          }
-                        }}
-                        className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-0.5 ${editingAddrId === addr.id ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-500'}`}
-                      >
-                        <MapPin size={13} /> {editingAddrId === addr.id ? 'ปิด' : 'แก้หมุด'}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteAddress(addr.id)}
-                        className="p-1.5 rounded-lg bg-red-50 text-red-400 hover:bg-red-100"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {editingAddrId === addr.id && (
-                    <div className="border-t border-blue-100 bg-blue-50 p-3">
-                      <p className="text-xs text-blue-700 font-bold mb-2">📍 แตะแผนที่เพื่อย้ายหมุดที่อยู่นี้</p>
-                      <div className="rounded-xl overflow-hidden border-2 border-blue-300 mb-2">
-                        <InteractiveMap
-                          mode="select"
-                          userLocation={editAddrPinLoc || addr.location || userProfile.location}
-                          onLocationSelect={loc => setEditAddrPinLoc(loc)}
-                          className="h-56"
-                        />
-                      </div>
-                      {editAddrPinLoc && (
-                        <p className="text-xs text-blue-600 font-bold mb-2 text-center">
-                          🔵 เลือกแล้ว: {editAddrPinLoc.lat.toFixed(4)}, {editAddrPinLoc.lng.toFixed(4)}
-                        </p>
-                      )}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            navigator.geolocation?.getCurrentPosition(
-                              pos => setEditAddrPinLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                              () => notifySystem('ไม่สามารถดึง GPS', 'กรุณาแตะแผนที่แทน', 'error'),
-                              { enableHighAccuracy: true, timeout: 8000 },
-                            );
-                          }}
-                          className="flex-1 py-2 rounded-lg bg-white border border-blue-200 text-blue-600 text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-50"
-                        >
-                          <Crosshair size={13} /> GPS ปัจจุบัน
-                        </button>
-                        <button
-                          disabled={!editAddrPinLoc || editAddrSaving}
-                          onClick={async () => {
-                            if (!editAddrPinLoc) return;
-                            setEditAddrSaving(true);
-                            await handleUpdateAddress(addr.id, editAddrPinLoc);
-                            setEditAddrSaving(false);
-                            setEditingAddrId(null);
-                            setEditAddrPinLoc(null);
-                          }}
-                          className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all ${
-                            editAddrPinLoc && !editAddrSaving
-                              ? 'bg-blue-500 text-white hover:bg-blue-400 active:scale-95'
-                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          {editAddrSaving
-                            ? <><Save size={13} className="animate-spin" /> บันทึก...</>
-                            : <><Save size={13} /> บันทึกหมุด</>}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {userAddresses.length === 0 && !newAddrMode && (
-              <div className="text-center py-10 text-gray-400">
-                <MapPin size={36} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">ยังไม่มีที่อยู่ กดปุ่ม "เพิ่มที่อยู่" เพื่อเพิ่ม</p>
-              </div>
-            )}
-          </div>
-
-          {newAddrMode && (
-            <div className="bg-gray-50 border-2 border-green-200 p-4 rounded-2xl">
-              <h4 className="font-bold text-green-700 mb-3 flex items-center gap-1"><MapPin size={15} /> เพิ่มที่อยู่ใหม่</h4>
-              <div className="rounded-xl overflow-hidden border-2 border-green-300 mb-2">
-                <InteractiveMap
-                  mode="select"
-                  userLocation={newAddr.location || userProfile.location}
-                  onLocationSelect={handleMapLocationSelect}
-                  className="h-60"
-                />
-              </div>
-              <p className="text-[10px] text-gray-400 text-center mb-3">แตะบนแผนที่เพื่อปักหมุดตำแหน่ง</p>
-              <button
-                onClick={getCurrentLocationForForm}
-                className="w-full py-2 rounded-lg bg-white border border-green-200 text-green-600 text-sm font-bold mb-3 flex items-center justify-center gap-1 hover:bg-green-50 active:scale-95 transition-all"
-              >
-                <Crosshair size={14} /> ใช้ GPS ตำแหน่งปัจจุบัน
-              </button>
-              {newAddr.location && (
-                <p className="text-xs text-green-600 font-bold text-center mb-3">
-                  ✅ ปักหมุดแล้ว: {newAddr.location.lat.toFixed(4)}, {newAddr.location.lng.toFixed(4)}
-                </p>
-              )}
-              <label htmlFor="new-addr-label-input" className="sr-only">ชื่อสถานที่</label>
-              <input
-                id="new-addr-label-input"
-                name="label"
-                value={newAddr.label}
-                onChange={e => setNewAddr({ ...newAddr, label: e.target.value })}
-                placeholder="ชื่อสถานที่ เช่น บ้าน, ที่ทำงาน"
-                className="w-full p-2.5 border rounded-lg mb-2 text-sm"
-                autoComplete="off"
-              />
-              <label htmlFor="new-addr-full-input" className="sr-only">รายละเอียดเพิ่มเติม</label>
-              <textarea
-                id="new-addr-full-input"
-                name="fullAddr"
-                value={newAddr.fullAddr}
-                onChange={e => setNewAddr({ ...newAddr, fullAddr: e.target.value })}
-                placeholder="รายละเอียดเพิ่มเติม / จุดสังเกต (ไม่บังคับ)"
-                rows={2}
-                className="w-full p-2.5 border rounded-lg mb-3 text-sm resize-none"
-                autoComplete="off"
-              />
-              <button
-                onClick={() => {
-                  if (!newAddr.label) return notifySystem('ผิดพลาด', 'กรุณาใส่ชื่อสถานที่', 'error');
-                  if (!newAddr.location) return notifySystem('ผิดพลาด', 'กรุณาปักหมุดบนแผนที่ก่อน', 'error');
-                  const addrText = newAddr.fullAddr || `${newAddr.location.lat.toFixed(5)}, ${newAddr.location.lng.toFixed(5)}`;
-                  handleAddAddress({ ...newAddr, fullAddr: addrText });
-                  setNewAddr({ label: '', fullAddr: '', location: null });
-                  setNewAddrMode(false);
-                }}
-                className="w-full bg-green-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-green-500 active:scale-95 transition-all"
-              >
-                <Save size={16} /> บันทึกที่อยู่
-              </button>
-            </div>
-          )}
         </div>
 
       ) : profileSubView === 'edit_profile' ? (
