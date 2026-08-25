@@ -14,7 +14,7 @@ export default function RiderView() {
   const {
     setActiveRole,
     riderTab, setRiderTab,
-    orders, riders, restaurants, appConfig,
+    orders, setOrders, riders, restaurants, appConfig,
     userProfile, currentUser,
     acceptOrder,
     updateOrderStatus,
@@ -39,7 +39,16 @@ export default function RiderView() {
     acceptOffer, rejectOffer } = useJobOffer({
     supabase,
     riderUserId: userProfile?.id || currentUser?.id,
-    onAccepted: () => setRiderTab('active'),
+    onAccepted: (updatedOrder) => {
+      if (updatedOrder) {
+        setOrders(prev => {
+          const exists = prev.some(o => o.id === updatedOrder.id);
+          if (exists) return prev.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+          return [updatedOrder, ...prev];
+        });
+      }
+      setRiderTab('active');
+    },
   });
 
   // ── state สำหรับปุ่ม "รับงาน" ──────────────────────────────────────────────

@@ -63,6 +63,8 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
 
       if (error) {
         console.error('[JobOffer] accept error:', error.message);
+        setOffer(null);
+        setCountdown(0);
         return false;
       }
 
@@ -76,7 +78,7 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
 
       setOffer(null);
       setCountdown(0);
-      onAccepted?.();
+      onAccepted?.(data?.order_data);
       return true;
     } finally {
       setAccepting(false);
