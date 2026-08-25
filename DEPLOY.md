@@ -64,3 +64,36 @@
 ```
 
 อัพเดท `sitemap.xml` และ `index.html` canonical URL ด้วย domain จริง
+
+---
+
+## Step 5: Deploy Supabase Edge Functions
+
+### ติดตั้ง Supabase CLI & Login
+```bash
+npm install -g supabase
+supabase login
+```
+
+### ลิ้งก์โปรเจกต์ Supabase
+```bash
+supabase link --project-ref YOUR_SUPABASE_PROJECT_REF
+```
+
+### ตั้งค่า Environment Variables (Secrets)
+```bash
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+supabase secrets set FCM_SERVER_KEY=your_fcm_server_key # (ถ้าใช้งาน Push Notification)
+```
+
+### Deploy Edge Functions
+```bash
+supabase functions deploy process-expired-offers
+supabase functions deploy send-notification
+```
+
+---
+
+## Step 6: รัน SQL Migrations
+
+นำไฟล์ SQL ในโฟลเดอร์ `supabase/migrations/` (โดยเฉพาะ `018_edge_functions_and_cron_setup.sql`) ไปรันที่ **Supabase Dashboard → SQL Editor** เพื่อเปิดใช้งานระบบ Cron Job และ Webhooks อัตโนมัติ
