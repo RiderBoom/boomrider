@@ -299,7 +299,6 @@ export default function RiderView() {
                     try {
                       const ok = await acceptOffer(jobOffer.id);
                       if (ok) {
-                        await acceptOrder(offerOrder?.id ?? jobOffer.order_id);
                         setRiderTab('active');
                       }
                     } catch (err) {
