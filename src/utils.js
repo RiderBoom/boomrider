@@ -46,10 +46,23 @@ export const compressImage = (file, maxWidth = 800, maxHeight = 600, quality = 0
   });
 
 /**
- * เล่นเสียงแจ้งเตือนผ่าน Web Audio API (ไม่ต้องใช้ไฟล์เสียง)
+ * สั่งให้เครื่องสั่นตาม pattern (รองรับมือถือ)
+ * @param {number[]} pattern
+ */
+export const vibrateDevice = (pattern = [300, 100, 300, 100, 400]) => {
+  try {
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate(pattern);
+    }
+  } catch { void 0; }
+};
+
+/**
+ * เล่นเสียงแจ้งเตือนผ่าน Web Audio API (ไม่ต้องใช้ไฟล์เสียง) พร้อมสั่นเครื่อง
  * @param {'order'|'rider'|'success'} type
  */
 export const playNotificationSound = (type = 'order') => {
+  vibrateDevice(type === 'rider' || type === 'order' ? [400, 150, 400, 150, 600] : [200, 100, 200]);
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const patterns = {
@@ -115,6 +128,7 @@ export const setMerchantNotifSound = (base64OrNull) => {
 };
 
 export const playOrderNotificationSound = () => {
+  vibrateDevice([500, 150, 500, 150, 800]);
   try {
     const custom = getMerchantNotifSound();
     if (custom) {
