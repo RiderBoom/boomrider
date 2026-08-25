@@ -1007,7 +1007,9 @@ export function AppProvider({ children }) {
     if (!location) return;
     const uid = currentUser?.id || userProfile?.id;
     setUserProfile(prev => ({ ...prev, location }));
-    if (uid) supabase.from('profiles').update({ location }).eq('id', uid).then(() => {});
+    if (uid) {
+      await supabase.from('profiles').update({ location }).eq('id', uid);
+    }
     notifySystem('📍 บันทึกตำแหน่งแล้ว', 'ตำแหน่งหลักของคุณถูกอัปเดตเรียบร้อย', 'success');
   }, [currentUser?.id, userProfile?.id]);  
 
@@ -1093,11 +1095,17 @@ export function AppProvider({ children }) {
     try {
       let email = input;
       if (!input.includes('@')) {
-        const { data: profile } = await supabase.from('profiles').select('email').eq('phone', input).single();
+        const { data: profile } = await supabase.from('profiles').select('email').eq('phone', input).maybeSingle();
         if (!profile?.email) return notifySystem('ผิดพลาด', 'ไม่พบบัญชีสำหรับเบอร์นี้', 'error');
         email = profile.email;
       }
-      const { error } = await supabase.auth.signInWithPassword({ email, password: loginForm.password });
+      let signInRes = { error: null };
+      try {
+        signInRes = await supabase.auth.signInWithPassword({ email, password: loginForm.password });
+      } catch (err) {
+        signInRes = { error: err };
+      }
+      const error = signInRes.error;
       if (error) {
         if (import.meta.env.DEV || import.meta.env.VITE_SUPABASE_URL?.includes('dummy')) {
           const prof = { id: 'dev-user-id', name: 'ลูกค้าทดสอบ (Dev)', phone: '0812345678', email: email || 'customer@boomrider.com', location: USER_LOCATION };
@@ -1366,7 +1374,7 @@ export function AppProvider({ children }) {
     revokeRole,
 
     // Misc
-    toasts, removeToast,
+    toasts, removeToast, notifySystem,
     syncRoles,
     updateRiderWorkingLocation,
     isPending,

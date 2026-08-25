@@ -14,10 +14,20 @@ const CACHE_KEYS = [
   'boomrider_promo_codes',
   'boomrider_admin_notifs',
   'boomrider_admin_last_check',
+  'boomrider_custom_sound',
+  'boomrider_install_dismissed',
+  'rider_sound_enabled',
+  'rider_vibrate_enabled',
 ];
 
-function clearCacheAndReload() {
+async function clearCacheAndReload() {
   CACHE_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch { void 0; } });
+  if ('caches' in window) {
+    try {
+      const names = await caches.keys();
+      await Promise.all(names.map(name => caches.delete(name)));
+    } catch { void 0; }
+  }
   window.location.reload();
 }
 
