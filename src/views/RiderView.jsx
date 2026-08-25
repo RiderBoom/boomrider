@@ -296,8 +296,15 @@ export default function RiderView() {
                 </button>
                 <button
                   onClick={async () => {
-                    const ok = await acceptOffer(jobOffer.id);
-                    if (ok) acceptOrder(offerOrder?.id ?? jobOffer.order_id);
+                    try {
+                      const ok = await acceptOffer(jobOffer.id);
+                      if (ok) {
+                        await acceptOrder(offerOrder?.id ?? jobOffer.order_id);
+                        setRiderTab('active');
+                      }
+                    } catch (err) {
+                      console.error('[RiderView] accept offer error:', err);
+                    }
                   }}
                   disabled={offerAccepting}
                   className="flex-2 flex-grow py-3 rounded-xl bg-green-500 text-white font-black text-base hover:bg-green-400 active:scale-95 transition-all shadow-lg shadow-green-900/50 disabled:opacity-40 flex items-center justify-center gap-2"
@@ -583,7 +590,8 @@ export default function RiderView() {
               onClick={async () => {
                 setAcceptingId(job.id);
                 try {
-                  await acceptOrder(job.id, me.id, myLocation);
+                  const ok = await acceptOrder(job.id, me.id, myLocation);
+                  if (ok) setRiderTab('active');
                 } catch (err) {
                   void err; // error handled inside acceptOrder; always reset spinner
                 } finally {

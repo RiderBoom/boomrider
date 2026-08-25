@@ -187,10 +187,21 @@ export function useOrderActions(deps) {
   };
 
   const acceptOrder = async (orderId) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-    const uid    = currentUser?.id || userProfile?.id || '';
-    const rider  = riders.find(r => r.userId === uid);
+    let order = orders.find(o => o.id === orderId);
+    if (!order) {
+      const { data: dbRow } = await supabase
+        .from('orders')
+        .select('data')
+        .eq('id', orderId)
+        .maybeSingle();
+      if (dbRow?.data) {
+        order = dbRow.data;
+      }
+    }
+    if (!order) return notifySystem('ผิดพลาด', 'ไม่พบข้อมูลออเดอร์นี้', 'error');
+
+    const uid   = currentUser?.id || userProfile?.id || '';
+    const rider = riders.find(r => r.userId === uid);
     if (!rider) return notifySystem('ผิดพลาด', 'ไม่พบข้อมูลไรเดอร์ของคุณ', 'error');
 
     const { gpAmount: adminGP, merchantIncome, riderIncome } = _settlementAmounts(order);
@@ -198,8 +209,8 @@ export function useOrderActions(deps) {
     const patch = {
       riderId: rider.id,
       riderUserId: uid,
-      riderName: rider.name,
-      riderPhone: rider.phone,
+      riderName: rider.name || userProfile?.name || 'ไรเดอร์',
+      riderPhone: rider.phone || userProfile?.phone || '',
       status: 'rider_accepted',
       riderAcceptedAt: formatDateTime(),
       riderIncome,
@@ -207,28 +218,43 @@ export function useOrderActions(deps) {
       adminGP,
     };
 
-    // Atomic update to prevent race conditions (First-Come, First-Served manual accept)
     const updatedOrderData = { ...order, ...patch };
+
+    // Atomic update to prevent race conditions (First-Come, First-Served manual accept)
     const { data: updatedDbOrder, error } = await supabase
       .from('orders')
       .update({ status: patch.status, data: updatedOrderData })
       .eq('id', orderId)
-      .in('status', ['pending', 'ready_to_pickup'])
+      .in('status', ['pending', 'preparing', 'ready_to_pickup', 'rider_accepted'])
       .select('id')
       .maybeSingle();
 
-    if (error || !updatedDbOrder) {
+    if (error) {
+      console.error('[acceptOrder] update error:', error);
+      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + error.message, 'error');
+    }
+
+    if (!updatedDbOrder) {
       return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
     }
 
-    // Since DB update succeeded, we can safely update local state
-    setOrders(prev => prev.map(o => o.id === orderId ? updatedOrderData : o));
+    // Since DB update succeeded, update local state (insert if wasn't present)
+    setOrders(prev => {
+      const exists = prev.some(o => o.id === orderId);
+      if (exists) {
+        return prev.map(o => o.id === orderId ? updatedOrderData : o);
+      }
+      return [updatedOrderData, ...prev];
+    });
+
     // Mark rider as unavailable in riders table
     supabase.from('riders')
       .update({ is_available: false })
       .eq('id', rider.id)
       .then(() => {});
+
     notifySystem('รับงานแล้ว!', `ออเดอร์ #${orderId.slice(-6)} — ไปรับของที่ร้านได้เลย`, 'success');
+    return true;
   };
 
   const updateOrderStatus = async (orderId, newStatus, _unused, extraData = {}) => {
