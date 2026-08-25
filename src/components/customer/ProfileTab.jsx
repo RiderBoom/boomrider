@@ -69,7 +69,7 @@ export default function ProfileTab() {
   const MERCHANT_FORM_INIT = { shopName: '', category: 'Street Food', realName: '', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, shopImage: null, location: null };
   const RIDER_FORM_INIT    = { realName: '', vehicle: 'Motorcycle', idCard: '', phone: '', bankName: '', bankAccount: '', idCardImage: null, profileImage: null };
 
-  const handleClearCache = () => {
+  const handleClearCache = async () => {
     if (!window.confirm('คุณต้องการล้างข้อมูลแคชและโหลดแอปใหม่หรือไม่?')) return;
     const cacheKeys = [
       'boomrider_orders',
@@ -84,14 +84,19 @@ export default function ProfileTab() {
       'boomrider_promo_codes',
       'boomrider_admin_notifs',
       'boomrider_admin_last_check',
+      'boomrider_custom_sound',
+      'boomrider_install_dismissed',
+      'rider_sound_enabled',
+      'rider_vibrate_enabled',
     ];
     cacheKeys.forEach(k => {
       try { localStorage.removeItem(k); } catch { void 0; }
     });
     if ('caches' in window) {
-      caches.keys().then(names => {
-        names.forEach(name => { caches.delete(name); });
-      }).catch(() => { void 0; });
+      try {
+        const names = await caches.keys();
+        await Promise.all(names.map(name => caches.delete(name)));
+      } catch { void 0; }
     }
     notifySystem('ล้างแคชสำเร็จ', 'กำลังรีโหลดแอปพลิเคชัน...', 'success');
     setTimeout(() => {
@@ -110,7 +115,10 @@ export default function ProfileTab() {
                 alt="Profile"
                 className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer text-white">
+              <div
+                onClick={() => { setTempProfile({ ...userProfile }); setProfileSubView('edit_profile'); }}
+                className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer text-white"
+              >
                 <Edit size={20} />
               </div>
             </div>
@@ -196,7 +204,7 @@ export default function ProfileTab() {
               </div>
               <ChevronRight size={20} className="text-gray-400" />
             </button>
-            <button onClick={() => setProfileSubView('edit_profile')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 border-b">
+            <button onClick={() => { setTempProfile({ ...userProfile }); setProfileSubView('edit_profile'); }} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 border-b">
               <div className="flex items-center"><div className="bg-gray-100 p-2 rounded-lg text-gray-600 mr-3"><Settings size={20} /></div><span>ตั้งค่า/แก้ไขโปรไฟล์</span></div>
               <ChevronRight size={20} className="text-gray-400" />
             </button>
