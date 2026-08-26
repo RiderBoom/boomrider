@@ -326,15 +326,28 @@ export function useOrderActions(deps) {
   };
 
   const _updateOrder = async (orderId, patch) => {
-    let updated;
-    setOrders(prev => prev.map(o => {
-      if (o.id !== orderId) return o;
-      updated = { ...o, ...patch };
-      return updated;
-    }));
-    if (updated) {
-      await supabase.from('orders').update({ status: updated.status, data: updated }).eq('id', orderId);
+    let currentOrder = orders.find(o => o.id === orderId);
+    if (!currentOrder) {
+      const { data: dbRow } = await supabase
+        .from('orders')
+        .select('data')
+        .eq('id', orderId)
+        .maybeSingle();
+      if (dbRow?.data) {
+        currentOrder = dbRow.data;
+      }
     }
+    if (!currentOrder) return;
+
+    const updated = { ...currentOrder, ...patch };
+    setOrders(prev => {
+      const exists = prev.some(o => o.id === orderId);
+      if (exists) {
+        return prev.map(o => (o.id === orderId ? updated : o));
+      }
+      return [updated, ...prev];
+    });
+    await supabase.from('orders').update({ status: updated.status, data: updated }).eq('id', orderId);
   };
 
   const acceptOrder = async (orderId) => {
