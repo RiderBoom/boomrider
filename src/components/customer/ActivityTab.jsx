@@ -271,7 +271,10 @@ export default function ActivityTab() {
                       className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-teal-400 active:scale-95 transition-all shadow-lg shadow-teal-900/20 animate-pulse"
                     >
                       <CheckCircle size={18} />
-                      {order.type === 'parcel' ? 'ยืนยันรับสินค้าเรียบร้อยแล้ว' : 'ยืนยันรับอาหารเรียบร้อยแล้ว'}
+                      {order.type === 'parcel' ? 'ยืนยันรับสินค้าเรียบร้อยแล้ว'
+                        : order.type === 'ride' ? 'ยืนยันการเดินทางเรียบร้อยแล้ว'
+                        : order.type === 'service' ? 'ยืนยันรับบริการเรียบร้อยแล้ว'
+                        : 'ยืนยันรับอาหารเรียบร้อยแล้ว'}
                     </button>
                     <p className="text-center text-xs text-gray-400 mt-1.5">
                       {order.paymentMethod === 'cash'
