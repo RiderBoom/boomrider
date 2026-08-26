@@ -56,18 +56,45 @@ export default function ActivityTab() {
     ['pending', 'preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up', 'delivering', 'delivered'].includes(o.status),
   );
 
+  const parseDateMs = (dateVal) => {
+    if (!dateVal) return NaN;
+    if (typeof dateVal === 'number') return dateVal;
+    const t = new Date(dateVal).getTime();
+    if (!isNaN(t)) return t;
+    if (typeof dateVal === 'string') {
+      const parts = dateVal.trim().split(' ');
+      if (parts.length >= 1) {
+        const dateParts = parts[0].split('/');
+        if (dateParts.length === 3) {
+          const [d, m, y] = dateParts.map(Number);
+          let hh = 0, mm = 0, ss = 0;
+          if (parts[1]) {
+            const timeParts = parts[1].split(':').map(Number);
+            hh = timeParts[0] || 0;
+            mm = timeParts[1] || 0;
+            ss = timeParts[2] || 0;
+          }
+          return new Date(y, m - 1, d, hh, mm, ss).getTime();
+        }
+      }
+    }
+    return NaN;
+  };
+
   const [now] = useState(() => Date.now());
   const justDone = myOrders.filter(o => {
     if (o.status !== 'completed') return false;
-    if (!o.completedAt) return true;
-    return (now - new Date(o.completedAt).getTime()) < 2 * 60 * 60 * 1000;
+    const completedMs = parseDateMs(o.completedAt);
+    if (isNaN(completedMs)) return true;
+    return (now - completedMs) < 2 * 60 * 60 * 1000;
   });
 
   const history = myOrders.filter(o => {
     if (!['completed', 'cancelled'].includes(o.status)) return false;
     if (o.status === 'completed') {
-      if (!o.completedAt) return false;
-      if ((now - new Date(o.completedAt).getTime()) < 2 * 60 * 60 * 1000) return false;
+      const completedMs = parseDateMs(o.completedAt);
+      if (isNaN(completedMs)) return false;
+      if ((now - completedMs) < 2 * 60 * 60 * 1000) return false;
     }
     return true;
   });
