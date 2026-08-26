@@ -833,7 +833,17 @@ export function AppProvider({ children }) {
           .update({ status: 'completed', data: completed })
           .eq('id', r.id)
           .then(() => {});
-        supabase.rpc('process_order_settlement', { p_order_id: r.id }).then(() => {});
+        const gpFoodRate    = (appConfig?.gpFood ?? 30) / 100;
+        const gpDelivRate   = (appConfig?.gpDelivery ?? 15) / 100;
+        const gpRideRate    = (appConfig?.gpRide ?? 15) / 100;
+        const gpServiceRate = (appConfig?.gpService ?? 15) / 100;
+        supabase.rpc('process_order_settlement', {
+          p_order_id: r.id,
+          p_gp_food_rate: gpFoodRate,
+          p_gp_delivery_rate: gpDelivRate,
+          p_gp_ride_rate: gpRideRate,
+          p_gp_service_rate: gpServiceRate,
+        }).then(() => {});
       });
 
       setOrders(prev => {
@@ -855,7 +865,7 @@ export function AppProvider({ children }) {
       });
     }, 4000);
     return () => clearInterval(poll);
-  }, [isLoggedIn]);  
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Update Parcel Estimate ───────────────────────────────────────────────
   useEffect(() => {
