@@ -398,10 +398,16 @@ export function useOrderActions(deps) {
       return [updatedOrderData, ...prev];
     });
 
-    // Mark rider as unavailable in riders table
+    // Mark rider as unavailable in riders table and cancel any pending job_offers for this order
     supabase.from('riders')
       .update({ is_available: false })
       .eq('id', rider.id)
+      .then(() => {});
+
+    supabase.from('job_offers')
+      .update({ status: 'missed', responded_at: new Date().toISOString() })
+      .eq('order_id', orderId)
+      .eq('status', 'pending')
       .then(() => {});
 
     notifySystem('รับงานแล้ว!', `ออเดอร์ #${orderId.slice(-6)} — ไปรับของที่ร้านได้เลย`, 'success');

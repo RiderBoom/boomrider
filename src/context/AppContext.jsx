@@ -818,8 +818,13 @@ export function AppProvider({ children }) {
       const _email = currentUserRef.current?.email;
       data.filter(r => r.status === 'delivered').forEach(r => {
         const o = r.data;
-        if (!o?.deliveredAtMs) return;
-        if (Date.now() - o.deliveredAtMs < AUTO_COMPLETE_MS) return;
+        let deliveredMs = o?.deliveredAtMs;
+        if (!deliveredMs && o?.deliveredAt) {
+          const parsed = new Date(o.deliveredAt.includes(' ') && !o.deliveredAt.includes('T') ? o.deliveredAt.replace(' ', 'T') : o.deliveredAt).getTime();
+          if (!isNaN(parsed)) deliveredMs = parsed;
+        }
+        if (!deliveredMs) return;
+        if (Date.now() - deliveredMs < AUTO_COMPLETE_MS) return;
         const isOrderRider = _uid && o.riderUserId === _uid;
         const isAdminUser  = !!ADMIN_EMAIL && _email === ADMIN_EMAIL;
         if (!isOrderRider && !isAdminUser) return;
@@ -853,10 +858,14 @@ export function AppProvider({ children }) {
         incoming.forEach(o => {
           const existing = map.get(o.id);
           if (canApplyOrderUpdate(existing, o)) {
-            const rank    = ORDER_STATUS_RANK[o.status] ?? -1;
+            // Preserve animated local riderLocation if incoming record lacks it
+            const merged = existing?.riderLocation && !o.riderLocation
+              ? { ...o, riderLocation: existing.riderLocation }
+              : o;
+            const rank    = ORDER_STATUS_RANK[merged.status] ?? -1;
             const oldRank = ORDER_STATUS_RANK[existing?.status] ?? -1;
-            if (rank > oldRank || JSON.stringify(existing) !== JSON.stringify(o)) {
-              map.set(o.id, o);
+            if (rank > oldRank || JSON.stringify(existing) !== JSON.stringify(merged)) {
+              map.set(merged.id, merged);
               changed = true;
             }
           }

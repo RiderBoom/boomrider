@@ -97,16 +97,17 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
     setCountdown(0);
 
     // Immediately try next rider — don't wait for pg_cron / Edge Function
-    if (orderForRedispatch?.pickupLocation?.lat) {
+    const orderId = orderForRedispatch?.id || offer?.order_id;
+    if (orderId) {
       supabase.rpc('dispatch_order', {
-        p_order_id:   orderForRedispatch.id,
-        p_pickup_lat: orderForRedispatch.pickupLocation.lat,
-        p_pickup_lng: orderForRedispatch.pickupLocation.lng,
+        p_order_id:   orderId,
+        p_pickup_lat: orderForRedispatch?.pickupLocation?.lat || null,
+        p_pickup_lng: orderForRedispatch?.pickupLocation?.lng || null,
         p_radius_km:  5,
       }).then(() => {});
     }
     onRejected?.();
-  }, [supabase, clearTimers, onRejected]);
+  }, [supabase, offer, clearTimers, onRejected]);
 
   // ── Supabase Realtime subscription ───────────────────────────────────────
   useEffect(() => {
