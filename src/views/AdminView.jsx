@@ -269,6 +269,43 @@ export default function AdminView() {
     }
   };
 
+  // Extra services management for Ride/General services
+  const [newExtraName, setNewExtraName] = useState('');
+  const [newExtraPrice, setNewExtraPrice] = useState('');
+
+  const handleAddExtraService = () => {
+    if (!newExtraName.trim() || isNaN(parseFloat(newExtraPrice))) {
+      return notifySystem('ผิดพลาด', 'กรุณาระบุชื่อบริการเสริมและราคาให้ถูกต้อง', 'error');
+    }
+    const newService = {
+      id: `extra-${Date.now()}`,
+      name: newExtraName.trim(),
+      price: parseFloat(newExtraPrice),
+      active: true,
+    };
+    setEditConfig(prev => ({
+      ...prev,
+      extraServices: [...(prev.extraServices || []), newService],
+    }));
+    setNewExtraName('');
+    setNewExtraPrice('');
+    notifySystem('เพิ่มบริการเสริม', `เพิ่ม "${newService.name}" แล้ว อย่าลืมกดบันทึกการตั้งค่า`, 'info');
+  };
+
+  const handleToggleExtraService = (id) => {
+    setEditConfig(prev => ({
+      ...prev,
+      extraServices: (prev.extraServices || []).map(s => s.id === id ? { ...s, active: !s.active } : s),
+    }));
+  };
+
+  const handleDeleteExtraService = (id) => {
+    setEditConfig(prev => ({
+      ...prev,
+      extraServices: (prev.extraServices || []).filter(s => s.id !== id),
+    }));
+  };
+
   const saveConfig = () => {
     const cleanedConfig = {
       ...editConfig,
@@ -277,6 +314,8 @@ export default function AdminView() {
       riderRadius: isNaN(parseFloat(editConfig.riderRadius)) ? 5 : parseFloat(editConfig.riderRadius),
       baseFee: isNaN(parseFloat(editConfig.baseFee)) ? 20 : parseFloat(editConfig.baseFee),
       perKmFee: isNaN(parseFloat(editConfig.perKmFee)) ? 10 : parseFloat(editConfig.perKmFee),
+      rideBaseFee: isNaN(parseFloat(editConfig.rideBaseFee)) ? 25 : parseFloat(editConfig.rideBaseFee),
+      ridePerKmFee: isNaN(parseFloat(editConfig.ridePerKmFee)) ? 12 : parseFloat(editConfig.ridePerKmFee),
       gpFood: isNaN(parseFloat(editConfig.gpFood)) ? 30 : parseFloat(editConfig.gpFood),
       gpDelivery: isNaN(parseFloat(editConfig.gpDelivery)) ? 15 : parseFloat(editConfig.gpDelivery),
     };
@@ -1542,9 +1581,66 @@ export default function AdminView() {
               <div><label htmlFor="admin-rider-radius" className="block text-sm font-medium mb-1">Rider Job Radius</label><input id="admin-rider-radius" name="riderRadius" type="number" value={editConfig.riderRadius ?? ''} onChange={e => setEditConfig({ ...editConfig, riderRadius: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
             </div>
             <div className="space-y-4">
-              <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><DollarSign size={16} /> ค่าบริการขนส่ง</h3>
-              <div><label htmlFor="admin-base-fee" className="block text-sm font-medium mb-1">Base Fee (฿)</label><input id="admin-base-fee" name="baseFee" type="number" value={editConfig.baseFee ?? ''} onChange={e => setEditConfig({ ...editConfig, baseFee: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
-              <div><label htmlFor="admin-per-km-fee" className="block text-sm font-medium mb-1">Per Km Fee (฿/กม.)</label><input id="admin-per-km-fee" name="perKmFee" type="number" value={editConfig.perKmFee ?? ''} onChange={e => setEditConfig({ ...editConfig, perKmFee: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><DollarSign size={16} /> ค่าบริการขนส่ง & เรียกรถ</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label htmlFor="admin-base-fee" className="block text-xs font-medium mb-1">ส่งพัสดุ เริ่มต้น (฿)</label><input id="admin-base-fee" name="baseFee" type="number" value={editConfig.baseFee ?? ''} onChange={e => setEditConfig({ ...editConfig, baseFee: e.target.value })} className="w-full border p-2 rounded text-sm" autoComplete="off" /></div>
+                <div><label htmlFor="admin-per-km-fee" className="block text-xs font-medium mb-1">ส่งพัสดุ (฿/กม.)</label><input id="admin-per-km-fee" name="perKmFee" type="number" value={editConfig.perKmFee ?? ''} onChange={e => setEditConfig({ ...editConfig, perKmFee: e.target.value })} className="w-full border p-2 rounded text-sm" autoComplete="off" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                <div><label htmlFor="admin-ride-base-fee" className="block text-xs font-medium mb-1 text-purple-600">เรียกรถ เริ่มต้น (฿)</label><input id="admin-ride-base-fee" name="rideBaseFee" type="number" value={editConfig.rideBaseFee ?? ''} onChange={e => setEditConfig({ ...editConfig, rideBaseFee: e.target.value })} className="w-full border p-2 rounded text-sm" autoComplete="off" /></div>
+                <div><label htmlFor="admin-ride-per-km-fee" className="block text-xs font-medium mb-1 text-purple-600">เรียกรถ (฿/กม.)</label><input id="admin-ride-per-km-fee" name="ridePerKmFee" type="number" value={editConfig.ridePerKmFee ?? ''} onChange={e => setEditConfig({ ...editConfig, ridePerKmFee: e.target.value })} className="w-full border p-2 rounded text-sm" autoComplete="off" /></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Extra Services Management */}
+          <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-8">
+            <h3 className="font-bold text-purple-700 border-b border-purple-200 pb-2 mb-4 flex items-center gap-2">
+              <PlusCircle size={18} /> ตัวเลือกบริการเพิ่มเติม / ตัวเลือกเสริมหมวดเรียกรถ
+            </h3>
+            <div className="space-y-3 mb-4">
+              {(editConfig.extraServices || []).map(srv => (
+                <div key={srv.id} className="flex items-center justify-between bg-white p-3 rounded-lg border border-purple-100 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => handleToggleExtraService(srv.id)} className={`p-1.5 rounded-lg ${srv.active !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                      {srv.active !== false ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                    </button>
+                    <div>
+                      <p className={`text-sm font-bold ${srv.active !== false ? 'text-gray-800' : 'text-gray-400 line-through'}`}>{srv.name}</p>
+                      <p className="text-xs text-purple-600 font-semibold">+฿{srv.price}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => handleDeleteExtraService(srv.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+              {(editConfig.extraServices || []).length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-2">ยังไม่มีบริการเสริม</p>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 bg-white p-3 rounded-xl border">
+              <input
+                type="text"
+                placeholder="ชื่อบริการเสริม เช่น หมวกกันน็อคสำรอง"
+                value={newExtraName}
+                onChange={e => setNewExtraName(e.target.value)}
+                className="flex-1 border p-2 rounded text-xs"
+              />
+              <input
+                type="number"
+                placeholder="ราคา (฿)"
+                value={newExtraPrice}
+                onChange={e => setNewExtraPrice(e.target.value)}
+                className="w-full sm:w-28 border p-2 rounded text-xs"
+              />
+              <button
+                onClick={handleAddExtraService}
+                className="bg-purple-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-purple-700 flex items-center justify-center gap-1 shrink-0"
+              >
+                <PlusCircle size={14} /> เพิ่มบริการเสริม
+              </button>
             </div>
           </div>
 

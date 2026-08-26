@@ -442,7 +442,9 @@ export default function RiderView() {
             {/* Header: ร้าน / ประเภทงาน + รายได้ */}
             <div className="flex justify-between items-start mb-2">
               <div>
-                <span className="font-bold text-white">{job.restaurantName || (job.type === 'parcel' ? '📦 ส่งพัสดุ' : 'งาน')}</span>
+                <span className="font-bold text-white">
+                  {job.type === 'ride' ? '🛵 เรียกรถรับ-ส่งผู้โดยสาร' : job.restaurantName || (job.type === 'parcel' ? '📦 ส่งพัสดุ' : 'งาน')}
+                </span>
                 <div className="text-xs text-gray-500 mt-0.5">#{job.id.slice(-6)}</div>
               </div>
               <div className="text-right">
@@ -486,14 +488,27 @@ export default function RiderView() {
 
             {/* ที่อยู่ */}
             <div className="text-sm text-gray-400 mb-1.5 space-y-1">
-              <div>📍 {job.type === 'parcel' ? `รับที่: ${job.pickup}` : `ร้าน: ${job.restaurantName}`}</div>
-              {job.type === 'parcel' && job.dropoff && (
+              <div>📍 {job.type === 'parcel' || job.type === 'ride' ? `รับที่: ${job.pickup}` : `ร้าน: ${job.restaurantName}`}</div>
+              {(job.type === 'parcel' || job.type === 'ride') && job.dropoff && (
                 <div>🏁 ส่งที่: {job.dropoff}</div>
               )}
               {job.type === 'food' && job.address && (
                 <div>🏠 ส่งที่: {job.address}</div>
               )}
             </div>
+
+            {job.type === 'ride' && (
+              <div className="bg-purple-900/30 border border-purple-700/40 rounded-lg p-2.5 mb-2 text-xs space-y-1">
+                <div className="text-purple-300 font-bold">🛵 รายละเอียดบริการผู้โดยสาร</div>
+                <div className="text-gray-300">👥 จำนวนผู้โดยสาร: {job.passengerCount || 1} คน</div>
+                {job.selectedExtras && job.selectedExtras.length > 0 && (
+                  <div className="text-purple-200">
+                    ✨ ตัวเลือกเสริม: {job.selectedExtras.map(e => `${e.name} (+฿${e.price})`).join(', ')}
+                  </div>
+                )}
+                {job.notes && <div className="text-yellow-300">📝 หมายเหตุ: {job.notes}</div>}
+              </div>
+            )}
 
             {/* นำทาง */}
             <div className="flex gap-2 mb-3">
@@ -814,11 +829,16 @@ export default function RiderView() {
                     {/* Address info */}
                     <div className="text-xs text-gray-400 mb-3 space-y-1">
                       {job.type === 'food' && <div>🏪 รับที่: {job.restaurantName}</div>}
-                      {job.type === 'parcel' && <div>📦 รับที่: {job.pickup}</div>}
+                      {(job.type === 'parcel' || job.type === 'ride') && <div>📦 จุดรับ: {job.pickup}</div>}
                       <div>📍 ส่งที่: {job.address || job.dropoff || 'ที่อยู่ลูกค้า'}</div>
-                      <div>👤 ผู้ส่ง: {job.customerName} {job.customerPhone ? `· ${job.customerPhone}` : ''}</div>
+                      <div>👤 ผู้ใช้บริการ: {job.customerName} {job.customerPhone ? `· ${job.customerPhone}` : ''}</div>
                       {job.type === 'parcel' && job.receiverName && (
                         <div>📬 ผู้รับ: {job.receiverName} {job.receiverPhone ? `· ${job.receiverPhone}` : ''}</div>
+                      )}
+                      {job.type === 'ride' && job.selectedExtras && job.selectedExtras.length > 0 && (
+                        <div className="text-purple-300 font-semibold mt-1">
+                          ✨ บริการเสริม: {job.selectedExtras.map(e => e.name).join(', ')}
+                        </div>
                       )}
                     </div>
 

@@ -6,6 +6,13 @@ export const INITIAL_CONFIG = {
   riderRadius: 5,         // km
   baseFee: 20,            // THB
   perKmFee: 10,           // THB/km
+  rideBaseFee: 25,        // THB (ค่าบริการเรียกรถเริ่มต้น)
+  ridePerKmFee: 12,       // THB/km (ค่าบริการเรียกรถต่อ กม.)
+  extraServices: [        // บริการเสริมเพิ่มเติมในหมวดบริการเรียกรถ
+    { id: 'helmet', name: 'ขอหมวกกันน็อคสำรอง 2 ใบ', price: 10, active: true },
+    { id: 'fast', name: 'เร่งด่วนพิเศษ (Fast Pick-up)', price: 20, active: true },
+    { id: 'raincoat', name: 'ขอเสื้อกันฝนสำรอง', price: 15, active: true }
+  ],
   gpFood: 30,             // % GP ร้านค้า
   gpDelivery: 15,         // % GP ไรเดอร์
   // Admin Payment Info

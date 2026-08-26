@@ -205,7 +205,7 @@ export function AppProvider({ children }) {
   // ── Order hook ──────────────────────────────────────────────────────────────
   const {
     calculateDeliveryFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
-    addToCart, placeOrder, placeParcelOrder, acceptOrder, updateOrderStatus,
+    addToCart, placeOrder, placeParcelOrder, placeRideOrder, acceptOrder, updateOrderStatus,
     initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
     requestCancelOrder, requestCancelByRole,
     forceRefresh,
@@ -1276,6 +1276,7 @@ export function AppProvider({ children }) {
     calculateDeliveryFee,
     placeOrder,
     placeParcelOrder,
+    placeRideOrder,
     acceptOrder,
     updateOrderStatus,
 
