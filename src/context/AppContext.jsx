@@ -730,11 +730,11 @@ export function AppProvider({ children }) {
           case 'ready_to_pickup':
             notifySystem('✅ อาหารพร้อมแล้ว!', `กำลังหาไรเดอร์ ออเดอร์ #${o.id.slice(-6)}`, 'info'); break;
           case 'rider_accepted':
-            notifySystem('🛵 ไรเดอร์รับงานแล้ว!', `${o.riderName || 'ไรเดอร์'} กำลังมารับอาหาร`, 'info'); break;
+            notifySystem('🛵 ไรเดอร์รับงานแล้ว!', `${o.riderName || 'ไรเดอร์'} กำลังเดินทางไปรับสินค้า/อาหาร`, 'info'); break;
           case 'picking_up':
-            notifySystem('📦 ไรเดอร์รับอาหารแล้ว!', `ออเดอร์ #${o.id.slice(-6)} กำลังออกเดินทาง`, 'info'); break;
+            notifySystem('🏪 ไรเดอร์ถึงจุดรับแล้ว!', `${o.riderName || 'ไรเดอร์'} ถึงจุดรับ/กำลังรอรับสินค้า`, 'info'); break;
           case 'delivering':
-            notifySystem('🚀 กำลังส่งอาหาร!', `ออเดอร์ #${o.id.slice(-6)} กำลังมาถึงคุณ`, 'info'); break;
+            notifySystem('🚀 ไรเดอร์รับสินค้าเรียบร้อย!', `ออเดอร์ #${o.id.slice(-6)} กำลังเดินทางไปส่งคุณ`, 'info'); break;
           case 'delivered':
             playNotificationSound('order');
             notifySystem('📬 ถึงแล้ว! กรุณายืนยันรับสินค้า', `ออเดอร์ #${o.id.slice(-6)} — กด "ยืนยันรับอาหาร" เพื่อเสร็จสิ้น`, 'warning'); break;

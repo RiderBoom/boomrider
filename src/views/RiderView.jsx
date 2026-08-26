@@ -926,7 +926,7 @@ export default function RiderView() {
                       </button>
                     )}
 
-                    {/* ── Step: delivering → completed (ข้าม 'delivered' เพื่อให้ order จบทันทีทั้งสองฝั่ง) ── */}
+                    {/* ── Step: delivering → delivered ── */}
                     {job.status === 'delivering' && (
                       <>
                         {job.paymentMethod === 'cash' && (
@@ -1009,9 +1009,9 @@ export default function RiderView() {
                         <button
                           disabled={!!proofUploading[job.id]}
                           onClick={async () => {
-                            // Complete directly — settlement + rider release + customer order ends
+                            // Update to delivered — rider availability released, customer verifies and confirms completion
                             await updateOrderStatus(
-                              job.id, 'completed', null,
+                              job.id, 'delivered', null,
                               {
                                 deliveredAt: new Date().toISOString(),
                                 deliveredAtMs: Date.now(),
@@ -1028,7 +1028,7 @@ export default function RiderView() {
                         >
                           {proofUploading[job.id]
                             ? <><Loader size={16} className="animate-spin inline mr-1" /> กำลังอัปโหลดรูป...</>
-                            : '🎉 ยืนยันส่งสำเร็จ!'}
+                            : '🎉 ยืนยันส่งถึงที่หมายแล้ว!'}
                         </button>
                       </>
                     )}
