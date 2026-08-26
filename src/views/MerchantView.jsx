@@ -69,9 +69,10 @@ export default function MerchantView() {
   // กลุ่ม orders แยกตาม status
   const myOrders = myShop ? orders.filter(o => o.type === 'food' && o.restaurantId === myShop.id) : [];
   const newOrders     = myOrders.filter(o => o.status === 'pending');
-  // Once rider picks up food (picking_up+), remove from merchant's working screen immediately
-  const activeOrders  = myOrders.filter(o => ['preparing', 'ready_to_pickup', 'rider_accepted'].includes(o.status));
-  const doneOrders    = myOrders.filter(o => ['picking_up', 'delivering', 'delivered', 'completed', 'cancelled'].includes(o.status));
+  // Keep order on merchant active tab while preparing, waiting rider, rider accepted, and when rider arrives (picking_up)
+  // Move to doneOrders when rider departs for delivery (delivering)
+  const activeOrders  = myOrders.filter(o => ['preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up'].includes(o.status));
+  const doneOrders    = myOrders.filter(o => ['delivering', 'delivered', 'completed', 'cancelled'].includes(o.status));
 
   const myRevenue = myOrders
     .filter(o => ['delivered', 'completed'].includes(o.status))
@@ -956,7 +957,17 @@ function OrderCard({ order, riders, updateOrderStatus, onCancel, highlight }) {
             ⏳ รอไรเดอร์รับงาน...
           </div>
         )}
-        {['rider_accepted', 'picking_up', 'delivering'].includes(order.status) && (
+        {order.status === 'rider_accepted' && (
+          <div className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center">
+            🛵 ไรเดอร์กำลังมารับอาหาร
+          </div>
+        )}
+        {order.status === 'picking_up' && (
+          <div className="flex-1 bg-purple-50 text-purple-700 border border-purple-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center">
+            🏪 ไรเดอร์ถึงร้านแล้ว / รอรับอาหาร
+          </div>
+        )}
+        {['delivering', 'delivered', 'completed'].includes(order.status) && (
           <div className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-2 rounded-lg font-bold text-xs flex items-center justify-center">
             🛵 ไรเดอร์กำลังส่ง
           </div>
