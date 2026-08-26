@@ -59,25 +59,27 @@ export default function ActivityTab() {
   const parseDateMs = (dateVal) => {
     if (!dateVal) return NaN;
     if (typeof dateVal === 'number') return dateVal;
-    const t = new Date(dateVal).getTime();
-    if (!isNaN(t)) return t;
     if (typeof dateVal === 'string') {
       const parts = dateVal.trim().split(' ');
       if (parts.length >= 1) {
         const dateParts = parts[0].split('/');
         if (dateParts.length === 3) {
           const [d, m, y] = dateParts.map(Number);
-          let hh = 0, mm = 0, ss = 0;
-          if (parts[1]) {
-            const timeParts = parts[1].split(':').map(Number);
-            hh = timeParts[0] || 0;
-            mm = timeParts[1] || 0;
-            ss = timeParts[2] || 0;
+          if (d > 0 && d <= 31 && m > 0 && m <= 12 && y >= 2000) {
+            let hh = 0, mm = 0, ss = 0;
+            if (parts[1]) {
+              const timeParts = parts[1].split(':').map(Number);
+              hh = timeParts[0] || 0;
+              mm = timeParts[1] || 0;
+              ss = timeParts[2] || 0;
+            }
+            return new Date(y, m - 1, d, hh, mm, ss).getTime();
           }
-          return new Date(y, m - 1, d, hh, mm, ss).getTime();
         }
       }
     }
+    const t = new Date(dateVal).getTime();
+    if (!isNaN(t)) return t;
     return NaN;
   };
 
