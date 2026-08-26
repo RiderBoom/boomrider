@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-  Utensils, Package, Search, ArrowLeft, Star, Clock,
+  Utensils, Package, Car, Wrench, Search, ArrowLeft, Star, Clock,
   MapPin, Navigation, Plus, Minus, X, Tag, CheckCircle,
-  ChefHat, Crosshair, Banknote, Sparkles, SlidersHorizontal,
+  ChefHat, Crosshair, Banknote, Sparkles, SlidersHorizontal, Calendar, FileText,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getDistanceFromLatLonInKm } from '../../utils';
@@ -20,7 +20,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
     paymentMethod, setPaymentMethod,
     parcelMapTarget, setParcelMapTarget,
     parcelDistance, parcelEstimate,
-    placeOrder, placeParcelOrder,
+    placeOrder, placeParcelOrder, placeRideOrder, placeServiceOrder,
     addToCart, calculateFoodTotal, calculateDeliveryFee,
     handleParcelMapSelect,
     getCurrentLocationForParcel,
@@ -41,6 +41,15 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   const [promoInput, setPromoInput]   = useState('');
   const [promoResult, setPromoResult] = useState(null);
   const [showPromoField, setShowPromoField] = useState(false);
+
+  // Local state for Ride & Service tabs
+  const [rideDetails, setRideDetails] = useState({
+    pickup: '', dropoff: '', pickupLocation: null, dropoffLocation: null, vehicleType: 'Motorcycle', note: ''
+  });
+  const [rideMapTarget, setRideMapTarget] = useState('pickup');
+  const [serviceDetails, setServiceDetails] = useState({
+    serviceCategory: 'ทำความสะอาดบ้าน', note: '', preferredDate: '', preferredTime: '10:00', price: 350
+  });
 
   // Modal for selecting item options / toppings
   const [selectedMenuItem, setSelectedMenuItem] = useState(null);
@@ -349,15 +358,23 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   // ── Home tab ────────────────────────────────────────────────────────────────
   return (
     <div className="px-4 py-3">
-      <div className="flex gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <button
           onClick={() => setServiceType('food')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm transition-all duration-200 ${serviceType === 'food' ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-white text-gray-600 shadow-sm'}`}
-        ><Utensils size={18} /> สั่งอาหาร</button>
+          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'food' ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-white text-gray-600 shadow-sm'}`}
+        ><Utensils size={16} /> สั่งอาหาร</button>
         <button
           onClick={() => setServiceType('parcel')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-semibold text-sm transition-all duration-200 ${serviceType === 'parcel' ? 'bg-blue-500 text-white shadow-lg shadow-blue-200' : 'bg-white text-gray-600 shadow-sm'}`}
-        ><Package size={18} /> ส่งพัสดุ</button>
+          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'parcel' ? 'bg-blue-500 text-white shadow-lg shadow-blue-200' : 'bg-white text-gray-600 shadow-sm'}`}
+        ><Package size={16} /> ส่งพัสดุ</button>
+        <button
+          onClick={() => setServiceType('ride')}
+          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'ride' ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-white text-gray-600 shadow-sm'}`}
+        ><Car size={16} /> เรียกรถ</button>
+        <button
+          onClick={() => setServiceType('service')}
+          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'service' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'bg-white text-gray-600 shadow-sm'}`}
+        ><Wrench size={16} /> บริการ</button>
       </div>
 
       {serviceType === 'food' ? (
@@ -427,7 +444,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
             ))}
           </div>
         </>
-      ) : (
+      ) : serviceType === 'parcel' ? (
         /* ── Parcel form ── */
         <div className="bg-white p-5 rounded-xl shadow-sm">
           <h2 className="font-bold text-lg mb-4 text-blue-600 flex items-center"><Package className="mr-2" /> บริการส่งพัสดุด่วน</h2>
@@ -516,6 +533,139 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
             </div>
             <button onClick={placeParcelOrder} className="w-full bg-green-500 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-green-600 mt-4">
               คำนวณราคา & เรียกแมส
+            </button>
+          </div>
+        </div>
+      ) : serviceType === 'ride' ? (
+        /* ── Ride form ── */
+        <div className="bg-white p-5 rounded-xl shadow-sm">
+          <h2 className="font-bold text-lg mb-4 text-purple-600 flex items-center"><Car className="mr-2" /> บริการเรียกรถรับส่ง (Ride)</h2>
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 text-center">ค่าบริการเดินทางเริ่มต้น {appConfig.baseFee}บ. + {appConfig.perKmFee}บ./กม.</p>
+            <div className="mb-4">
+              <div className="flex gap-2 mb-2">
+                <button
+                  onClick={() => setRideMapTarget('pickup')}
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${rideMapTarget === 'pickup' ? 'bg-purple-600 text-white shadow-md shadow-purple-200' : 'bg-gray-100 text-gray-600'}`}
+                >📍 จุดรับผู้โดยสาร{rideDetails.pickupLocation ? ' ✓' : ''}</button>
+                <button
+                  onClick={() => setRideMapTarget('dropoff')}
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${rideMapTarget === 'dropoff' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-600'}`}
+                >🏁 จุดหมายปลายทาง{rideDetails.dropoffLocation ? ' ✓' : ''}</button>
+              </div>
+              <InteractiveMap
+                mode="select"
+                isParcel={true}
+                activeParcelTarget={rideMapTarget}
+                shopLocation={rideDetails.pickupLocation}
+                userLocation={rideDetails.dropoffLocation}
+                centerOverride={
+                  rideMapTarget === 'pickup'
+                    ? (rideDetails.pickupLocation || userProfile?.location)
+                    : (rideDetails.dropoffLocation || userProfile?.location)
+                }
+                onLocationSelect={(lat, lng, addr) => {
+                  if (rideMapTarget === 'pickup') {
+                    setRideDetails(prev => ({ ...prev, pickup: addr || `${lat.toFixed(4)}, ${lng.toFixed(4)}`, pickupLocation: { lat, lng } }));
+                  } else {
+                    setRideDetails(prev => ({ ...prev, dropoff: addr || `${lat.toFixed(4)}, ${lng.toFixed(4)}`, dropoffLocation: { lat, lng } }));
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <label htmlFor="ride-pickup-input" className="text-xs text-gray-500 mb-1 block">จุดรับ</label>
+              <div className="flex items-center border rounded-lg p-2 bg-gray-50">
+                <MapPin size={18} className="text-purple-500 mr-2 flex-shrink-0" />
+                <input id="ride-pickup-input" name="ridePickup" value={rideDetails.pickup} onChange={e => setRideDetails({ ...rideDetails, pickup: e.target.value })} type="text" placeholder="ระบุจุดรับผู้โดยสาร..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="ride-dropoff-input" className="text-xs text-gray-500 mb-1 block">จุดส่ง (จุดหมาย)</label>
+              <div className="flex items-center border rounded-lg p-2 bg-gray-50">
+                <Navigation size={18} className="text-indigo-500 mr-2 flex-shrink-0" />
+                <input id="ride-dropoff-input" name="rideDropoff" value={rideDetails.dropoff} onChange={e => setRideDetails({ ...rideDetails, dropoff: e.target.value })} type="text" placeholder="ระบุจุดหมาย..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="ride-vehicle-type" className="text-xs text-gray-500 mb-1 block">ประเภทยานพาหนะ</label>
+              <select id="ride-vehicle-type" name="vehicleType" value={rideDetails.vehicleType} onChange={e => setRideDetails({ ...rideDetails, vehicleType: e.target.value })} className="w-full border rounded-lg p-2 text-sm bg-gray-50">
+                <option value="Motorcycle">มอเตอร์ไซค์ (1 ที่นั่ง)</option>
+                <option value="Car">รถยนต์ Eco (4 ที่นั่ง)</option>
+                <option value="SUV">รถยนต์ SUV / 7 ที่นั่ง</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="ride-note-input" className="text-xs text-gray-500 mb-1 block">หมายเหตุถึงคนขับ</label>
+              <input id="ride-note-input" name="rideNote" value={rideDetails.note} onChange={e => setRideDetails({ ...rideDetails, note: e.target.value })} type="text" placeholder="เช่น รอหน้าประตู 1..." className="w-full border rounded-lg p-2 text-sm" autoComplete="off" />
+            </div>
+            <div className="flex items-center space-x-2 mt-2 p-2 bg-gray-50 rounded-lg">
+              <span className="text-sm font-bold">ชำระเงิน:</span>
+              <button onClick={() => setPaymentMethod('wallet')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'wallet' ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : 'bg-white border-gray-300'}`}>Wallet</button>
+              <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'cash' ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-300'}`}>เงินสด</button>
+            </div>
+            <button onClick={() => placeRideOrder ? placeRideOrder(rideDetails) : notifySystem('แจ้งเตือน', 'อยู่ระหว่างประมวลผล', 'info')} className="w-full bg-purple-600 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-purple-700 mt-4">
+              เรียกรถรับส่งทันที
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* ── Service form ── */
+        <div className="bg-white p-5 rounded-xl shadow-sm">
+          <h2 className="font-bold text-lg mb-4 text-emerald-600 flex items-center"><Wrench className="mr-2" /> บริการจองช่าง / งานบ้าน (Service)</h2>
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="service-category-select" className="text-xs text-gray-500 mb-1 block">เลือกประเภทบริการ</label>
+              <select
+                id="service-category-select"
+                name="serviceCategory"
+                value={serviceDetails.serviceCategory}
+                onChange={e => {
+                  const cat = e.target.value;
+                  const priceMap = { 'ทำความสะอาดบ้าน': 350, 'ล้างแอร์ / ซ่อมแอร์': 500, 'ซ่อมประปา / ไฟฟ้า': 400, 'ขนย้ายสิ่งของ': 600 };
+                  setServiceDetails(prev => ({ ...prev, serviceCategory: cat, price: priceMap[cat] || 400 }));
+                }}
+                className="w-full border rounded-lg p-2 text-sm bg-gray-50"
+              >
+                <option value="ทำความสะอาดบ้าน">🧹 แม่บ้านทำความสะอาด (฿350)</option>
+                <option value="ล้างแอร์ / ซ่อมแอร์">❄️ ล้างแอร์ / ซ่อมแอร์ (฿500)</option>
+                <option value="ซ่อมประปา / ไฟฟ้า">🔧 ซ่อมประปา / ไฟฟ้า (฿400)</option>
+                <option value="ขนย้ายสิ่งของ">📦 ขนย้ายสิ่งของ / เฟอร์นิเจอร์ (฿600)</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label htmlFor="service-date-input" className="text-xs text-gray-500 mb-1 block">วันที่รับบริการ</label>
+                <div className="flex items-center border rounded-lg p-2 bg-gray-50">
+                  <Calendar size={16} className="text-emerald-500 mr-1.5 flex-shrink-0" />
+                  <input id="service-date-input" name="serviceDate" type="date" value={serviceDetails.preferredDate} onChange={e => setServiceDetails({ ...serviceDetails, preferredDate: e.target.value })} className="w-full bg-transparent outline-none text-xs" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="service-time-input" className="text-xs text-gray-500 mb-1 block">เวลาโดยประมาณ</label>
+                <div className="flex items-center border rounded-lg p-2 bg-gray-50">
+                  <Clock size={16} className="text-emerald-500 mr-1.5 flex-shrink-0" />
+                  <input id="service-time-input" name="serviceTime" type="time" value={serviceDetails.preferredTime} onChange={e => setServiceDetails({ ...serviceDetails, preferredTime: e.target.value })} className="w-full bg-transparent outline-none text-xs" />
+                </div>
+              </div>
+            </div>
+            <div>
+              <label htmlFor="service-note-textarea" className="text-xs text-gray-500 mb-1 block">รายละเอียดเพิ่มเติม</label>
+              <div className="flex items-start border rounded-lg p-2 bg-gray-50">
+                <FileText size={16} className="text-emerald-500 mr-1.5 mt-0.5 flex-shrink-0" />
+                <textarea id="service-note-textarea" name="serviceNote" value={serviceDetails.note} onChange={e => setServiceDetails({ ...serviceDetails, note: e.target.value })} placeholder="ระบุสิ่งที่ต้องการให้ทำ..." className="w-full bg-transparent outline-none text-xs h-16 resize-none" />
+              </div>
+            </div>
+            <div className="bg-emerald-50 p-3 rounded-xl text-center border border-emerald-200">
+              <p className="text-sm font-bold text-emerald-800">ค่าบริการประเมิน: ฿{serviceDetails.price}</p>
+            </div>
+            <div className="flex items-center space-x-2 mt-2 p-2 bg-gray-50 rounded-lg">
+              <span className="text-sm font-bold">ชำระเงิน:</span>
+              <button onClick={() => setPaymentMethod('wallet')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'wallet' ? 'bg-emerald-100 border-emerald-500 text-emerald-700 font-bold' : 'bg-white border-gray-300'}`}>Wallet</button>
+              <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'cash' ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-300'}`}>เงินสด</button>
+            </div>
+            <button onClick={() => placeServiceOrder ? placeServiceOrder(serviceDetails) : notifySystem('แจ้งเตือน', 'อยู่ระหว่างประมวลผล', 'info')} className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-emerald-700 mt-4">
+              ยืนยันการจองบริการ
             </button>
           </div>
         </div>

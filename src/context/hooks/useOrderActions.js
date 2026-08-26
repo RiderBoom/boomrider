@@ -1,4 +1,4 @@
-import { generateId, formatDateTime, r2 } from '../../utils';
+import { generateId, formatDateTime, r2, getDistanceFromLatLonInKm } from '../../utils';
 import { ADMIN_EMAIL, USER_LOCATION } from '../../constants';
 import { autoDispatch } from './useAutoDispatch';
 
@@ -29,18 +29,35 @@ export function useOrderActions(deps) {
   const hasPendingCancelRequest = (orderId) =>
     pendingRequests.some(r => r.type === 'cancel_order' && r.data?.orderId === orderId);
 
-  // Returns correct settlement split for both food and parcel orders
+  // Returns correct settlement split for food, parcel, ride, and service orders
   const _settlementAmounts = (order) => {
-    const gpFoodRate  = (appConfig.gpFood ?? 30) / 100;
-    const gpDelivRate = (appConfig.gpDelivery ?? 15) / 100;
+    const gpFoodRate    = (appConfig.gpFood ?? 30) / 100;
+    const gpDelivRate   = (appConfig.gpDelivery ?? 15) / 100;
+    const gpRideRate    = (appConfig.gpRide ?? 15) / 100;
+    const gpServiceRate = (appConfig.gpService ?? 15) / 100;
+
     const foodTotal   = r2(order.foodTotal   || 0);
     const deliveryFee = r2(order.deliveryFee || 0);
+    const grandTotal  = r2(order.grandTotal  || 0);
 
     if (order.type === 'parcel') {
       const adminGP     = r2(deliveryFee * gpDelivRate);
       const riderIncome = r2(deliveryFee - adminGP);
       return { foodTotal: 0, deliveryFee, gpAmount: adminGP, merchantIncome: 0, riderIncome };
     }
+
+    if (order.type === 'ride') {
+      const adminGP     = r2(grandTotal * gpRideRate);
+      const riderIncome = r2(grandTotal - adminGP);
+      return { foodTotal: 0, deliveryFee: grandTotal, gpAmount: adminGP, merchantIncome: 0, riderIncome };
+    }
+
+    if (order.type === 'service') {
+      const adminGP     = r2(grandTotal * gpServiceRate);
+      const riderIncome = r2(grandTotal - adminGP);
+      return { foodTotal: 0, deliveryFee: grandTotal, gpAmount: adminGP, merchantIncome: 0, riderIncome };
+    }
+
     return {
       foodTotal,
       deliveryFee,
@@ -197,6 +214,113 @@ export function useOrderActions(deps) {
     notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
 
     // Auto-dispatch parcel to nearest rider immediately
+    autoDispatch(supabase, newOrder);
+  };
+
+  const placeRideOrder = async (rideDetails) => {
+    if (!rideDetails?.pickup || !rideDetails?.dropoff) {
+      return notifySystem('ผิดพลาด', 'กรุณาระบุจุดรับและจุดส่งผู้โดยสาร', 'error');
+    }
+    const dist = getDistanceFromLatLonInKm(
+      rideDetails.pickupLocation?.lat || USER_LOCATION.lat, rideDetails.pickupLocation?.lng || USER_LOCATION.lng,
+      rideDetails.dropoffLocation?.lat || USER_LOCATION.lat, rideDetails.dropoffLocation?.lng || USER_LOCATION.lng
+    ) || 3;
+    const grandTotal = calculateDeliveryFee(dist);
+    const uid = currentUser?.id || userProfile?.id || '';
+
+    if (paymentMethod === 'wallet' && userWallet < grandTotal) {
+      return notifySystem('ผิดพลาด', `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${userWallet} ต้องการ ฿${grandTotal})`, 'error');
+    }
+
+    const orderId = generateId();
+    const gpRideRate = (appConfig.gpRide ?? 15) / 100;
+    const adminGP = r2(grandTotal * gpRideRate);
+    const riderIncome = r2(grandTotal - adminGP);
+
+    const newOrder = {
+      id: orderId,
+      type: 'ride',
+      status: 'ready_to_pickup',
+      customerId: uid,
+      customerName: userProfile.name || 'ผู้โดยสาร',
+      customerPhone: userProfile.phone || null,
+      pickup: rideDetails.pickup,
+      dropoff: rideDetails.dropoff,
+      pickupLocation: rideDetails.pickupLocation || USER_LOCATION,
+      location: rideDetails.dropoffLocation || USER_LOCATION,
+      vehicleType: rideDetails.vehicleType || 'Motorcycle',
+      notes: rideDetails.note || '',
+      deliveryFee: grandTotal,
+      grandTotal,
+      riderIncome,
+      adminGP,
+      paymentMethod,
+      createdAt: formatDateTime(),
+    };
+
+    pendingLocalOrderIdsRef.current.add(orderId);
+    setOrders(prev => [newOrder, ...prev]);
+    await supabase.from('orders').insert({ id: orderId, status: 'ready_to_pickup', data: newOrder });
+
+    if (paymentMethod === 'wallet') {
+      creditWallet(uid, -grandTotal, `ชำระค่าโดยสาร ออเดอร์ #${orderId.slice(-6)}`);
+    }
+
+    notifyAdmin('🚗 เรียกรถใหม่', `${userProfile.name} เรียกรถ ${rideDetails.pickup} → ${rideDetails.dropoff}`, 'info');
+    setActiveTab('activity');
+    notifySystem('เรียกรถสำเร็จ! 🚗', `ออเดอร์ #${orderId.slice(-6)} กำลังค้นหาคนขับ`, 'success');
+
+    autoDispatch(supabase, newOrder);
+  };
+
+  const placeServiceOrder = async (serviceDetails) => {
+    if (!serviceDetails?.serviceCategory) {
+      return notifySystem('ผิดพลาด', 'กรุณาเลือกประเภทบริการ', 'error');
+    }
+    const grandTotal = serviceDetails.price || 350;
+    const uid = currentUser?.id || userProfile?.id || '';
+
+    if (paymentMethod === 'wallet' && userWallet < grandTotal) {
+      return notifySystem('ผิดพลาด', `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${userWallet} ต้องการ ฿${grandTotal})`, 'error');
+    }
+
+    const orderId = generateId();
+    const gpServiceRate = (appConfig.gpService ?? 15) / 100;
+    const adminGP = r2(grandTotal * gpServiceRate);
+    const riderIncome = r2(grandTotal - adminGP);
+
+    const newOrder = {
+      id: orderId,
+      type: 'service',
+      status: 'ready_to_pickup',
+      customerId: uid,
+      customerName: userProfile.name || 'ผู้ใช้บริการ',
+      customerPhone: userProfile.phone || null,
+      serviceCategory: serviceDetails.serviceCategory,
+      preferredDate: serviceDetails.preferredDate,
+      preferredTime: serviceDetails.preferredTime,
+      notes: serviceDetails.note || '',
+      location: userProfile.location || USER_LOCATION,
+      deliveryFee: grandTotal,
+      grandTotal,
+      riderIncome,
+      adminGP,
+      paymentMethod,
+      createdAt: formatDateTime(),
+    };
+
+    pendingLocalOrderIdsRef.current.add(orderId);
+    setOrders(prev => [newOrder, ...prev]);
+    await supabase.from('orders').insert({ id: orderId, status: 'ready_to_pickup', data: newOrder });
+
+    if (paymentMethod === 'wallet') {
+      creditWallet(uid, -grandTotal, `ชำระค่าบริการ ออเดอร์ #${orderId.slice(-6)}`);
+    }
+
+    notifyAdmin('🛠️ จองบริการใหม่', `${userProfile.name} จอง ${serviceDetails.serviceCategory}`, 'info');
+    setActiveTab('activity');
+    notifySystem('จองบริการสำเร็จ! 🛠️', `ออเดอร์ #${orderId.slice(-6)} กำลังค้นหาผู้ให้บริการ`, 'success');
+
     autoDispatch(supabase, newOrder);
   };
 
@@ -481,7 +605,7 @@ export function useOrderActions(deps) {
 
   return {
     calculateDeliveryFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
-    addToCart, placeOrder, placeParcelOrder, acceptOrder, updateOrderStatus,
+    addToCart, placeOrder, placeParcelOrder, placeRideOrder, placeServiceOrder, acceptOrder, updateOrderStatus,
     initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
     requestCancelOrder, requestCancelByRole,
   };
