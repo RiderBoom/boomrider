@@ -147,7 +147,7 @@ export function useOrderActions(deps) {
     notifyAdmin('🛎️ ออเดอร์ใหม่', `${userProfile.name} สั่ง ${cart[0].restaurantName} ฿${grandTotal}`, 'info');
     setCart([]);
     setSelectedRestaurant(null);
-    setActiveTab('orders');
+    setActiveTab('activity');
     notifySystem('สั่งอาหารสำเร็จ! 🎉', `ออเดอร์ #${orderId.slice(-6)} ส่งไปยังร้านแล้ว`, 'success');
   };
 
@@ -193,7 +193,7 @@ export function useOrderActions(deps) {
     setParcelDistance(0);
     setParcelEstimate(0);
     setParcelMapTarget(null);
-    setActiveTab('orders');
+    setActiveTab('activity');
     notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
 
     // Auto-dispatch parcel to nearest rider immediately
