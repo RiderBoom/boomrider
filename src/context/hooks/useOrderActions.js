@@ -452,23 +452,40 @@ export function useOrderActions(deps) {
       const riderUid     = order.riderUserId || riders.find(r => r.id === order.riderId)?.userId;
       const shopOwnerUid = order.restaurantOwnerId || restaurants.find(r => r.id === order.restaurantId)?.ownerId;
 
-      const gpFoodRate  = (appConfig.gpFood ?? 30) / 100;
-      const gpDelivRate = (appConfig.gpDelivery ?? 15) / 100;
+      const gpFoodRate    = (appConfig.gpFood ?? 30) / 100;
+      const gpDelivRate   = (appConfig.gpDelivery ?? 15) / 100;
+      const gpRideRate    = (appConfig.gpRide ?? 15) / 100;
+      const gpServiceRate = (appConfig.gpService ?? 15) / 100;
 
       const { data: rpcResult, error: rpcError } = await supabase
         .rpc('process_order_settlement', {
           p_order_id: orderId,
           p_gp_food_rate: gpFoodRate,
-          p_gp_delivery_rate: gpDelivRate
+          p_gp_delivery_rate: gpDelivRate,
+          p_gp_ride_rate: gpRideRate,
+          p_gp_service_rate: gpServiceRate
         });
+
+      const getFeeLabel = (type) => {
+        if (type === 'ride') return 'ค่าโดยสาร';
+        if (type === 'service') return 'ค่าบริการ';
+        if (type === 'parcel') return 'ค่าส่งพัสดุ';
+        return 'ค่าส่ง';
+      };
+      const getGpLabel = (type) => {
+        if (type === 'ride') return 'เรียกรถ(สด)';
+        if (type === 'service') return 'บริการ(สด)';
+        if (type === 'parcel') return 'พัสดุ(สด)';
+        return 'GP(สด)';
+      };
 
       if (rpcError || !rpcResult?.ok) {
         // Fallback: JS-side wallet credits (keeps working if RPC unavailable)
         if (order.paymentMethod === 'cash') {
-          if (order.type === 'parcel') {
-            // Parcel cash: rider collected full cash. No credit needed, only debit GP to admin.
-            if (riderUid && gpAmount > 0)        creditWallet(riderUid,    -gpAmount, `หัก GP พัสดุ(สด) #${orderId.slice(-6)}`);
-            if (ADMIN_EMAIL && gpAmount > 0)     creditWallet(ADMIN_EMAIL, gpAmount,  `GP พัสดุ(สด) #${orderId.slice(-6)}`);
+          if (['parcel', 'ride', 'service'].includes(order.type)) {
+            // Cash order: rider collected full cash. No credit needed, only debit GP to admin.
+            if (riderUid && gpAmount > 0)    creditWallet(riderUid,    -gpAmount, `หัก GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
+            if (ADMIN_EMAIL && gpAmount > 0) creditWallet(ADMIN_EMAIL, gpAmount,  `GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
           } else {
             // Food cash: rider collected (food + delivery) in cash. No credit needed for delivery fee, only debit food (minus GP) and GP to admin.
             if (riderUid && foodTotal > 0)          creditWallet(riderUid,     -foodTotal,      `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
@@ -479,7 +496,7 @@ export function useOrderActions(deps) {
           // Wallet: customer already paid at placement; distribute to stakeholders
           if (shopOwnerUid && merchantIncome > 0) creditWallet(shopOwnerUid, merchantIncome,  `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
           if (ADMIN_EMAIL && gpAmount > 0)        creditWallet(ADMIN_EMAIL,  gpAmount,        `GP ออเดอร์ #${orderId.slice(-6)}`);
-          if (riderUid && calcRiderIncome > 0)    creditWallet(riderUid,     calcRiderIncome, `ค่าส่ง ออเดอร์ #${orderId.slice(-6)}`);
+          if (riderUid && calcRiderIncome > 0)    creditWallet(riderUid,     calcRiderIncome, `${getFeeLabel(order.type)} ออเดอร์ #${orderId.slice(-6)}`);
         }
       } else if (!rpcResult.skipped) {
         // RPC settled — DB already updated; sync React state only (no duplicate DB writes)
@@ -487,9 +504,9 @@ export function useOrderActions(deps) {
         const merchantEarned = r2(rpcResult.merchantIncome ?? merchantIncome);
         const gpEarned       = r2(rpcResult.gpAmount       ?? gpAmount);
         if (order.paymentMethod === 'cash') {
-          if (order.type === 'parcel') {
-            if (riderUid && gpEarned > 0)            creditWalletLocal(riderUid,    -gpEarned,      `หัก GP พัสดุ(สด) #${orderId.slice(-6)}`);
-            if (ADMIN_EMAIL && gpEarned > 0)         creditWalletLocal(ADMIN_EMAIL,  gpEarned,      `GP พัสดุ(สด) #${orderId.slice(-6)}`);
+          if (['parcel', 'ride', 'service'].includes(order.type)) {
+            if (riderUid && gpEarned > 0)    creditWalletLocal(riderUid,    -gpEarned, `หัก GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
+            if (ADMIN_EMAIL && gpEarned > 0) creditWalletLocal(ADMIN_EMAIL, gpEarned,  `GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
           } else {
             if (riderUid && foodTotal > 0)           creditWalletLocal(riderUid,     -foodTotal,      `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
             if (shopOwnerUid && merchantEarned > 0)  creditWalletLocal(shopOwnerUid, merchantEarned,  `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
@@ -498,7 +515,7 @@ export function useOrderActions(deps) {
         } else {
           if (shopOwnerUid && merchantEarned > 0)  creditWalletLocal(shopOwnerUid, merchantEarned,  `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
           if (ADMIN_EMAIL && gpEarned > 0)         creditWalletLocal(ADMIN_EMAIL,  gpEarned,        `GP ออเดอร์ #${orderId.slice(-6)}`);
-          if (riderUid && riderEarned > 0)         creditWalletLocal(riderUid,     riderEarned,     `ค่าส่ง ออเดอร์ #${orderId.slice(-6)}`);
+          if (riderUid && riderEarned > 0)         creditWalletLocal(riderUid,     riderEarned,     `${getFeeLabel(order.type)} ออเดอร์ #${orderId.slice(-6)}`);
         }
       }
 
