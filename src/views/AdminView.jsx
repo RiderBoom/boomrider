@@ -7,7 +7,7 @@ import {
   Image as ImageIcon, Ban, X, Users, BarChart2, Tag,
   TrendingUp, ShoppingBag, Star, PlusCircle, Trash2,
   ToggleLeft, ToggleRight, Wallet, AlertCircle, List,
-  DatabaseZap, ShieldOff, CheckSquare, Square,
+  DatabaseZap, ShieldOff, CheckSquare, Square, Car,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, ADMIN_EMAIL } from '../constants';
