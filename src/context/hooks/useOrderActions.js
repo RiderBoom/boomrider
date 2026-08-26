@@ -426,7 +426,7 @@ export function useOrderActions(deps) {
     }
 
     const basePatch = newStatus === 'completed'
-      ? { status: newStatus, completedAt: new Date().toISOString() }
+      ? { status: newStatus, completedAt: new Date().toISOString(), completedAtMs: Date.now() }
       : { status: newStatus };
     const patch = { ...basePatch, ...incomePatch, ...extraData };
     await _updateOrder(orderId, patch);

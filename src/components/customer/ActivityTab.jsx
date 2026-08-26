@@ -82,18 +82,28 @@ export default function ActivityTab() {
   };
 
   const [now] = useState(() => Date.now());
+
+  const getOrderCompletedMs = (order) => {
+    if (typeof order.completedAtMs === 'number') return order.completedAtMs;
+    let ms = parseDateMs(order.completedAt);
+    if (!isNaN(ms)) return ms;
+    if (typeof order.deliveredAtMs === 'number') return order.deliveredAtMs;
+    ms = parseDateMs(order.deliveredAt);
+    if (!isNaN(ms)) return ms;
+    ms = parseDateMs(order.createdAt || order.timestamp);
+    return isNaN(ms) ? now : ms;
+  };
+
   const justDone = myOrders.filter(o => {
     if (o.status !== 'completed') return false;
-    const completedMs = parseDateMs(o.completedAt);
-    if (isNaN(completedMs)) return true;
+    const completedMs = getOrderCompletedMs(o);
     return (now - completedMs) < 2 * 60 * 60 * 1000;
   });
 
   const history = myOrders.filter(o => {
     if (!['completed', 'cancelled'].includes(o.status)) return false;
     if (o.status === 'completed') {
-      const completedMs = parseDateMs(o.completedAt);
-      if (isNaN(completedMs)) return false;
+      const completedMs = getOrderCompletedMs(o);
       if ((now - completedMs) < 2 * 60 * 60 * 1000) return false;
     }
     return true;
