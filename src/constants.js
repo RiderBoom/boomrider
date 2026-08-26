@@ -18,6 +18,25 @@ export const INITIAL_CONFIG = {
 
 export const USER_LOCATION = { lat: 13.7563, lng: 100.5018 };
 
+export const DEFAULT_CATEGORIES = [
+  "อาหารตามสั่ง",
+  "ก๋วยเตี๋ยว",
+  "เครื่องดื่ม & ชาไข่มุก",
+  "ของหวาน & เบเกอรี่",
+  "อาหารญี่ปุ่น & เกาหลี",
+  "ฟาสต์ฟู้ด",
+  "อาหารอีสาน / ส้มตำ",
+  "ของทานเล่น"
+];
+
+export const MENU_TAGS = [
+  "เมนูแนะนำ",
+  "ขายดี",
+  "เผ็ดเล็กน้อย",
+  "มังสวิรัติ",
+  "ลดราคา"
+];
+
 export const INITIAL_RESTAURANTS = [];
 export const INITIAL_RIDERS = [];
 export const INITIAL_MENU_ITEMS = {};

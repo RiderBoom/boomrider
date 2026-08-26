@@ -2,10 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Utensils, Package, Search, ArrowLeft, Star, Clock,
   MapPin, Navigation, Plus, Minus, X, Tag, CheckCircle,
-  ChefHat, Crosshair, Banknote,
+  ChefHat, Crosshair, Banknote, Sparkles, SlidersHorizontal,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getDistanceFromLatLonInKm } from '../../utils';
+import { DEFAULT_CATEGORIES } from '../../constants';
 import RestaurantCard from '../RestaurantCard';
 import InteractiveMap from '../InteractiveMap';
 
@@ -41,6 +42,10 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   const [promoResult, setPromoResult] = useState(null);
   const [showPromoField, setShowPromoField] = useState(false);
 
+  // Modal for selecting item options / toppings
+  const [selectedMenuItem, setSelectedMenuItem] = useState(null);
+  const [selectedOptions, setSelectedOptions]   = useState([]);
+
   const handleCartQty = (itemId, delta) => {
     setCart(prev =>
       prev.map(c => c.id === itemId ? { ...c, qty: c.qty + delta } : c).filter(c => c.qty > 0),
@@ -63,9 +68,35 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   const promoDiscount = promoResult?.valid ? (promoResult.discount || 0) : 0;
 
   const categories = useMemo(() => {
-    const cats = [...new Set(restaurants.filter(r => r.category).map(r => r.category))].sort();
-    return ['ทั้งหมด', ...cats];
+    const catsInShops = restaurants.filter(r => r.category).map(r => r.category);
+    const combined = [...new Set([...DEFAULT_CATEGORIES, ...catsInShops])].sort();
+    return ['ทั้งหมด', ...combined];
   }, [restaurants]);
+
+  const handleOpenOptionModal = (item) => {
+    if (item.options && item.options.length > 0) {
+      setSelectedMenuItem(item);
+      setSelectedOptions([]);
+    } else {
+      addToCart(item, selectedRestaurant.id, selectedRestaurant.name, selectedRestaurant.distance);
+    }
+  };
+
+  const toggleOption = (opt) => {
+    setSelectedOptions(prev => {
+      const exists = prev.some(o => o.name === opt.name);
+      if (exists) return prev.filter(o => o.name !== opt.name);
+      return [...prev, opt];
+    });
+  };
+
+  const handleConfirmAddToCart = () => {
+    if (!selectedMenuItem) return;
+    const extraPrice = selectedOptions.reduce((sum, o) => sum + (o.price || 0), 0);
+    addToCart(selectedMenuItem, selectedRestaurant.id, selectedRestaurant.name, selectedRestaurant.distance, selectedOptions, extraPrice);
+    setSelectedMenuItem(null);
+    setSelectedOptions([]);
+  };
 
   const restaurantsWithDistance = useMemo(() => restaurants.map(r => ({
     ...r,
@@ -132,14 +163,26 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900 text-sm leading-tight">{item.name}</h3>
-                        {!item.available && <span className="text-red-500 text-xs font-bold"> (หมด)</span>}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="font-semibold text-gray-900 text-sm leading-tight">{item.name}</h3>
+                          {item.tag && (
+                            <span className="bg-orange-100 text-orange-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                              <Sparkles size={9} /> {item.tag}
+                            </span>
+                          )}
+                          {!item.available && <span className="text-red-500 text-xs font-bold"> (หมด)</span>}
+                        </div>
                         <p className="text-gray-400 text-xs mt-0.5 line-clamp-2">{item.desc}</p>
                         <p className="font-bold text-gray-900 mt-1.5">฿{item.price}</p>
+                        {item.options && item.options.length > 0 && (
+                          <span className="text-[10px] text-blue-600 font-semibold flex items-center gap-0.5 mt-0.5">
+                            <SlidersHorizontal size={10} /> มีตัวเลือกเพิ่มเติม ({item.options.length})
+                          </span>
+                        )}
                       </div>
                       <button
                         disabled={!item.available}
-                        onClick={() => addToCart(item, selectedRestaurant.id, selectedRestaurant.name, selectedRestaurant.distance)}
+                        onClick={() => handleOpenOptionModal(item)}
                         className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 transition-all active:scale-90 ${item.available ? 'bg-orange-500 text-white shadow-md shadow-orange-200' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
                         aria-label={`เพิ่ม ${item.name}`}
                       >+</button>
@@ -161,8 +204,15 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
             <div className="max-h-32 overflow-y-auto mb-3 space-y-1.5">
               {cart.map(item => (
                 <div key={item.id} className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-gray-700 flex-1 truncate">{item.name}</span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm text-gray-700 block truncate font-medium">{item.name}</span>
+                    {item.selectedOptions && item.selectedOptions.length > 0 && (
+                      <span className="text-[10px] text-gray-400 block truncate">
+                        + {item.selectedOptions.map(o => o.name).join(', ')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <button onClick={() => handleCartQty(item.id, -1)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center hover:bg-orange-100 text-gray-600 hover:text-orange-600"><Minus size={14} /></button>
                     <span className="text-sm font-bold w-5 text-center">{item.qty}</span>
                     <button onClick={() => handleCartQty(item.id, 1)} className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white hover:bg-orange-600"><Plus size={14} /></button>
@@ -239,6 +289,57 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
             >
               สั่งอาหาร ฿{Math.max(0, calculateFoodTotal() + calculateDeliveryFee(cart[0].distance) - promoDiscount).toLocaleString()}
             </button>
+          </div>
+        )}
+
+        {/* Option Selection Modal */}
+        {selectedMenuItem && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+              <div className="bg-orange-500 text-white p-4 flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold text-base leading-tight">{selectedMenuItem.name}</h3>
+                  <p className="text-xs text-orange-100 mt-0.5">ราคาเริ่มต้น ฿{selectedMenuItem.price}</p>
+                </div>
+                <button onClick={() => setSelectedMenuItem(null)} className="text-white/80 hover:text-white p-1">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-4 max-h-72 overflow-y-auto">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">เลือกตัวเลือกเพิ่มเติม / ท็อปปิ้ง</p>
+                <div className="space-y-2">
+                  {selectedMenuItem.options?.map((opt, idx) => {
+                    const isSelected = selectedOptions.some(o => o.name === opt.name);
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => toggleOption(opt)}
+                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                          isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className="text-sm font-medium text-gray-800">{opt.name}</span>
+                        <span className="text-xs font-bold text-orange-600">+฿{opt.price || 0}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs text-gray-400 block">ราคารวม</span>
+                  <span className="text-lg font-black text-orange-600">
+                    ฿{selectedMenuItem.price + selectedOptions.reduce((s, o) => s + (o.price || 0), 0)}
+                  </span>
+                </div>
+                <button
+                  onClick={handleConfirmAddToCart}
+                  className="bg-orange-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-orange-600 active:scale-95 transition-all shadow-md shadow-orange-200"
+                >
+                  ใส่ตะกร้า
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
