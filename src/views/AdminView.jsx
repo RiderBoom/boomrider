@@ -279,6 +279,8 @@ export default function AdminView() {
       perKmFee: isNaN(parseFloat(editConfig.perKmFee)) ? 10 : parseFloat(editConfig.perKmFee),
       gpFood: isNaN(parseFloat(editConfig.gpFood)) ? 30 : parseFloat(editConfig.gpFood),
       gpDelivery: isNaN(parseFloat(editConfig.gpDelivery)) ? 15 : parseFloat(editConfig.gpDelivery),
+      gpRide: isNaN(parseFloat(editConfig.gpRide)) ? 15 : parseFloat(editConfig.gpRide),
+      gpService: isNaN(parseFloat(editConfig.gpService)) ? 15 : parseFloat(editConfig.gpService),
     };
     setAppConfig(cleanedConfig);
     setEditConfig(cleanedConfig);
@@ -605,7 +607,11 @@ export default function AdminView() {
                         <td className="p-4">
                           {order.type === 'food'
                             ? <><div className="font-bold text-sm">{order.restaurantName}</div><div className="text-xs text-gray-400 flex items-center"><Phone size={10} className="mr-1" /> {restaurant?.phone || '-'}</div></>
-                            : <div className="font-bold text-blue-600 text-sm">ส่งพัสดุ</div>}
+                            : order.type === 'parcel'
+                            ? <div className="font-bold text-blue-600 text-sm">ส่งพัสดุ</div>
+                            : order.type === 'ride'
+                            ? <div className="font-bold text-purple-600 text-sm">🚗 เรียกรถ ({order.vehicleType || 'Car'})</div>
+                            : <div className="font-bold text-emerald-600 text-sm">🛠️ บริการ ({order.serviceCategory || 'Service'})</div>}
                         </td>
                         <td className="p-4">
                           {rider
@@ -696,20 +702,21 @@ export default function AdminView() {
               {(() => {
                 // นับเฉพาะ orders ที่จบแล้ว (ไม่นับยกเลิก/กำลังดำเนินการ)
                 const doneStatus = ['completed', 'delivered'];
-                const food   = orders.filter(o => o.type === 'food'   && doneStatus.includes(o.status));
-                const parcel = orders.filter(o => o.type === 'parcel' && doneStatus.includes(o.status));
-                const allFood   = orders.filter(o => o.type === 'food');
-                const allParcel = orders.filter(o => o.type === 'parcel');
-                const foodGMV   = food.reduce((s, o) => s + (o.grandTotal || 0), 0);
-                const parcelGMV = parcel.reduce((s, o) => s + (o.grandTotal || 0), 0);
+                const food    = orders.filter(o => o.type === 'food'    && doneStatus.includes(o.status));
+                const parcel  = orders.filter(o => o.type === 'parcel'  && doneStatus.includes(o.status));
+                const ride    = orders.filter(o => o.type === 'ride'    && doneStatus.includes(o.status));
+                const service = orders.filter(o => o.type === 'service' && doneStatus.includes(o.status));
+
                 const foodGP    = food.reduce((s, o) => s + (o.adminGP || 0), 0);
                 const parcelGP  = parcel.reduce((s, o) => s + (o.adminGP || 0), 0);
+                const rideGP    = ride.reduce((s, o) => s + (o.adminGP || 0), 0);
+                const serviceGP = service.reduce((s, o) => s + (o.adminGP || 0), 0);
                 return (
                   <>
-                    <div className="bg-orange-50 p-4 rounded-xl text-center"><p className="text-xs text-orange-600 font-medium">อาหาร GMV (จบแล้ว)</p><p className="text-xl font-bold text-orange-700">฿{foodGMV.toLocaleString()}</p><p className="text-xs text-gray-400">{food.length}/{allFood.length} ออเดอร์</p></div>
-                    <div className="bg-orange-50 p-4 rounded-xl text-center"><p className="text-xs text-orange-600 font-medium">GP จากอาหาร</p><p className="text-xl font-bold text-orange-700">฿{foodGP.toLocaleString()}</p><p className="text-xs text-gray-400">หลังหักส่วนลด</p></div>
-                    <div className="bg-blue-50 p-4 rounded-xl text-center"><p className="text-xs text-blue-600 font-medium">พัสดุ GMV (จบแล้ว)</p><p className="text-xl font-bold text-blue-700">฿{parcelGMV.toLocaleString()}</p><p className="text-xs text-gray-400">{parcel.length}/{allParcel.length} ออเดอร์</p></div>
-                    <div className="bg-blue-50 p-4 rounded-xl text-center"><p className="text-xs text-blue-600 font-medium">GP จากพัสดุ</p><p className="text-xl font-bold text-blue-700">฿{parcelGP.toLocaleString()}</p><p className="text-xs text-gray-400">หลังหักส่วนลด</p></div>
+                    <div className="bg-orange-50 p-4 rounded-xl text-center"><p className="text-xs text-orange-600 font-medium">GP จากอาหาร</p><p className="text-xl font-bold text-orange-700">฿{foodGP.toLocaleString()}</p><p className="text-xs text-gray-400">{food.length} ออเดอร์</p></div>
+                    <div className="bg-blue-50 p-4 rounded-xl text-center"><p className="text-xs text-blue-600 font-medium">GP จากพัสดุ</p><p className="text-xl font-bold text-blue-700">฿{parcelGP.toLocaleString()}</p><p className="text-xs text-gray-400">{parcel.length} ออเดอร์</p></div>
+                    <div className="bg-purple-50 p-4 rounded-xl text-center"><p className="text-xs text-purple-600 font-medium">GP จากเรียกรถ</p><p className="text-xl font-bold text-purple-700">฿{rideGP.toLocaleString()}</p><p className="text-xs text-gray-400">{ride.length} ออเดอร์</p></div>
+                    <div className="bg-emerald-50 p-4 rounded-xl text-center"><p className="text-xs text-emerald-600 font-medium">GP จากบริการ</p><p className="text-xl font-bold text-emerald-700">฿{serviceGP.toLocaleString()}</p><p className="text-xs text-gray-400">{service.length} ออเดอร์</p></div>
                   </>
                 );
               })()}
@@ -1549,19 +1556,33 @@ export default function AdminView() {
           </div>
 
           <div className="space-y-4 mb-8">
-            <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><Percent size={16} /> ค่าคอมมิชชั่น (GP %)</h3>
+            <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><Percent size={16} /> ค่าคอมมิชชั่นตามหมวดหมู่หลัก (GP %)</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label htmlFor="admin-gp-food" className="block text-sm font-medium mb-1 text-orange-600">GP ร้านค้า (Food)</label>
+                <label htmlFor="admin-gp-food" className="block text-sm font-medium mb-1 text-orange-600">GP ส่งอาหาร (Food)</label>
                 <div className="flex items-center">
                   <input id="admin-gp-food" name="gpFood" type="number" value={editConfig.gpFood ?? ''} onChange={e => setEditConfig({ ...editConfig, gpFood: e.target.value })} className="w-full border p-2 rounded-l" autoComplete="off" />
                   <span className="bg-gray-100 border border-l-0 p-2 rounded-r text-gray-500">%</span>
                 </div>
               </div>
               <div>
-                <label htmlFor="admin-gp-delivery" className="block text-sm font-medium mb-1 text-blue-600">GP ไรเดอร์ (Delivery)</label>
+                <label htmlFor="admin-gp-delivery" className="block text-sm font-medium mb-1 text-blue-600">GP ส่งพัสดุ (Parcel / Delivery)</label>
                 <div className="flex items-center">
                   <input id="admin-gp-delivery" name="gpDelivery" type="number" value={editConfig.gpDelivery ?? ''} onChange={e => setEditConfig({ ...editConfig, gpDelivery: e.target.value })} className="w-full border p-2 rounded-l" autoComplete="off" />
+                  <span className="bg-gray-100 border border-l-0 p-2 rounded-r text-gray-500">%</span>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="admin-gp-ride" className="block text-sm font-medium mb-1 text-purple-600">GP เรียกรถรับส่ง (Ride Hailing)</label>
+                <div className="flex items-center">
+                  <input id="admin-gp-ride" name="gpRide" type="number" value={editConfig.gpRide ?? ''} onChange={e => setEditConfig({ ...editConfig, gpRide: e.target.value })} className="w-full border p-2 rounded-l" autoComplete="off" />
+                  <span className="bg-gray-100 border border-l-0 p-2 rounded-r text-gray-500">%</span>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="admin-gp-service" className="block text-sm font-medium mb-1 text-emerald-600">GP บริการทั่วไป (Services)</label>
+                <div className="flex items-center">
+                  <input id="admin-gp-service" name="gpService" type="number" value={editConfig.gpService ?? ''} onChange={e => setEditConfig({ ...editConfig, gpService: e.target.value })} className="w-full border p-2 rounded-l" autoComplete="off" />
                   <span className="bg-gray-100 border border-l-0 p-2 rounded-r text-gray-500">%</span>
                 </div>
               </div>

@@ -271,7 +271,7 @@ export default function RiderView() {
                 <div className="bg-gray-800 rounded-xl p-3 mb-4 space-y-1.5">
                   <div className="flex justify-between items-center">
                     <span className="text-white font-bold text-sm">
-                      {offerOrder.type === 'parcel' ? '📦 ส่งพัสดุ' : offerOrder.restaurantName}
+                      {offerOrder.type === 'parcel' ? '📦 ส่งพัสดุ' : offerOrder.type === 'ride' ? '🚗 เรียกรถรับส่ง' : offerOrder.type === 'service' ? '🛠️ งานบริการ' : offerOrder.restaurantName}
                     </span>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                       offerOrder.paymentMethod === 'cash'
@@ -442,7 +442,7 @@ export default function RiderView() {
             {/* Header: ร้าน / ประเภทงาน + รายได้ */}
             <div className="flex justify-between items-start mb-2">
               <div>
-                <span className="font-bold text-white">{job.restaurantName || (job.type === 'parcel' ? '📦 ส่งพัสดุ' : 'งาน')}</span>
+                <span className="font-bold text-white">{job.restaurantName || (job.type === 'parcel' ? '📦 ส่งพัสดุ' : job.type === 'ride' ? '🚗 เรียกรถรับส่ง' : job.type === 'service' ? '🛠️ งานบริการ' : 'งาน')}</span>
                 <div className="text-xs text-gray-500 mt-0.5">#{job.id.slice(-6)}</div>
               </div>
               <div className="text-right">

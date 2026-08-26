@@ -6,8 +6,10 @@ export const INITIAL_CONFIG = {
   riderRadius: 5,         // km
   baseFee: 20,            // THB
   perKmFee: 10,           // THB/km
-  gpFood: 30,             // % GP ร้านค้า
-  gpDelivery: 15,         // % GP ไรเดอร์
+  gpFood: 30,             // % GP ร้านค้า (ส่งอาหาร)
+  gpDelivery: 15,         // % GP ไรเดอร์ (ส่งพัสดุ)
+  gpRide: 15,             // % GP เรียกรถรับส่ง
+  gpService: 15,          // % GP บริการทั่วไป
   // Admin Payment Info
   adminBankName: "กสิกรไทย (KBANK)",
   adminBankAccount: "123-4-56789-0",
