@@ -60,7 +60,8 @@ export default function ActivityTab() {
     if (!dateVal) return NaN;
     if (typeof dateVal === 'number') return dateVal;
     if (typeof dateVal === 'string') {
-      const parts = dateVal.trim().split(' ');
+      const trimmed = dateVal.trim();
+      const parts = trimmed.split(' ');
       if (parts.length >= 1) {
         const dateParts = parts[0].split('/');
         if (dateParts.length === 3) {
@@ -77,6 +78,9 @@ export default function ActivityTab() {
           }
         }
       }
+      const isoFormatted = trimmed.includes(' ') && !trimmed.includes('T') ? trimmed.replace(' ', 'T') : trimmed;
+      const parsedIso = new Date(isoFormatted).getTime();
+      if (!isNaN(parsedIso)) return parsedIso;
     }
     const t = new Date(dateVal).getTime();
     if (!isNaN(t)) return t;
