@@ -277,6 +277,8 @@ export default function AdminView() {
       riderRadius: isNaN(parseFloat(editConfig.riderRadius)) ? 5 : parseFloat(editConfig.riderRadius),
       baseFee: isNaN(parseFloat(editConfig.baseFee)) ? 20 : parseFloat(editConfig.baseFee),
       perKmFee: isNaN(parseFloat(editConfig.perKmFee)) ? 10 : parseFloat(editConfig.perKmFee),
+      rideBaseFee: isNaN(parseFloat(editConfig.rideBaseFee)) ? 20 : parseFloat(editConfig.rideBaseFee),
+      ridePerKmFee: isNaN(parseFloat(editConfig.ridePerKmFee)) ? 10 : parseFloat(editConfig.ridePerKmFee),
       gpFood: isNaN(parseFloat(editConfig.gpFood)) ? 30 : parseFloat(editConfig.gpFood),
       gpDelivery: isNaN(parseFloat(editConfig.gpDelivery)) ? 15 : parseFloat(editConfig.gpDelivery),
       gpRide: isNaN(parseFloat(editConfig.gpRide)) ? 15 : parseFloat(editConfig.gpRide),
@@ -1549,9 +1551,83 @@ export default function AdminView() {
               <div><label htmlFor="admin-rider-radius" className="block text-sm font-medium mb-1">Rider Job Radius</label><input id="admin-rider-radius" name="riderRadius" type="number" value={editConfig.riderRadius ?? ''} onChange={e => setEditConfig({ ...editConfig, riderRadius: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
             </div>
             <div className="space-y-4">
-              <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><DollarSign size={16} /> ค่าบริการขนส่ง</h3>
+              <h3 className="font-bold text-gray-500 border-b pb-2 flex items-center gap-2"><DollarSign size={16} /> ค่าบริการขนส่ง (อาหาร/พัสดุ)</h3>
               <div><label htmlFor="admin-base-fee" className="block text-sm font-medium mb-1">Base Fee (฿)</label><input id="admin-base-fee" name="baseFee" type="number" value={editConfig.baseFee ?? ''} onChange={e => setEditConfig({ ...editConfig, baseFee: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
               <div><label htmlFor="admin-per-km-fee" className="block text-sm font-medium mb-1">Per Km Fee (฿/กม.)</label><input id="admin-per-km-fee" name="perKmFee" type="number" value={editConfig.perKmFee ?? ''} onChange={e => setEditConfig({ ...editConfig, perKmFee: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+            </div>
+            <div className="space-y-4">
+              <h3 className="font-bold text-purple-600 border-b pb-2 flex items-center gap-2"><Car size={16} /> ค่าบริการเรียกรถรับส่ง (Ride)</h3>
+              <div><label htmlFor="admin-ride-base-fee" className="block text-sm font-medium mb-1">Ride Base Fee (฿)</label><input id="admin-ride-base-fee" name="rideBaseFee" type="number" value={editConfig.rideBaseFee ?? editConfig.baseFee ?? ''} onChange={e => setEditConfig({ ...editConfig, rideBaseFee: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+              <div><label htmlFor="admin-ride-per-km-fee" className="block text-sm font-medium mb-1">Ride Per Km Fee (฿/กม.)</label><input id="admin-ride-per-km-fee" name="ridePerKmFee" type="number" value={editConfig.ridePerKmFee ?? editConfig.perKmFee ?? ''} onChange={e => setEditConfig({ ...editConfig, ridePerKmFee: e.target.value })} className="w-full border p-2 rounded" autoComplete="off" /></div>
+            </div>
+          </div>
+
+          {/* Extra Services Management */}
+          <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-8">
+            <div className="flex items-center justify-between border-b border-emerald-200 pb-2 mb-4">
+              <h3 className="font-bold text-emerald-800 flex items-center gap-2">
+                <Sliders size={18} /> ตัวเลือกตัวเลือกบริการทั่วไป (Service)
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  const name = prompt('ระบุชื่อบริการเพิ่มเติม:');
+                  if (!name) return;
+                  const priceStr = prompt('ระบุราคาเริ่มต้น (บาท):', '300');
+                  const price = parseFloat(priceStr) || 0;
+                  const list = editConfig.extraServices ? [...editConfig.extraServices] : [];
+                  list.push({ name, price });
+                  setEditConfig({ ...editConfig, extraServices: list });
+                }}
+                className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-emerald-700 flex items-center gap-1"
+              >
+                <PlusCircle size={14} /> เพิ่มตัวเลือกบริการ
+              </button>
+            </div>
+            <div className="space-y-2">
+              {(editConfig.extraServices || []).map((srv, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-emerald-100 shadow-sm">
+                  <input
+                    type="text"
+                    value={srv.name}
+                    onChange={e => {
+                      const list = [...(editConfig.extraServices || [])];
+                      list[idx] = { ...list[idx], name: e.target.value };
+                      setEditConfig({ ...editConfig, extraServices: list });
+                    }}
+                    placeholder="ชื่อบริการ"
+                    className="flex-1 border p-1.5 rounded text-sm"
+                  />
+                  <div className="flex items-center gap-1 w-32 shrink-0">
+                    <span className="text-xs text-gray-500">฿</span>
+                    <input
+                      type="number"
+                      value={srv.price}
+                      onChange={e => {
+                        const list = [...(editConfig.extraServices || [])];
+                        list[idx] = { ...list[idx], price: parseFloat(e.target.value) || 0 };
+                        setEditConfig({ ...editConfig, extraServices: list });
+                      }}
+                      placeholder="ราคา"
+                      className="w-full border p-1.5 rounded text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const list = (editConfig.extraServices || []).filter((_, i) => i !== idx);
+                      setEditConfig({ ...editConfig, extraServices: list });
+                    }}
+                    className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                    title="ลบตัวเลือก"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+              {(!editConfig.extraServices || editConfig.extraServices.length === 0) && (
+                <p className="text-xs text-gray-400 text-center py-3">ยังไม่มีตัวเลือกบริการเพิ่มเติม กด "เพิ่มตัวเลือกบริการ" เพื่อสร้างใหม่</p>
+              )}
             </div>
           </div>
 

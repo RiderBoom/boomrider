@@ -24,6 +24,7 @@ export function useOrderActions(deps) {
   } = deps;
 
   const calculateDeliveryFee = (distance) => appConfig.baseFee + (Math.ceil(distance) * appConfig.perKmFee);
+  const calculateRideFee     = (distance) => (appConfig.rideBaseFee ?? appConfig.baseFee) + (Math.ceil(distance) * (appConfig.ridePerKmFee ?? appConfig.perKmFee));
   const calculateFoodTotal   = () => cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const isPending = (type) => pendingRequests.some(r => r.type === type && r.userId === userProfile.id);
   const hasPendingCancelRequest = (orderId) =>
@@ -225,7 +226,7 @@ export function useOrderActions(deps) {
       rideDetails.pickupLocation?.lat || USER_LOCATION.lat, rideDetails.pickupLocation?.lng || USER_LOCATION.lng,
       rideDetails.dropoffLocation?.lat || USER_LOCATION.lat, rideDetails.dropoffLocation?.lng || USER_LOCATION.lng
     ) || 3;
-    const grandTotal = calculateDeliveryFee(dist);
+    const grandTotal = calculateRideFee(dist);
     const uid = currentUser?.id || userProfile?.id || '';
 
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
@@ -604,7 +605,7 @@ export function useOrderActions(deps) {
   };
 
   return {
-    calculateDeliveryFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
+    calculateDeliveryFee, calculateRideFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
     addToCart, placeOrder, placeParcelOrder, placeRideOrder, placeServiceOrder, acceptOrder, updateOrderStatus,
     initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
     requestCancelOrder, requestCancelByRole,
