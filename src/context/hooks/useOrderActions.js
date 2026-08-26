@@ -50,17 +50,36 @@ export function useOrderActions(deps) {
     };
   };
 
-  const addToCart = (item, restaurantId, restaurantName, distance) => {
+  const addToCart = (item, restaurantId, restaurantName, distance, selectedOptions = [], optionsExtraPrice = 0) => {
     if (!item.available) return notifySystem('ขออภัย', 'เมนูนี้หมดแล้ว', 'error');
+
+    const itemPrice = item.price + optionsExtraPrice;
+    const optionKeys = selectedOptions.map(o => `${o.name}:${o.price}`).join('|');
+    const cartItemId = optionKeys ? `${item.id}-${optionKeys}` : String(item.id);
+
+    const newItemObj = {
+      ...item,
+      id: cartItemId,
+      originalId: item.id,
+      name: item.name,
+      price: itemPrice,
+      basePrice: item.price,
+      selectedOptions: selectedOptions || [],
+      restaurantId,
+      restaurantName,
+      qty: 1,
+      distance
+    };
+
     if (cart.length > 0 && cart[0].restaurantId !== restaurantId) {
       if (!window.confirm('คุณต้องการเริ่มออเดอร์ใหม่จากร้านนี้ใช่ไหม? (ตะกร้าเก่าจะถูกลบ)')) return;
-      setCart([{ ...item, restaurantId, restaurantName, qty: 1, distance }]);
+      setCart([newItemObj]);
     } else {
-      const existing = cart.find(c => c.id === item.id);
+      const existing = cart.find(c => c.id === cartItemId);
       if (existing) {
-        setCart(cart.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c));
+        setCart(cart.map(c => c.id === cartItemId ? { ...c, qty: c.qty + 1 } : c));
       } else {
-        setCart([...cart, { ...item, restaurantId, restaurantName, qty: 1, distance }]);
+        setCart([...cart, newItemObj]);
       }
       notifySystem('เพิ่มลงตะกร้า', `เพิ่ม ${item.name} แล้ว`, 'success');
     }
@@ -100,7 +119,14 @@ export function useOrderActions(deps) {
       pickupLocation: restaurant?.location || USER_LOCATION,
       location: addr.location || USER_LOCATION,
       address: addr.address,
-      items: cart.map(({ id, name, price, qty }) => ({ id, name, price, qty })),
+      items: cart.map(({ id, originalId, name, price, qty, selectedOptions }) => ({
+        id,
+        originalId: originalId || id,
+        name,
+        price,
+        qty,
+        selectedOptions: selectedOptions || []
+      })),
       foodTotal,
       deliveryFee,
       promoDiscount,

@@ -7,7 +7,7 @@ import {
   TrendingUp, BarChart2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { STATUS_LABELS } from '../constants';
+import { STATUS_LABELS, MENU_TAGS } from '../constants';
 import { formatDateTimeFromMs, getMerchantNotifSound, setMerchantNotifSound, playOrderNotificationSound } from '../utils';
 import InteractiveMap from '../components/InteractiveMap';
 
@@ -79,7 +79,29 @@ export default function MerchantView() {
 
   const openEditMenu = (item) => {
     setIsEditingMenu(item ? item.id : 'new');
-    setEditForm(item ? { ...item } : { name: '', price: '', desc: '', image: '' });
+    setEditForm(item ? { ...item, tag: item.tag || '', options: item.options || [] } : { name: '', price: '', desc: '', image: '', tag: '', options: [] });
+  };
+
+  const addEditFormOption = () => {
+    setEditForm(prev => ({
+      ...prev,
+      options: [...(prev.options || []), { name: '', price: 0 }]
+    }));
+  };
+
+  const updateEditFormOption = (index, field, value) => {
+    setEditForm(prev => {
+      const opts = [...(prev.options || [])];
+      opts[index] = { ...opts[index], [field]: field === 'price' ? parseFloat(value) || 0 : value };
+      return { ...prev, options: opts };
+    });
+  };
+
+  const removeEditFormOption = (index) => {
+    setEditForm(prev => ({
+      ...prev,
+      options: (prev.options || []).filter((_, i) => i !== index)
+    }));
   };
 
   const saveMenu = () => {
@@ -402,6 +424,63 @@ export default function MerchantView() {
                 <input id="merchant-menu-price-input" name="price" type="number" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} placeholder="ราคา (บาท)" className="w-full border p-2 rounded" autoComplete="off" aria-label="ราคา (บาท)" />
                 <label htmlFor="merchant-menu-desc-input" className="sr-only">รายละเอียด</label>
                 <textarea id="merchant-menu-desc-input" name="desc" value={editForm.desc} onChange={e => setEditForm({ ...editForm, desc: e.target.value })} placeholder="รายละเอียด" className="w-full border p-2 rounded" autoComplete="off" aria-label="รายละเอียด" />
+
+                <div>
+                  <label htmlFor="merchant-menu-tag-select" className="block text-xs font-semibold text-gray-600 mb-1">ป้ายกำกับ (Tag)</label>
+                  <select
+                    id="merchant-menu-tag-select"
+                    name="tag"
+                    value={editForm.tag || ''}
+                    onChange={e => setEditForm({ ...editForm, tag: e.target.value })}
+                    className="w-full border p-2 rounded text-sm"
+                  >
+                    <option value="">-- ไม่มีป้ายกำกับ --</option>
+                    {MENU_TAGS.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Additional Options / Toppings */}
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-xs font-bold text-gray-700">ตัวเลือกเพิ่มเติม / ท็อปปิ้ง</label>
+                    <button
+                      type="button"
+                      onClick={addEditFormOption}
+                      className="text-xs text-orange-600 font-bold flex items-center gap-1 hover:underline"
+                    >
+                      <Plus size={12} /> เพิ่มตัวเลือก
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {(editForm.options || []).map((opt, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder="ชื่อตัวเลือก (เช่น ไข่ดาว)"
+                          value={opt.name}
+                          onChange={e => updateEditFormOption(idx, 'name', e.target.value)}
+                          className="flex-1 border p-1.5 text-xs rounded"
+                        />
+                        <input
+                          type="number"
+                          placeholder="ราคาเพิ่ม (฿)"
+                          value={opt.price}
+                          onChange={e => updateEditFormOption(idx, 'price', e.target.value)}
+                          className="w-20 border p-1.5 text-xs rounded"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeEditFormOption(idx)}
+                          className="text-red-500 hover:text-red-700 p-1"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <div className="mb-2">
                   <label htmlFor="merchant-menu-photo-file" className="block text-sm text-gray-500 mb-1">รูปภาพอาหาร</label>
                   <label htmlFor="merchant-menu-photo-file" className={`w-full border-2 border-dashed p-4 rounded-lg text-center cursor-pointer block text-gray-500 hover:bg-gray-50 ${editForm._imageUploading ? 'opacity-60 pointer-events-none' : ''}`}>

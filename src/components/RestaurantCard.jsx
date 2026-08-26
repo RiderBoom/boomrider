@@ -38,8 +38,15 @@ const RestaurantCard = ({ rest, appConfig, onSelect, userProfile }) => {
       </div>
       <div className="p-3">
         <div className="flex justify-between items-start">
-          <h3 className="font-bold text-base text-gray-800 leading-tight">{rest.name}</h3>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+          <div>
+            <h3 className="font-bold text-base text-gray-800 leading-tight">{rest.name}</h3>
+            {rest.featured && (
+              <span className="inline-block bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded mr-1.5 mt-0.5">
+                ⭐ ร้านแนะนำ
+              </span>
+            )}
+          </div>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-1 ${
             rest.distance <= appConfig.riderRadius
               ? 'bg-green-100 text-green-700'
               : 'bg-orange-100 text-orange-600'
