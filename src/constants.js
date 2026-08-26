@@ -6,10 +6,19 @@ export const INITIAL_CONFIG = {
   riderRadius: 5,         // km
   baseFee: 20,            // THB
   perKmFee: 10,           // THB/km
+  rideBaseFee: 20,        // THB (เรียกรถรับส่ง)
+  ridePerKmFee: 10,       // THB/km (เรียกรถรับส่ง)
   gpFood: 30,             // % GP ร้านค้า (ส่งอาหาร)
   gpDelivery: 15,         // % GP ไรเดอร์ (ส่งพัสดุ)
   gpRide: 15,             // % GP เรียกรถรับส่ง
   gpService: 15,          // % GP บริการทั่วไป
+  // Extra Service options for Service Category
+  extraServices: [
+    { name: "ทำความสะอาดบ้าน", price: 350 },
+    { name: "ล้างแอร์ / ซ่อมแอร์", price: 500 },
+    { name: "ซ่อมประปา / ไฟฟ้า", price: 400 },
+    { name: "ขนย้ายสิ่งของ", price: 600 }
+  ],
   // Admin Payment Info
   adminBankName: "กสิกรไทย (KBANK)",
   adminBankAccount: "123-4-56789-0",

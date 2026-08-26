@@ -51,6 +51,33 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
     serviceCategory: 'ทำความสะอาดบ้าน', note: '', preferredDate: '', preferredTime: '10:00', price: 350
   });
 
+  const handleRideMapSelect = async (loc) => {
+    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return;
+    const formattedCoords = `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+    const currentTarget = rideMapTarget;
+    if (currentTarget === 'pickup') {
+      setRideDetails(prev => ({ ...prev, pickup: formattedCoords, pickupLocation: loc }));
+    } else {
+      setRideDetails(prev => ({ ...prev, dropoff: formattedCoords, dropoffLocation: loc }));
+    }
+
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json&accept-language=th`,
+        { headers: { 'Accept-Language': 'th' } },
+      );
+      const data = await res.json();
+      const addr = data.display_name?.split(',').slice(0, 3).join(',') || formattedCoords;
+      if (currentTarget === 'pickup') {
+        setRideDetails(prev => ({ ...prev, pickup: addr }));
+      } else {
+        setRideDetails(prev => ({ ...prev, dropoff: addr }));
+      }
+    } catch {
+      // Keep formattedCoords
+    }
+  };
+
   // Modal for selecting item options / toppings
   const [selectedMenuItem, setSelectedMenuItem] = useState(null);
   const [selectedOptions, setSelectedOptions]   = useState([]);
@@ -541,7 +568,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
         <div className="bg-white p-5 rounded-xl shadow-sm">
           <h2 className="font-bold text-lg mb-4 text-purple-600 flex items-center"><Car className="mr-2" /> บริการเรียกรถรับส่ง (Ride)</h2>
           <div className="space-y-3">
-            <p className="text-xs text-gray-500 text-center">ค่าบริการเดินทางเริ่มต้น {appConfig.baseFee}บ. + {appConfig.perKmFee}บ./กม.</p>
+            <p className="text-xs text-gray-500 text-center">ค่าบริการเดินทางเริ่มต้น {appConfig.rideBaseFee ?? appConfig.baseFee}บ. + {appConfig.ridePerKmFee ?? appConfig.perKmFee}บ./กม.</p>
             <div className="mb-4">
               <div className="flex gap-2 mb-2">
                 <button
@@ -564,13 +591,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
                     ? (rideDetails.pickupLocation || userProfile?.location)
                     : (rideDetails.dropoffLocation || userProfile?.location)
                 }
-                onLocationSelect={(lat, lng, addr) => {
-                  if (rideMapTarget === 'pickup') {
-                    setRideDetails(prev => ({ ...prev, pickup: addr || `${lat.toFixed(4)}, ${lng.toFixed(4)}`, pickupLocation: { lat, lng } }));
-                  } else {
-                    setRideDetails(prev => ({ ...prev, dropoff: addr || `${lat.toFixed(4)}, ${lng.toFixed(4)}`, dropoffLocation: { lat, lng } }));
-                  }
-                }}
+                onLocationSelect={handleRideMapSelect}
               />
             </div>
             <div>
@@ -622,15 +643,27 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
                 value={serviceDetails.serviceCategory}
                 onChange={e => {
                   const cat = e.target.value;
-                  const priceMap = { 'ทำความสะอาดบ้าน': 350, 'ล้างแอร์ / ซ่อมแอร์': 500, 'ซ่อมประปา / ไฟฟ้า': 400, 'ขนย้ายสิ่งของ': 600 };
-                  setServiceDetails(prev => ({ ...prev, serviceCategory: cat, price: priceMap[cat] || 400 }));
+                  const serviceList = appConfig.extraServices || [
+                    { name: 'ทำความสะอาดบ้าน', price: 350 },
+                    { name: 'ล้างแอร์ / ซ่อมแอร์', price: 500 },
+                    { name: 'ซ่อมประปา / ไฟฟ้า', price: 400 },
+                    { name: 'ขนย้ายสิ่งของ', price: 600 }
+                  ];
+                  const match = serviceList.find(s => s.name === cat);
+                  setServiceDetails(prev => ({ ...prev, serviceCategory: cat, price: match ? match.price : 400 }));
                 }}
                 className="w-full border rounded-lg p-2 text-sm bg-gray-50"
               >
-                <option value="ทำความสะอาดบ้าน">🧹 แม่บ้านทำความสะอาด (฿350)</option>
-                <option value="ล้างแอร์ / ซ่อมแอร์">❄️ ล้างแอร์ / ซ่อมแอร์ (฿500)</option>
-                <option value="ซ่อมประปา / ไฟฟ้า">🔧 ซ่อมประปา / ไฟฟ้า (฿400)</option>
-                <option value="ขนย้ายสิ่งของ">📦 ขนย้ายสิ่งของ / เฟอร์นิเจอร์ (฿600)</option>
+                {(appConfig.extraServices || [
+                  { name: 'ทำความสะอาดบ้าน', price: 350 },
+                  { name: 'ล้างแอร์ / ซ่อมแอร์', price: 500 },
+                  { name: 'ซ่อมประปา / ไฟฟ้า', price: 400 },
+                  { name: 'ขนย้ายสิ่งของ', price: 600 }
+                ]).map((srv, idx) => (
+                  <option key={idx} value={srv.name}>
+                    🔧 {srv.name} (฿{srv.price})
+                  </option>
+                ))}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-2">
