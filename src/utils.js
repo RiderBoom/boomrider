@@ -12,6 +12,59 @@ export const formatDateTime = () => _fmt(new Date());
 export const formatDateTimeFromMs = (ms) => _fmt(new Date(Number(ms)));
 
 /**
+ * แปลงค่าวันที่ในรูปแบบต่างๆ (number ms, ISO string, DD/MM/YYYY HH:mm:ss string) เป็น epoch milliseconds (ms)
+ * @param {any} dateVal
+ * @returns {number} epoch ms หรือ NaN หากไม่สามารถแปลงได้
+ */
+export const parseDateMs = (dateVal) => {
+  if (dateVal === null || dateVal === undefined || dateVal === '') return NaN;
+  if (typeof dateVal === 'number') return dateVal;
+  if (typeof dateVal === 'string') {
+    const trimmed = dateVal.trim();
+    const parts = trimmed.split(' ');
+    if (parts.length >= 1) {
+      const dateParts = parts[0].split('/');
+      if (dateParts.length === 3) {
+        const [d, m, y] = dateParts.map(Number);
+        if (d > 0 && d <= 31 && m > 0 && m <= 12 && y >= 2000) {
+          let hh = 0, mm = 0, ss = 0;
+          if (parts[1]) {
+            const timeParts = parts[1].split(':').map(Number);
+            hh = timeParts[0] || 0;
+            mm = timeParts[1] || 0;
+            ss = timeParts[2] || 0;
+          }
+          return new Date(y, m - 1, d, hh, mm, ss).getTime();
+        }
+      }
+    }
+    const isoFormatted = trimmed.includes(' ') && !trimmed.includes('T') ? trimmed.replace(' ', 'T') : trimmed;
+    const parsedIso = new Date(isoFormatted).getTime();
+    if (!isNaN(parsedIso)) return parsedIso;
+  }
+  const t = new Date(dateVal).getTime();
+  if (!isNaN(t)) return t;
+  return NaN;
+};
+
+/**
+ * ตรวจสอบว่าวันที่สองค่าเป็นวันเดียวกันใน Local Timezone หรือไม่
+ * @param {any} dateVal1
+ * @param {any} dateVal2
+ * @returns {boolean}
+ */
+export const isSameDay = (dateVal1, dateVal2) => {
+  const ms1 = parseDateMs(dateVal1);
+  const ms2 = parseDateMs(dateVal2);
+  if (isNaN(ms1) || isNaN(ms2)) return false;
+  const d1 = new Date(ms1);
+  const d2 = new Date(ms2);
+  return d1.getFullYear() === d2.getFullYear() &&
+         d1.getMonth() === d2.getMonth() &&
+         d1.getDate() === d2.getDate();
+};
+
+/**
  * บีบอัดรูปภาพผ่าน Canvas ก่อนเก็บ — คืนค่า base64 ขนาดเล็ก
  * @param {File} file         — ไฟล์รูปจาก <input type="file">
  * @param {number} maxWidth   — ความกว้างสูงสุด (px)

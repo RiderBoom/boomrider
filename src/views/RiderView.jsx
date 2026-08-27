@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
-import { getDistanceFromLatLonInKm, formatDateTimeFromMs, formatDateTime, compressImage } from '../utils';
+import { getDistanceFromLatLonInKm, formatDateTimeFromMs, compressImage, parseDateMs, isSameDay } from '../utils';
 import { USER_LOCATION } from '../constants';
 import { useJobOffer } from '../context/hooks/useJobOffer';
 
@@ -223,13 +223,41 @@ export default function RiderView() {
     ['delivered', 'completed', 'cancelled'].includes(o.status) && o.riderId === me.id,
   );
 
-  // Earnings stats
+  // Earnings stats & today calculation helper
+  const getJobIncome = (j) => {
+    if (typeof j.riderIncome === 'number') return j.riderIncome;
+    if (j.type === 'parcel') {
+      const gp = (appConfig.gpDelivery ?? 15) / 100;
+      return (j.deliveryFee || j.grandTotal || 0) * (1 - gp);
+    }
+    if (j.type === 'ride') {
+      const gp = (appConfig.gpRide ?? 15) / 100;
+      return (j.grandTotal || j.deliveryFee || 0) * (1 - gp);
+    }
+    if (j.type === 'service') {
+      const gp = (appConfig.gpService ?? 15) / 100;
+      return (j.grandTotal || j.deliveryFee || 0) * (1 - gp);
+    }
+    return j.deliveryFee || 0;
+  };
+
+  const getJobDoneMs = (j) => {
+    if (typeof j.deliveredAtMs === 'number') return j.deliveredAtMs;
+    if (typeof j.completedAtMs === 'number') return j.completedAtMs;
+    let ms = parseDateMs(j.deliveredAt);
+    if (!isNaN(ms)) return ms;
+    ms = parseDateMs(j.completedAt);
+    if (!isNaN(ms)) return ms;
+    if (typeof j.createdAtMs === 'number') return j.createdAtMs;
+    ms = parseDateMs(j.createdAt || j.timestamp);
+    return isNaN(ms) ? NaN : ms;
+  };
+
   const completedJobs = historyJobs.filter(j => ['delivered', 'completed'].includes(j.status));
-  const todayStr = formatDateTime().slice(0, 10); // DD/MM/YYYY → "08/06/2026"
-  const jobDate = (j) => (j.deliveredAt || j.completedAt || j.createdAt || '');
-  const todayJobs = completedJobs.filter(j => jobDate(j).startsWith(todayStr));
-  const todayEarning = todayJobs.reduce((s, j) => s + (j.riderIncome || 0), 0);
-  const totalEarning = completedJobs.reduce((s, j) => s + (j.riderIncome || 0), 0);
+  const nowMs = Date.now();
+  const todayJobs = completedJobs.filter(j => isSameDay(getJobDoneMs(j), nowMs));
+  const todayEarning = todayJobs.reduce((s, j) => s + getJobIncome(j), 0);
+  const totalEarning = completedJobs.reduce((s, j) => s + getJobIncome(j), 0);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white pt-14 pb-20">
@@ -1258,16 +1286,16 @@ export default function RiderView() {
               historyJobs.map(job => {
                 // ✅ FIX: ตรวจสอบทั้ง 'delivered' และ 'completed' (status เปลี่ยนเป็น completed ทันที)
                 const isSuccess = job.status === 'delivered' || job.status === 'completed';
-                const income = typeof job.riderIncome === 'number' ? job.riderIncome : 0;
+                const income = getJobIncome(job);
 
                 return (
                   <div key={job.id} className="bg-gray-800 p-3 rounded-xl border border-gray-700 mb-2">
                     <div className="flex justify-between items-start">
                       <div className="flex-1 min-w-0 mr-3">
                         <div className="font-bold text-sm text-white truncate">
-                          {job.restaurantName || 'ส่งพัสดุ'}
+                          {job.restaurantName || (job.type === 'parcel' ? '📦 ส่งพัสดุ' : job.type === 'ride' ? '🚗 เรียกรถรับส่ง' : job.type === 'service' ? '🛠️ งานบริการ' : 'งาน')}
                         </div>
-                        <div className="text-xs text-gray-500 mt-0.5">{job.deliveredAt || job.createdAt || job.timestamp}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{job.deliveredAt || job.completedAt || job.createdAt || job.timestamp}</div>
                         {job.status === 'cancelled' && (
                           <div className="text-xs text-red-400 mt-0.5">
                             ยกเลิก: {job.cancelReason || 'ไม่ระบุเหตุผล'}
