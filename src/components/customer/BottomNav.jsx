@@ -1,8 +1,10 @@
 import React from 'react';
 import { Home, ShoppingBag, User, ShieldAlert } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useApp } from '../../context/AppContext';
 
 export default function BottomNav() {
+  const { t } = useTranslation();
   const {
     activeTab, setActiveTab,
     activeRole, setActiveRole,
@@ -20,9 +22,9 @@ export default function BottomNav() {
   ).length;
 
   const tabs = [
-    { id: 'home',     icon: Home,        label: 'หน้าแรก' },
-    { id: 'activity', icon: ShoppingBag, label: 'ออเดอร์', badge: activityBadge },
-    { id: 'profile',  icon: User,        label: 'บัญชี' },
+    { id: 'home',     icon: Home,        label: t('nav_home') },
+    { id: 'activity', icon: ShoppingBag, label: t('nav_activity'), badge: activityBadge },
+    { id: 'profile',  icon: User,        label: t('nav_profile') },
     ...(isAdmin ? [{ id: 'admin', icon: ShieldAlert, label: 'แอดมิน', badge: pendingRequests.length, isRole: true }] : []),
   ];
 
