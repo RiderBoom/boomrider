@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import {
   Bike, User, MessageSquare, AlertCircle,
   ToggleLeft, ToggleRight, TrendingUp, Clock, DollarSign, Star, Loader, MapPin,
-  XCircle, X, Wallet, CreditCard, ArrowUpCircle, ArrowDownCircle, Camera, Bell,
+  XCircle, X, Wallet, CreditCard, ArrowUpCircle, ArrowDownCircle, Camera, Bell, Sun, Moon, Globe,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
 import { getDistanceFromLatLonInKm, formatDateTimeFromMs, compressImage, parseDateMs, isSameDay } from '../utils';
@@ -11,6 +12,7 @@ import { USER_LOCATION } from '../constants';
 import { useJobOffer } from '../context/hooks/useJobOffer';
 
 export default function RiderView() {
+  const { t, i18n } = useTranslation();
   const {
     setActiveRole,
     riderTab, setRiderTab,
@@ -87,6 +89,22 @@ export default function RiderView() {
   const [showRiderCancelModal, setShowRiderCancelModal] = useState(false);
   const [riderCancelOrderId, setRiderCancelOrderId]     = useState(null);
   const [riderCancelReason, setRiderCancelReason]       = useState('');
+
+  // Dark mode toggle (persisted per rider)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const key = `boomrider_rider_darkmode_${userProfile.id || currentUser?.id}`;
+    const saved = localStorage.getItem(key);
+    return saved === null ? true : saved === 'true'; // default dark for night driving
+  });
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => {
+      const next = !prev;
+      const key = `boomrider_rider_darkmode_${userProfile.id || currentUser?.id}`;
+      localStorage.setItem(key, String(next));
+      return next;
+    });
+  };
 
   // Online/offline toggle (persisted per rider)
   const [isOnline, setIsOnline] = useState(() => {
@@ -260,7 +278,7 @@ export default function RiderView() {
   const totalEarning = completedJobs.reduce((s, j) => s + getJobIncome(j), 0);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white pt-14 pb-20">
+    <div className={`min-h-screen pt-14 pb-20 transition-colors duration-200 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
 
       {/* ══ Grab Auto-Dispatch: Job Offer Popup ══════════════════════════════ */}
       {jobOffer && (() => {
@@ -369,7 +387,32 @@ export default function RiderView() {
       <div className="p-4 bg-gray-800 shadow-lg">
         <div className="flex justify-between items-center mb-3">
           <h1 className="text-xl font-bold flex items-center"><Bike className="mr-2 text-green-400" /> BoomRider</h1>
-          <button onClick={() => setActiveRole('customer')} className="text-xs bg-gray-700 px-3 py-1.5 rounded-lg">← กลับ</button>
+          <div className="flex items-center gap-2">
+            {/* Language Switcher */}
+            <button
+              onClick={() => {
+                const nextLang = i18n.language === 'th' ? 'en' : 'th';
+                i18n.changeLanguage(nextLang);
+                localStorage.setItem('boomrider_lang', nextLang);
+              }}
+              className="bg-gray-700 text-gray-200 hover:bg-gray-600 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all"
+            >
+              <Globe size={14} className="text-green-400" />
+              <span>{i18n.language === 'th' ? 'EN' : 'TH'}</span>
+            </button>
+
+            {/* Dark Mode Switcher */}
+            <button
+              onClick={toggleDarkMode}
+              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${
+                isDarkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+              }`}
+              title={isDarkMode ? t('light_mode') : t('dark_mode')}
+            >
+              {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+            <button onClick={() => setActiveRole('customer')} className="text-xs bg-gray-700 text-white px-3 py-1.5 rounded-lg">{t('back')}</button>
+          </div>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center text-sm text-gray-300">
@@ -434,17 +477,17 @@ export default function RiderView() {
           <div className="bg-gray-700 rounded-xl p-2.5 text-center">
             <DollarSign size={14} className="text-green-400 mx-auto mb-0.5" />
             <div className="text-sm font-bold text-green-400">฿{todayEarning.toFixed(0)}</div>
-            <div className="text-[10px] text-gray-500">วันนี้</div>
+            <div className="text-[10px] text-gray-500">{t('rider_today')}</div>
           </div>
           <div className="bg-gray-700 rounded-xl p-2.5 text-center">
             <TrendingUp size={14} className="text-blue-400 mx-auto mb-0.5" />
             <div className="text-sm font-bold text-blue-400">฿{totalEarning.toFixed(0)}</div>
-            <div className="text-[10px] text-gray-500">รวมทั้งหมด</div>
+            <div className="text-[10px] text-gray-500">{t('rider_total')}</div>
           </div>
           <div className="bg-gray-700 rounded-xl p-2.5 text-center">
             <Star size={14} className="text-yellow-400 mx-auto mb-0.5" />
             <div className="text-sm font-bold text-yellow-400">{completedJobs.length}</div>
-            <div className="text-[10px] text-gray-500">งานสำเร็จ</div>
+            <div className="text-[10px] text-gray-500">{t('rider_completed_jobs')}</div>
           </div>
         </div>
       </div>
@@ -461,15 +504,15 @@ export default function RiderView() {
 
       <div className="flex p-4 gap-1.5">
         <button onClick={() => setRiderTab('jobs')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${riderTab === 'jobs' ? 'bg-green-600' : 'bg-gray-700'}`}>
-          งานใหม่ {availableJobs.length > 0 && <span className="bg-red-500 text-white text-xs rounded-full px-1.5 ml-0.5">{availableJobs.length}</span>}
+          {t('rider_tab_new_jobs')} {availableJobs.length > 0 && <span className="bg-red-500 text-white text-xs rounded-full px-1.5 ml-0.5">{availableJobs.length}</span>}
         </button>
-        <button onClick={() => setRiderTab('active')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${riderTab === 'active' ? 'bg-green-600' : 'bg-gray-700'}`}>ทำอยู่ ({myJobs.length})</button>
+        <button onClick={() => setRiderTab('active')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${riderTab === 'active' ? 'bg-green-600' : 'bg-gray-700'}`}>{t('rider_tab_active')} ({myJobs.length})</button>
         <button onClick={() => setRiderTab('map')} className={`flex-1 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 ${riderTab === 'map' ? 'bg-blue-600' : 'bg-gray-700'}`}>
-          <MapPin size={13} />จุดรับงาน
+          <MapPin size={13} />{t('rider_tab_map')}
         </button>
-        <button onClick={() => setRiderTab('history')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${riderTab === 'history' ? 'bg-green-600' : 'bg-gray-700'}`}>ประวัติ</button>
+        <button onClick={() => setRiderTab('history')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${riderTab === 'history' ? 'bg-green-600' : 'bg-gray-700'}`}>{t('rider_tab_history')}</button>
         <button onClick={() => setRiderTab('wallet')} className={`flex-1 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 ${riderTab === 'wallet' ? 'bg-yellow-600' : 'bg-gray-700'}`}>
-          <Wallet size={13} />กระเป๋า
+          <Wallet size={13} />{t('rider_tab_wallet')}
         </button>
       </div>
 

@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useState } from 'react';
-import { ShieldAlert, Bot } from 'lucide-react';
+import { ShieldAlert, Bot, Globe } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { AppProvider, useApp } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
 import ChatModal from './components/ChatModal';
@@ -24,19 +25,37 @@ function ViewLoader() {
 }
 
 function RoleSwitcher() {
+  const { i18n } = useTranslation();
   const { activeRole, setActiveRole, pendingRequests, isAdmin } = useApp();
-  if (!import.meta.env.DEV) return null;
+
+  const toggleLang = () => {
+    const nextLang = i18n.language === 'th' ? 'en' : 'th';
+    i18n.changeLanguage(nextLang);
+    localStorage.setItem('boomrider_lang', nextLang);
+  };
+
   return (
     <div className="fixed top-0 left-0 right-0 bg-gray-900 text-white p-2 z-50 flex justify-between items-center text-xs sm:text-sm shadow-md overflow-x-auto">
-      <span className="font-bold mr-2 whitespace-nowrap hidden sm:block">DEV MODE:</span>
-      <div className="flex space-x-2">
-        {isAdmin && (
-          <button onClick={() => setActiveRole('admin')} className={`px-3 py-1 rounded-full capitalize ${activeRole === 'admin' ? 'bg-red-500 font-bold' : 'bg-gray-700'}`}>
-            Admin {pendingRequests.length > 0 && <span className="ml-1 bg-white text-red-600 px-1 rounded-full text-[10px]">{pendingRequests.length}</span>}
-          </button>
-        )}
-        <button onClick={() => setActiveRole('customer')} className={`px-3 py-1 rounded-full capitalize ${activeRole === 'customer' ? 'bg-green-500 font-bold' : 'bg-gray-700'}`}>Customer</button>
+      <div className="flex items-center gap-2">
+        {import.meta.env.DEV && <span className="font-bold mr-2 whitespace-nowrap hidden sm:block">DEV MODE:</span>}
+        <button
+          onClick={toggleLang}
+          className="bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/30 px-2.5 py-1 rounded-full font-bold text-xs flex items-center gap-1 transition-all"
+        >
+          <Globe size={13} />
+          <span>{i18n.language === 'th' ? 'EN' : 'TH'}</span>
+        </button>
       </div>
+      {import.meta.env.DEV && (
+        <div className="flex space-x-2">
+          {isAdmin && (
+            <button onClick={() => setActiveRole('admin')} className={`px-3 py-1 rounded-full capitalize ${activeRole === 'admin' ? 'bg-red-500 font-bold' : 'bg-gray-700'}`}>
+              Admin {pendingRequests.length > 0 && <span className="ml-1 bg-white text-red-600 px-1 rounded-full text-[10px]">{pendingRequests.length}</span>}
+            </button>
+          )}
+          <button onClick={() => setActiveRole('customer')} className={`px-3 py-1 rounded-full capitalize ${activeRole === 'customer' ? 'bg-green-500 font-bold' : 'bg-gray-700'}`}>Customer</button>
+        </div>
+      )}
     </div>
   );
 }
