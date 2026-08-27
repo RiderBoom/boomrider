@@ -18,6 +18,7 @@ const resources = {
       "english": "English",
       "dark_mode": "โหมดมืด",
       "light_mode": "โหมดสว่าง",
+      "hello": "สวัสดี",
 
       // Customer Bottom Nav
       "nav_home": "หน้าแรก",
@@ -30,6 +31,33 @@ const resources = {
       "service_ride": "เรียกรถ",
       "service_service": "บริการ",
       "search_placeholder": "ค้นหาร้านอาหาร, เมนู...",
+
+      // Customer Activity & Profile
+      "activity_title": "กิจกรรมการสั่งซื้อ",
+      "active_orders": "ออเดอร์ที่กำลังดำเนินอยู่",
+      "order_history": "ประวัติการสั่งซื้อ",
+      "profile_title": "โปรไฟล์ของคุณ",
+      "wallet_balance": "ยอดเงินในกระเป๋า",
+      "topup": "เติมเงิน",
+      "withdraw": "ถอนเงิน",
+      "addresses": "ที่อยู่ของคุณ",
+      "add_address": "+ เพิ่มที่อยู่ใหม่",
+      "logout": "ออกจากระบบ",
+      "register_partner": "สมัครเป็นพาร์ทเนอร์",
+      "reg_merchant": "🏪 สมัครร้านค้า",
+      "reg_rider": "🛵 สมัครไรเดอร์",
+
+      // Auth View
+      "login": "เข้าสู่ระบบ",
+      "register": "สมัครใช้งาน",
+      "slogan": "ส่งเร็ว ส่งถึง ส่งใจ",
+      "email_or_phone": "เบอร์โทร หรือ อีเมล",
+      "password": "รหัสผ่าน",
+      "forgot_password": "ลืมรหัสผ่าน?",
+      "full_name": "ชื่อ-นามสกุล",
+      "confirm_password": "ยืนยันรหัสผ่าน",
+      "submit_login": "เข้าสู่ระบบ",
+      "submit_register": "สมัครใช้งานฟรี",
 
       // Rider View
       "rider_no_data_title": "ยังไม่มีข้อมูลไรเดอร์",
@@ -108,6 +136,7 @@ const resources = {
       "english": "English",
       "dark_mode": "Dark Mode",
       "light_mode": "Light Mode",
+      "hello": "Hello",
 
       // Customer Bottom Nav
       "nav_home": "Home",
@@ -120,6 +149,33 @@ const resources = {
       "service_ride": "Ride",
       "service_service": "Service",
       "search_placeholder": "Search restaurants, food...",
+
+      // Customer Activity & Profile
+      "activity_title": "Order Activity",
+      "active_orders": "Active Orders",
+      "order_history": "Order History",
+      "profile_title": "Your Profile",
+      "wallet_balance": "Wallet Balance",
+      "topup": "Top Up",
+      "withdraw": "Withdraw",
+      "addresses": "Your Addresses",
+      "add_address": "+ Add New Address",
+      "logout": "Log Out",
+      "register_partner": "Register as Partner",
+      "reg_merchant": "🏪 Register Merchant",
+      "reg_rider": "🛵 Register Rider",
+
+      // Auth View
+      "login": "Log In",
+      "register": "Sign Up",
+      "slogan": "Fast, Reliable, Heartfelt Delivery",
+      "email_or_phone": "Phone or Email",
+      "password": "Password",
+      "forgot_password": "Forgot Password?",
+      "full_name": "Full Name",
+      "confirm_password": "Confirm Password",
+      "submit_login": "Log In",
+      "submit_register": "Sign Up Free",
 
       // Rider View
       "rider_no_data_title": "No Rider Profile Found",

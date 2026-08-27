@@ -90,21 +90,7 @@ export default function RiderView() {
   const [riderCancelOrderId, setRiderCancelOrderId]     = useState(null);
   const [riderCancelReason, setRiderCancelReason]       = useState('');
 
-  // Dark mode toggle (persisted per rider)
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const key = `boomrider_rider_darkmode_${userProfile.id || currentUser?.id}`;
-    const saved = localStorage.getItem(key);
-    return saved === null ? true : saved === 'true'; // default dark for night driving
-  });
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(prev => {
-      const next = !prev;
-      const key = `boomrider_rider_darkmode_${userProfile.id || currentUser?.id}`;
-      localStorage.setItem(key, String(next));
-      return next;
-    });
-  };
+  const { isDarkMode, toggleDarkMode } = useApp();
 
   // Online/offline toggle (persisted per rider)
   const [isOnline, setIsOnline] = useState(() => {

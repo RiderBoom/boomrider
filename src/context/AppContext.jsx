@@ -32,6 +32,28 @@ export function useApp() {
 }
 
 export function AppProvider({ children }) {
+  // --- Theme State ---
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('boomrider_theme');
+    return saved === 'dark';
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
+  const toggleDarkMode = useCallback(() => {
+    setIsDarkMode(prev => {
+      const next = !prev;
+      localStorage.setItem('boomrider_theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }, []);
+
   // --- Role & Navigation ---
   const [activeRole, setActiveRole] = useState('customer');
   const [adminTab, setAdminTab] = useState('dashboard');
@@ -1247,6 +1269,9 @@ export function AppProvider({ children }) {
 
   // --- Context Value ---
   const value = {
+    // Theme
+    isDarkMode, toggleDarkMode,
+
     // Navigation
     activeRole, setActiveRole,
     adminTab, setAdminTab,

@@ -4,6 +4,7 @@ import {
   MapPin, Navigation, Plus, Minus, X, Tag, CheckCircle,
   ChefHat, Crosshair, Banknote, Sparkles, SlidersHorizontal, Calendar, FileText,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useApp } from '../../context/AppContext';
 import { getDistanceFromLatLonInKm } from '../../utils';
 import { DEFAULT_CATEGORIES } from '../../constants';
@@ -11,6 +12,7 @@ import RestaurantCard from '../RestaurantCard';
 import InteractiveMap from '../InteractiveMap';
 
 export default function HomeTab({ searchQuery, setSearchQuery }) {
+  const { t } = useTranslation();
   const {
     serviceType, setServiceType,
     restaurants, menuItems, appConfig,
@@ -388,20 +390,20 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <button
           onClick={() => setServiceType('food')}
-          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'food' ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-white text-gray-600 shadow-sm'}`}
-        ><Utensils size={16} /> สั่งอาหาร</button>
+          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'food' ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 shadow-sm border border-transparent dark:border-gray-700'}`}
+        ><Utensils size={16} /> {t('service_food')}</button>
         <button
           onClick={() => setServiceType('parcel')}
-          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'parcel' ? 'bg-blue-500 text-white shadow-lg shadow-blue-200' : 'bg-white text-gray-600 shadow-sm'}`}
-        ><Package size={16} /> ส่งพัสดุ</button>
+          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'parcel' ? 'bg-blue-500 text-white shadow-lg shadow-blue-200' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 shadow-sm border border-transparent dark:border-gray-700'}`}
+        ><Package size={16} /> {t('service_parcel')}</button>
         <button
           onClick={() => setServiceType('ride')}
-          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'ride' ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-white text-gray-600 shadow-sm'}`}
-        ><Car size={16} /> เรียกรถ</button>
+          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'ride' ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 shadow-sm border border-transparent dark:border-gray-700'}`}
+        ><Car size={16} /> {t('service_ride')}</button>
         <button
           onClick={() => setServiceType('service')}
-          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'service' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'bg-white text-gray-600 shadow-sm'}`}
-        ><Wrench size={16} /> บริการ</button>
+          className={`flex items-center justify-center gap-1.5 py-3 rounded-2xl font-semibold text-xs transition-all duration-200 ${serviceType === 'service' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 shadow-sm border border-transparent dark:border-gray-700'}`}
+        ><Wrench size={16} /> {t('service_service')}</button>
       </div>
 
       {serviceType === 'food' ? (

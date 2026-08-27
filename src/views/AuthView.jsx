@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import ToastContainer from '../components/ToastContainer';
 
 export default function AuthView() {
+  const { t } = useTranslation();
   const {
     authMode, setAuthMode,
     loginForm, setLoginForm,
@@ -14,7 +16,7 @@ export default function AuthView() {
   const [showForgot, setShowForgot] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(160deg, #fff7ed 0%, #fff 40%, #eff6ff 100%)' }}>
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-200">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       {/* Hero Section */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 pt-12 pb-6">
@@ -22,12 +24,12 @@ export default function AuthView() {
           <div className="w-20 h-20 bg-gradient-to-br from-orange-400 to-orange-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-orange-200">
             <span className="text-4xl">🛵</span>
           </div>
-          <h1 className="text-4xl font-black text-gray-900 tracking-tight">BoomRider</h1>
-          <p className="text-gray-500 mt-1 text-sm">ส่งเร็ว ส่งถึง ส่งใจ</p>
+          <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight">BoomRider</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">{t('slogan')}</p>
         </div>
         <div className="flex gap-2 mb-8 flex-wrap justify-center animate-fade-in-up">
-          {['🍔 อาหารร้อนๆ', '📦 ส่งพัสดุ', '⚡ เร็วใน 30 นาที'].map((chip) => (
-            <span key={chip} className="text-xs bg-white border border-gray-200 text-gray-600 px-3 py-1 rounded-full shadow-sm font-medium">
+          {['🍔 ' + t('service_food'), '📦 ' + t('service_parcel'), '⚡ เร็วใน 30 นาที'].map((chip) => (
+            <span key={chip} className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full shadow-sm font-medium">
               {chip}
             </span>
           ))}
@@ -35,42 +37,42 @@ export default function AuthView() {
       </div>
 
       {/* Auth Card */}
-      <div className="bg-white rounded-t-3xl shadow-[0_-8px_40px_rgba(0,0,0,0.12)] px-6 pt-6 pb-10 animate-slide-in-from-bottom">
-        <div className="flex mb-5 bg-gray-100 rounded-2xl p-1">
+      <div className="bg-white dark:bg-gray-800 rounded-t-3xl shadow-[0_-8px_40px_rgba(0,0,0,0.12)] px-6 pt-6 pb-10 animate-slide-in-from-bottom border-t border-transparent dark:border-gray-700">
+        <div className="flex mb-5 bg-gray-100 dark:bg-gray-700 rounded-2xl p-1">
           <button
             onClick={() => setAuthMode('login')}
-            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${authMode === 'login' ? 'bg-white text-orange-600 shadow-md' : 'text-gray-500'}`}
-          >เข้าสู่ระบบ</button>
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${authMode === 'login' ? 'bg-white dark:bg-gray-800 text-orange-600 dark:text-orange-400 shadow-md' : 'text-gray-500 dark:text-gray-400'}`}
+          >{t('login')}</button>
           <button
             onClick={() => setAuthMode('register')}
-            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${authMode === 'register' ? 'bg-white text-orange-600 shadow-md' : 'text-gray-500'}`}
-          >สมัครใช้งาน</button>
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${authMode === 'register' ? 'bg-white dark:bg-gray-800 text-orange-600 dark:text-orange-400 shadow-md' : 'text-gray-500 dark:text-gray-400'}`}
+          >{t('register')}</button>
         </div>
 
         {authMode === 'login' ? (
           <div className="space-y-3">
             <div>
-              <label htmlFor="login-identifier" className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เบอร์โทร หรือ อีเมล</label>
+              <label htmlFor="login-identifier" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">{t('email_or_phone')}</label>
               <input
                 id="login-identifier"
                 name="identifier"
                 type="text"
                 value={loginForm.phone || loginForm.email}
                 onChange={(e) => setLoginForm({ ...loginForm, phone: e.target.value, email: e.target.value })}
-                className="input-field"
+                className="input-field dark:bg-gray-700 dark:text-white dark:border-gray-600"
                 placeholder="081-xxx-xxxx หรือ email@example.com"
                 autoComplete="username"
               />
             </div>
             <div>
-              <label htmlFor="login-password" className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">รหัสผ่าน</label>
+              <label htmlFor="login-password" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">{t('password')}</label>
               <input
                 id="login-password"
                 name="password"
                 type="password"
                 value={loginForm.password}
                 onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                className="input-field"
+                className="input-field dark:bg-gray-700 dark:text-white dark:border-gray-600"
                 placeholder="••••••••"
                 autoComplete="current-password"
                 onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
@@ -80,31 +82,31 @@ export default function AuthView() {
               onClick={handleLogin}
               disabled={authLoading}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-orange-200 active:scale-95 transition-transform mt-2 disabled:opacity-60"
-            >{authLoading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}</button>
+            >{authLoading ? t('loading') : t('submit_login')}</button>
             <button
               type="button"
               onClick={() => setShowForgot(true)}
-              className="w-full text-center text-xs text-orange-500 font-medium mt-1 py-1"
-            >ลืมรหัสผ่าน?</button>
+              className="w-full text-center text-xs text-orange-500 dark:text-orange-400 font-medium mt-1 py-1"
+            >{t('forgot_password')}</button>
           </div>
         ) : (
           <div className="space-y-3">
             {[
-              { label: 'ชื่อ-นามสกุล *', type: 'text', field: 'name', id: 'register-name', placeholder: 'ชื่อจริง นามสกุล', autoComplete: 'name' },
+              { label: t('full_name') + ' *', type: 'text', field: 'name', id: 'register-name', placeholder: 'ชื่อจริง นามสกุล', autoComplete: 'name' },
               { label: 'อีเมล *', type: 'email', field: 'email', id: 'register-email', placeholder: 'email@example.com', autoComplete: 'email' },
               { label: 'เบอร์โทรศัพท์ (ไม่บังคับ)', type: 'tel', field: 'phone', id: 'register-phone', placeholder: '081-xxx-xxxx', autoComplete: 'tel' },
-              { label: 'รหัสผ่าน * (6 ตัวขึ้นไป)', type: 'password', field: 'password', id: 'register-password', placeholder: '••••••••', autoComplete: 'new-password' },
-              { label: 'ยืนยันรหัสผ่าน *', type: 'password', field: 'confirmPassword', id: 'register-confirm-password', placeholder: '••••••••', autoComplete: 'new-password' },
+              { label: t('password') + ' * (6 ตัวขึ้นไป)', type: 'password', field: 'password', id: 'register-password', placeholder: '••••••••', autoComplete: 'new-password' },
+              { label: t('confirm_password') + ' *', type: 'password', field: 'confirmPassword', id: 'register-confirm-password', placeholder: '••••••••', autoComplete: 'new-password' },
             ].map(({ label, type, field, id, placeholder, autoComplete }) => (
               <div key={field}>
-                <label htmlFor={id} className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">{label}</label>
+                <label htmlFor={id} className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">{label}</label>
                 <input
                   id={id}
                   name={field}
                   type={type}
                   value={registerForm[field]}
                   onChange={(e) => setRegisterForm({ ...registerForm, [field]: e.target.value })}
-                  className="input-field"
+                  className="input-field dark:bg-gray-700 dark:text-white dark:border-gray-600"
                   placeholder={placeholder}
                   autoComplete={autoComplete}
                 />
@@ -114,7 +116,7 @@ export default function AuthView() {
               onClick={handleRegister}
               disabled={authLoading}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-orange-200 active:scale-95 transition-transform mt-2 disabled:opacity-60"
-            >{authLoading ? 'กำลังสมัคร...' : 'สมัครใช้งานฟรี'}</button>
+            >{authLoading ? t('loading') : t('submit_register')}</button>
           </div>
         )}
 
