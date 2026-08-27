@@ -205,3 +205,43 @@ export const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
   const d = R * c;
   return parseFloat(d.toFixed(2));
 };
+
+/**
+ * ติดตั้งและตั้งค่า Native Push Notifications สำหรับ Capacitor (Android/iOS)
+ */
+export const initPushNotifications = async () => {
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (!Capacitor.isNativePlatform()) return;
+
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+
+    let permStatus = await PushNotifications.checkPermissions();
+    if (permStatus.receive === 'prompt') {
+      permStatus = await PushNotifications.requestPermissions();
+    }
+
+    if (permStatus.receive === 'granted') {
+      await PushNotifications.register();
+    }
+
+    PushNotifications.addListener('registration', (token) => {
+      console.log('Push Registration Token:', token.value);
+    });
+
+    PushNotifications.addListener('registrationError', (error) => {
+      console.error('Push Registration Error:', error);
+    });
+
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      console.log('Push Notification Received:', notification);
+      playOrderNotificationSound();
+    });
+
+    PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+      console.log('Push Notification Action Performed:', notification);
+    });
+  } catch (err) {
+    console.error('Failed to initialize push notifications:', err);
+  }
+};

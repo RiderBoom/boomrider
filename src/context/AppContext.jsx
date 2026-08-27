@@ -3,7 +3,7 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, ADMIN_EMAIL,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, playNotificationSound, playOrderNotificationSound, formatDateTime, r2 } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, playNotificationSound, playOrderNotificationSound, formatDateTime, r2, initPushNotifications } from '../utils';
 import { supabase } from '../lib/supabase';
 
 import { useWalletActions }  from './hooks/useWalletActions';
@@ -280,6 +280,11 @@ export function AppProvider({ children }) {
     promoCodes, setPromoCodes,
     validatePromoCode, applyPromoCode, createPromoCode, togglePromoCode, deletePromoCode,
   } = usePromoActions({ notifySystem, supabase });
+
+  // ── Initialize Native Push Notifications on Mount ────────────────────────
+  useEffect(() => {
+    initPushNotifications();
+  }, []);
 
   // ── Load app data from Supabase on mount ────────────────────────────────
   useEffect(() => {
