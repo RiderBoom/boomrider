@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Search, X, RefreshCw, ArrowLeft } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import ToastContainer from '../components/ToastContainer';
 import BottomNav from '../components/customer/BottomNav';
@@ -10,6 +11,7 @@ import TopUpModal from '../components/customer/TopUpModal';
 import RatingModal from '../components/customer/RatingModal';
 
 export default function CustomerView() {
+  const { t } = useTranslation();
   const {
     activeTab,
     profileSubView, setProfileSubView,
@@ -31,11 +33,11 @@ export default function CustomerView() {
   };
 
   return (
-    <div className="pb-20 pt-14 bg-gray-50 min-h-screen">
+    <div className="pb-20 pt-14 bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-white transition-colors duration-200">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
 
       {!selectedRestaurant && (activeTab !== 'profile' || profileSubView === 'main') && (
-        <div className="bg-white px-4 pt-4 pb-3 shadow-sm sticky top-12 z-40">
+        <div className="bg-white dark:bg-gray-800 px-4 pt-4 pb-3 shadow-sm sticky top-12 z-40 border-b border-transparent dark:border-gray-700">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center shadow-md shadow-orange-200">
@@ -44,32 +46,32 @@ export default function CustomerView() {
               <span className="font-black text-xl tracking-tight gradient-text">BoomRider</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">สวัสดี,</span>
-              <span className="text-xs font-semibold text-gray-700 max-w-[80px] truncate">
+              <span className="text-xs text-gray-400 dark:text-gray-400">{t('hello')},</span>
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 max-w-[80px] truncate">
                 {(userProfile.name || 'ผู้ใช้').split(' ')[0]}
               </span>
               <button
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                className="ml-1 p-1.5 rounded-full bg-gray-100 hover:bg-orange-100 hover:text-orange-600 text-gray-400 active:scale-90 transition-all"
+                className="ml-1 p-1.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-orange-100 dark:hover:bg-gray-600 hover:text-orange-600 text-gray-400 dark:text-gray-300 active:scale-90 transition-all"
                 title="รีเฟรชข้อมูล"
               >
                 <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-3 bg-gray-100 px-3 py-2.5 rounded-2xl">
+          <div className="flex items-center gap-3 bg-gray-100 dark:bg-gray-800 px-3 py-2.5 rounded-2xl border border-transparent dark:border-gray-700">
             <Search size={18} className="text-gray-400 flex-shrink-0" />
-            <label htmlFor="customer-search-input" className="sr-only">ค้นหาร้านอาหาร เมนู</label>
+            <label htmlFor="customer-search-input" className="sr-only">{t('search_placeholder')}</label>
             <input
               id="customer-search-input"
               name="searchQuery"
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="ค้นหาร้านอาหาร เมนู..."
-              className="bg-transparent outline-none flex-1 text-sm text-gray-700 placeholder-gray-400"
-              aria-label="ค้นหาร้านอาหาร เมนู"
+              placeholder={t('search_placeholder')}
+              className="bg-transparent outline-none flex-1 text-sm text-gray-700 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+              aria-label={t('search_placeholder')}
               autoComplete="off"
             />
             {searchQuery && (
@@ -82,8 +84,8 @@ export default function CustomerView() {
       )}
 
       {activeTab === 'profile' && profileSubView !== 'main' && (
-        <div className="bg-white p-4 shadow-sm sticky top-12 z-40 flex items-center mb-4">
-          <button onClick={() => setProfileSubView('main')} className="mr-4 p-1 hover:bg-gray-100 rounded-full">
+        <div className="bg-white dark:bg-gray-800 p-4 shadow-sm sticky top-12 z-40 flex items-center mb-4 text-gray-900 dark:text-white border-b border-transparent dark:border-gray-700">
+          <button onClick={() => setProfileSubView('main')} className="mr-4 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
             <ArrowLeft />
           </button>
           <h2 className="text-xl font-bold">เมนูจัดการ</h2>

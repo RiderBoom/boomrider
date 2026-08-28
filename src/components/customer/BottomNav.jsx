@@ -29,7 +29,7 @@ export default function BottomNav() {
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around z-40 bottom-nav-bar shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+    <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-100 dark:border-gray-700 flex justify-around z-40 bottom-nav-bar shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
       {tabs.map(({ id, icon, label, badge, isRole }) => {
         const IconComponent = icon;
         return (
@@ -41,8 +41,8 @@ export default function BottomNav() {
           }}
           className={`bottom-nav-item ${
             isRole
-              ? (activeRole === id ? 'active' : 'text-gray-400')
-              : (activeTab === id && activeRole === 'customer' ? 'active' : 'text-gray-400')
+              ? (activeRole === id ? 'active' : 'text-gray-400 dark:text-gray-400')
+              : (activeTab === id && activeRole === 'customer' ? 'active' : 'text-gray-400 dark:text-gray-400')
           } ${id === 'admin' ? '!text-red-500' : ''}`}
         >
           <div className="relative">

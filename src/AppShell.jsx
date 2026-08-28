@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState } from 'react';
-import { ShieldAlert, Bot, Globe } from 'lucide-react';
+import { ShieldAlert, Bot, Globe, Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AppProvider, useApp } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
@@ -25,8 +25,8 @@ function ViewLoader() {
 }
 
 function RoleSwitcher() {
-  const { i18n } = useTranslation();
-  const { activeRole, setActiveRole, pendingRequests, isAdmin } = useApp();
+  const { t, i18n } = useTranslation();
+  const { activeRole, setActiveRole, pendingRequests, isAdmin, isDarkMode, toggleDarkMode } = useApp();
 
   const toggleLang = () => {
     const nextLang = i18n.language === 'th' ? 'en' : 'th';
@@ -38,13 +38,28 @@ function RoleSwitcher() {
     <div className="fixed top-0 left-0 right-0 bg-gray-900 text-white p-2 z-50 flex justify-between items-center text-xs sm:text-sm shadow-md overflow-x-auto">
       <div className="flex items-center gap-2">
         {import.meta.env.DEV && <span className="font-bold mr-2 whitespace-nowrap hidden sm:block">DEV MODE:</span>}
-        <button
-          onClick={toggleLang}
-          className="bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/30 px-2.5 py-1 rounded-full font-bold text-xs flex items-center gap-1 transition-all"
-        >
-          <Globe size={13} />
-          <span>{i18n.language === 'th' ? 'EN' : 'TH'}</span>
-        </button>
+        {/* Language & Dark mode controls paired side-by-side */}
+        <div className="flex items-center gap-1.5 bg-gray-800/80 p-1 rounded-full border border-gray-700">
+          <button
+            onClick={toggleLang}
+            className="bg-gray-700 hover:bg-gray-600 text-green-400 border border-green-500/30 px-2.5 py-1 rounded-full font-bold text-xs flex items-center gap-1 transition-all"
+            title={i18n.language === 'th' ? 'Switch to English' : 'เปลี่ยนเป็นภาษาไทย'}
+          >
+            <Globe size={13} />
+            <span>{i18n.language === 'th' ? 'EN' : 'TH'}</span>
+          </button>
+
+          <button
+            onClick={toggleDarkMode}
+            className={`px-2.5 py-1 rounded-full font-bold text-xs flex items-center gap-1 transition-all ${
+              isDarkMode ? 'bg-gray-700 text-yellow-400 border border-yellow-500/30 hover:bg-gray-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+            }`}
+            title={isDarkMode ? t('light_mode') : t('dark_mode')}
+          >
+            {isDarkMode ? <Sun size={13} /> : <Moon size={13} />}
+            <span>{isDarkMode ? t('light_mode') : t('dark_mode')}</span>
+          </button>
+        </div>
       </div>
       {import.meta.env.DEV && (
         <div className="flex space-x-2">
