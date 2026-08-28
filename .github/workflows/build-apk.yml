@@ -81,8 +81,8 @@ jobs:
         run: |
           SHORT_SHA=$(echo "$GITHUB_SHA" | head -c7)
           BUILD_DATE=$(date +'%d/%m/%Y %H:%M น.')
-          # ลบ release เก่าและ tag เก่าก่อน (ถ้ามี)
-          gh release delete latest-build --yes 2>/dev/null || true
+          # ลบ release เก่าพร้อม tag เก่าก่อน (ถ้ามี)
+          gh release delete latest-build --yes --cleanup-tag 2>/dev/null || true
           git push origin :refs/tags/latest-build 2>/dev/null || true
           # สร้าง release ใหม่พร้อม APK ล่าสุด
           gh release create latest-build "${{ env.APK_NAME }}" \
