@@ -230,7 +230,6 @@ export function AppProvider({ children }) {
     addToCart, placeOrder, placeParcelOrder, placeRideOrder, placeServiceOrder, acceptOrder, updateOrderStatus,
     initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
     requestCancelOrder, requestCancelByRole,
-    forceRefresh,
   } = useOrderActions({
     orders, setOrders,
     cart, setCart,
@@ -308,46 +307,48 @@ export function AppProvider({ children }) {
     initPushNotifications();
   }, []);
 
+  // ── Centralized fetch app data from Supabase ──────────────────────────
+  const fetchAppData = useCallback(async () => {
+    setIsDataLoading(true);
+    try {
+      const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
+        supabase.from('restaurants').select('id, data'),
+        supabase.from('menu_items').select('restaurant_id, items'),
+        supabase.from('riders').select('id, data'),
+        supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
+        supabase.from('pending_requests').select('id, data'),
+        supabase.from('app_config').select('data').eq('id', 1),
+        supabase.from('promo_codes').select('id, data'),
+      ]);
+
+      if (restsResult.data?.length) setRestaurants(restsResult.data.map(r => r.data));
+      if (menusResult.data?.length) {
+        const obj = {};
+        menusResult.data.forEach(m => { obj[m.restaurant_id] = m.items; });
+        setMenuItems(obj);
+      }
+      if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
+      if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
+      if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
+
+      const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
+      if (configRow?.data) {
+        setAppConfig(configRow.data);
+        setEditConfig(configRow.data);
+      }
+      if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
+    } catch (e) {
+      console.error('fetchAppData error', e);
+    } finally {
+      setIsDataLoading(false);
+      dataLoadedRef.current = true;
+    }
+  }, [setPromoCodes]);
+
   // ── Load app data from Supabase on mount ────────────────────────────────
   useEffect(() => {
-    const loadData = async () => {
-      setIsDataLoading(true);
-      try {
-        const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
-          supabase.from('restaurants').select('id, data'),
-          supabase.from('menu_items').select('restaurant_id, items'),
-          supabase.from('riders').select('id, data'),
-          supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
-          supabase.from('pending_requests').select('id, data'),
-          supabase.from('app_config').select('data').eq('id', 1),
-          supabase.from('promo_codes').select('id, data'),
-        ]);
-
-        if (restsResult.data?.length) setRestaurants(restsResult.data.map(r => r.data));
-        if (menusResult.data?.length) {
-          const obj = {};
-          menusResult.data.forEach(m => { obj[m.restaurant_id] = m.items; });
-          setMenuItems(obj);
-        }
-        if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
-        if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
-        if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
-
-        const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
-        if (configRow?.data) {
-          setAppConfig(configRow.data);
-          setEditConfig(configRow.data);
-        }
-        if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
-      } catch (e) {
-        console.error('loadData error', e);
-      } finally {
-        setIsDataLoading(false);
-        dataLoadedRef.current = true;
-      }
-    };
-    loadData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    fetchAppData();
+  }, [fetchAppData]);
 
   // ── Supabase Auth session + onAuthStateChange ───────────────────────────
   const clearAuthStorageKeys = useCallback(() => {
@@ -411,9 +412,9 @@ export function AppProvider({ children }) {
   const loadUserSession = useCallback(async (authUser) => {
     try {
       const [profileResult, rolesResult, walletResult] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', authUser.id).single(),
+        supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
         supabase.from('user_roles').select('role').eq('user_id', authUser.id),
-        supabase.from('wallets').select('balance, history').eq('user_id', authUser.id).single(),
+        supabase.from('wallets').select('balance, history').eq('user_id', authUser.id).maybeSingle(),
       ]);
 
       const profile = profileResult.data || {};
@@ -460,6 +461,7 @@ export function AppProvider({ children }) {
       if (session?.user) {
         setIsLoggedIn(true);
         loadUserSession(session.user);
+        fetchAppData();
       }
     }).catch((err) => {
       if (isInvalidTokenError(err)) {
@@ -478,6 +480,7 @@ export function AppProvider({ children }) {
       if (session?.user) {
         setIsLoggedIn(true);
         await loadUserSession(session.user);
+        await fetchAppData();
       } else {
         if (!isClearingAuthRef.current) {
           const hasAuthKeys = Object.keys(localStorage).some(
@@ -502,7 +505,7 @@ export function AppProvider({ children }) {
       }
     });
     return () => subscription.unsubscribe();
-  }, [handleAuthErrorOrSignOut, isInvalidTokenError, loadUserSession]);
+  }, [fetchAppData, handleAuthErrorOrSignOut, isInvalidTokenError, loadUserSession]);
 
   // ── Realtime: Orders ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1129,8 +1132,17 @@ export function AppProvider({ children }) {
       setUserRoles(withAdmin);
     }
     if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
+    await fetchAppData();
     notifySystem('อัปเดต', 'โหลดข้อมูลล่าสุดแล้ว', 'success');
-  }, [currentUser?.id, userProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, userProfile?.id, fetchAppData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const forceRefresh = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await loadUserSession(session.user);
+    }
+    await fetchAppData();
+  }, [fetchAppData, loadUserSession]);
 
   // ── Auth Functions ───────────────────────────────────────────────────────
   const handleLogin = async () => {
