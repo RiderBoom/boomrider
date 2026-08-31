@@ -118,7 +118,7 @@ BEGIN
 END $$;
 ALTER TABLE public.job_offers ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "job_offers_owner_select" ON public.job_offers FOR SELECT TO authenticated
-  USING (rider_user_id=auth.uid() OR public.is_admin(auth.uid()));
+  USING (rider_user_id=auth.uid()::text OR public.is_admin(auth.uid()));
 
 CREATE OR REPLACE FUNCTION public.respond_job_offer(p_offer_id uuid, p_status text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
@@ -126,7 +126,7 @@ BEGIN
   IF p_status NOT IN ('rejected','timeout') THEN RAISE EXCEPTION 'invalid_offer_status'; END IF;
   UPDATE public.job_offers
   SET status=p_status, responded_at=now()
-  WHERE id=p_offer_id AND rider_user_id=auth.uid() AND status='pending';
+  WHERE id=p_offer_id AND rider_user_id=auth.uid()::text AND status='pending';
   IF NOT FOUND THEN RAISE EXCEPTION 'offer_access_denied' USING ERRCODE='42501'; END IF;
 END $$;
 REVOKE ALL ON FUNCTION public.respond_job_offer(uuid,text) FROM PUBLIC;
