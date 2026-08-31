@@ -72,7 +72,13 @@ REVOKE ALL ON FUNCTION public.process_order_settlement_internal(text, numeric, n
   FROM PUBLIC, anon, authenticated;
 
 -- Revoke obsolete overloads that could otherwise bypass the guarded version.
-REVOKE ALL ON FUNCTION public.process_order_settlement(text) FROM PUBLIC, anon, authenticated;
+DO $$
+BEGIN
+  IF to_regprocedure('public.process_order_settlement(text)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.process_order_settlement(text) FROM PUBLIC, anon, authenticated';
+  END IF;
+END;
+$$;
 
 CREATE FUNCTION public.process_order_settlement(
   p_order_id text,
@@ -145,4 +151,3 @@ REVOKE ALL ON FUNCTION public.append_chat_message(text, jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.append_chat_message(text, jsonb) TO authenticated;
 
 COMMIT;
-
