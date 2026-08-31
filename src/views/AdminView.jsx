@@ -242,20 +242,22 @@ export default function AdminView() {
     setPurgeResult(null);
     try {
       const tasks = [];
-      if (opts.orders)          { tasks.push(supabase.from('orders').delete().neq('id', '')); setOrders([]); }
-      if (opts.pendingRequests) { tasks.push(supabase.from('pending_requests').delete().neq('id', '')); setPendingRequests([]); }
-      if (opts.restaurants)     { tasks.push(supabase.from('restaurants').delete().neq('id', '')); setRestaurants([]); }
-      if (opts.riders)          { tasks.push(supabase.from('riders').delete().neq('id', '')); setRiders([]); }
+      const purge = async (scope) => {
+        const { error } = await supabase.rpc('admin_purge_app_data', { p_scope: scope });
+        if (error) throw error;
+      };
+      if (opts.orders)          { tasks.push(purge('orders')); setOrders([]); }
+      if (opts.pendingRequests) { tasks.push(purge('pending_requests')); setPendingRequests([]); }
+      if (opts.restaurants)     { tasks.push(purge('restaurants')); setRestaurants([]); }
+      if (opts.riders)          { tasks.push(purge('riders')); setRiders([]); }
       if (opts.wallets) {
-        tasks.push(supabase.from('wallets').delete().neq('user_id', ''));
+        tasks.push(purge('wallets'));
         setGlobalWallets({});
       } else if (opts.walletEntries) {
-        const { data: wals } = await supabase.from('wallets').select('user_id');
-        if (wals?.length) tasks.push(...wals.map(w => supabase.rpc('clear_wallet_history', { p_user_id: w.user_id })));
+        tasks.push(purge('wallet_history'));
       }
       if (opts.users) {
-        tasks.push(supabase.from('profiles').delete().neq('id', ''));
-        tasks.push(supabase.from('user_roles').delete().neq('user_id', ''));
+        throw new Error('การลบบัญชีต้องทำผ่าน Supabase Auth Admin เพื่อป้องกันบัญชีค้าง');
       }
       await Promise.all(tasks);
       setPurgeResult({ ok: true, summary: 'เสร็จสิ้น' });
@@ -2021,3 +2023,4 @@ export default function AdminView() {
     </div>
   );
 }
+
