@@ -12,13 +12,13 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE v_owner uuid;
+DECLARE v_owner text;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'authentication_required' USING ERRCODE = '42501';
   END IF;
   SELECT rider_user_id INTO v_owner FROM public.job_offers WHERE id = p_offer_id;
-  IF v_owner IS NULL OR (v_owner <> auth.uid() AND NOT public.is_admin(auth.uid())) THEN
+  IF v_owner IS NULL OR (v_owner <> auth.uid()::text AND NOT public.is_admin(auth.uid())) THEN
     RAISE EXCEPTION 'offer_access_denied' USING ERRCODE = '42501';
   END IF;
   RETURN public.accept_job_offer_internal(p_offer_id);
@@ -151,3 +151,4 @@ REVOKE ALL ON FUNCTION public.append_chat_message(text, jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.append_chat_message(text, jsonb) TO authenticated;
 
 COMMIT;
+
