@@ -12,6 +12,22 @@ rows. Do not run `supabase_schema.sql` against production.
    already been applied. Migration 025 wraps functions created by those files.
 3. Confirm at least one existing account has `admin` in `user_roles`.
 4. Test first in a staging project restored from a sanitized production backup.
+5. Run `supabase/tests/023_production_preflight.sql` read-only and stop if there
+   is no admin, an owner relationship is missing, or a wallet is negative.
+
+## No-cost local gate
+
+When paid Supabase branching is not desired, run the full migration chain with
+Supabase Local and synthetic data. This does not replace the production
+preflight, but catches SQL syntax, missing dependencies, and authorization
+regressions without creating a hosted resource.
+
+```bash
+supabase start
+supabase db reset
+```
+
+Do not copy production user data into the local environment.
 
 ## Staging order
 
