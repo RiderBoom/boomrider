@@ -68,15 +68,35 @@ export function useWalletActions(deps) {
     const prev = queue[userId] || Promise.resolve();
     queue[userId] = prev.then(async () => {
       try {
-        await supabase.rpc('js_credit_wallet', {
+        const { error } = await supabase.rpc('js_credit_wallet', {
           p_user_id: userId,
           p_amount:  amount,
           p_entry:   entry,
         });
+        if (error) throw error;
       } catch (e) {
         console.error('creditWallet sync error', e);
+        // Revert the optimistic entry and balance when the database rejects it.
+        setGlobalWallets(prevWallets => {
+          const cur = prevWallets[userId] || { balance: 0, history: [] };
+          return {
+            ...prevWallets,
+            [userId]: {
+              balance: r2(cur.balance - amount),
+              history: cur.history.filter(item => item.id !== entry.id),
+            },
+          };
+        });
+        if (currentUser?.id === userId || currentUser?.email === userId) {
+          setUserWallet(balance => r2(balance - amount));
+          setWalletAllEntries(history => history.filter(item => item.id !== entry.id));
+        }
+        notifySystem('ไม่สำเร็จ', 'ระบบปฏิเสธการปรับยอดกระเป๋าเงิน กรุณาลองใหม่', 'error');
+        return false;
       }
+      return true;
     });
+    return queue[userId];
   };
 
   const processTransaction = (type, amount, description) => {
@@ -149,3 +169,4 @@ export function useWalletActions(deps) {
 
   return { creditWallet, creditWalletLocal, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet };
 }
+
