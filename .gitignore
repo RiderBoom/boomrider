@@ -9,6 +9,7 @@ functions/.env
 
 .vercel/
 .firebase/
+supabase/.temp/
 # android/ ← เปิดให้ track เพื่อ GitHub Actions build APK
 **/google-services.json
 *.log
