@@ -34,21 +34,14 @@ export async function autoDispatch(supabase, order) {
 
 // Called by RiderView when a job_offer expires on the client (before Edge Function runs)
 export async function timeoutOffer(supabase, offerId) {
-  await supabase
-    .from('job_offers')
-    .update({ status: 'timeout', responded_at: new Date().toISOString() })
-    .eq('id', offerId)
-    .eq('status', 'pending');
+  await supabase.rpc('respond_job_offer', { p_offer_id: offerId, p_status: 'timeout' });
 }
 
 // Called when rider rejects — triggers next dispatch attempt immediately
 export async function rejectAndRedispatch(supabase, offerId, order) {
-  await supabase
-    .from('job_offers')
-    .update({ status: 'rejected', responded_at: new Date().toISOString() })
-    .eq('id', offerId)
-    .eq('status', 'pending');
+  await supabase.rpc('respond_job_offer', { p_offer_id: offerId, p_status: 'rejected' });
 
   // Immediately try next rider (don't wait for pg_cron)
   return autoDispatch(supabase, order);
 }
+

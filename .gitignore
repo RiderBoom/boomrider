@@ -1,5 +1,7 @@
 node_modules
+.npm-cache
 dist
+.env
 .env.local
 .env.*.local
 functions/.env
@@ -7,8 +9,10 @@ functions/.env
 
 .vercel/
 .firebase/
+supabase/.temp/
 # android/ ← เปิดให้ track เพื่อ GitHub Actions build APK
 **/google-services.json
 *.log
 seed.html
 .vercel
+

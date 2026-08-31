@@ -25,7 +25,8 @@
 
 - **Frontend**: React 19 + Vite 7 + TailwindCSS 3
 - **Mobile**: Capacitor 8 (Android)
-- **Storage**: localStorage (ไม่ต้องการ backend server)
+- **Backend & Auth**: Supabase Auth, Postgres, Realtime, RLS และ Edge Functions
+- **Local storage**: เก็บ Supabase session และการตั้งค่าฝั่งอุปกรณ์
 - **Deploy**: Vercel (Web) + Play Store (Android)
 - **Icons**: Lucide React
 - **Fonts**: Noto Sans Thai + Inter (Google Fonts)
@@ -109,3 +110,10 @@ public/
 ## 📄 License
 
 MIT © 2026 BoomRider Co., Ltd.
+
+## 🔐 Security deployment
+
+การปรับ policy หรือ authentication ต้องทดสอบใน staging ก่อน production และห้ามรัน
+`supabase_schema.sql` ทับฐานข้อมูลที่มีข้อมูลแล้ว ดูขั้นตอนและ rollback ใน
+[`SECURITY_DEPLOYMENT.md`](SECURITY_DEPLOYMENT.md)
+

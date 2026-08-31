@@ -3,7 +3,7 @@ import {
   INITIAL_CONFIG, INITIAL_RESTAURANTS, INITIAL_RIDERS, INITIAL_MENU_ITEMS,
   USER_LOCATION, ADMIN_EMAIL,
 } from '../constants';
-import { generateId, getDistanceFromLatLonInKm, playNotificationSound, playOrderNotificationSound, formatDateTime, r2, initPushNotifications } from '../utils';
+import { generateId, getDistanceFromLatLonInKm, playNotificationSound, playOrderNotificationSound, r2, initPushNotifications } from '../utils';
 import { supabase } from '../lib/supabase';
 
 import { useWalletActions }  from './hooks/useWalletActions';
@@ -145,7 +145,7 @@ export function AppProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
   // --- Admin Derived ---
-  const isAdmin = !!ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL;
+  const isAdmin = userRoles.includes('admin');
 
   // --- Refs ---
   const restaurantsRef = React.useRef(INITIAL_RESTAURANTS);
@@ -182,7 +182,13 @@ export function AppProvider({ children }) {
   // --- Admin notification → Supabase insert ---
   const notifyAdmin = useCallback((title, message, type = 'warning') => {
     const id = Date.now();
-    supabase.from('admin_notifs').insert({ id, title, message, type, at: formatDateTime() }).then(() => {});
+    supabase.rpc('create_admin_notification', {
+      p_title: title,
+      p_message: message,
+      p_type: type,
+    }).then(({ error }) => {
+      if (error) console.error('notifyAdmin error', error);
+    });
     if (isAdmin) {
       shownAdminNotifIds.current.add(id);
       notifySystem(title, message, type);
@@ -190,7 +196,7 @@ export function AppProvider({ children }) {
   }, [isAdmin]);  
 
   // --- Role grant / revoke ---
-  const grantRole = useCallback((userId, role) => {
+  const grantRole = useCallback(async (userId, role) => {
     setGlobalUserRoles(prev => {
       const cur = prev[userId] || ['customer'];
       if (cur.includes(role)) return prev;
@@ -199,10 +205,27 @@ export function AppProvider({ children }) {
     if (currentUser?.id === userId || userProfile?.id === userId) {
       setUserRoles(prev => prev.includes(role) ? prev : [...prev, role]);
     }
-    supabase.from('user_roles').upsert({ user_id: userId, role }).then(() => {});
+    const { error } = await supabase.rpc('admin_set_user_role', {
+      p_user_id: userId,
+      p_role: role,
+      p_enabled: true,
+    });
+    if (error) {
+      console.error('grantRole error', error);
+      setGlobalUserRoles(prev => ({
+        ...prev,
+        [userId]: (prev[userId] || ['customer']).filter(r => r !== role),
+      }));
+      if (currentUser?.id === userId || userProfile?.id === userId) {
+        setUserRoles(prev => prev.filter(r => r !== role));
+      }
+      notifySystem('ไม่สำเร็จ', 'ไม่มีสิทธิ์เปลี่ยนบทบาทผู้ใช้', 'error');
+      return false;
+    }
+    return true;
   }, [currentUser?.id, userProfile?.id]);  
 
-  const revokeRole = useCallback((userId, role) => {
+  const revokeRole = useCallback(async (userId, role) => {
     setGlobalUserRoles(prev => {
       const cur = prev[userId] || ['customer'];
       return { ...prev, [userId]: cur.filter(r => r !== role) };
@@ -210,7 +233,24 @@ export function AppProvider({ children }) {
     if (currentUser?.id === userId || userProfile?.id === userId) {
       setUserRoles(prev => prev.filter(r => r !== role));
     }
-    supabase.from('user_roles').delete().eq('user_id', userId).eq('role', role).then(() => {});
+    const { error } = await supabase.rpc('admin_set_user_role', {
+      p_user_id: userId,
+      p_role: role,
+      p_enabled: false,
+    });
+    if (error) {
+      console.error('revokeRole error', error);
+      setGlobalUserRoles(prev => {
+        const cur = prev[userId] || ['customer'];
+        return { ...prev, [userId]: cur.includes(role) ? cur : [...cur, role] };
+      });
+      if (currentUser?.id === userId || userProfile?.id === userId) {
+        setUserRoles(prev => prev.includes(role) ? prev : [...prev, role]);
+      }
+      notifySystem('ไม่สำเร็จ', 'ไม่มีสิทธิ์เปลี่ยนบทบาทผู้ใช้', 'error');
+      return false;
+    }
+    return true;
   }, [currentUser?.id, userProfile?.id]);  
 
   // ── Wallet hook ─────────────────────────────────────────────────────────────
@@ -421,9 +461,7 @@ export function AppProvider({ children }) {
       const roles   = rolesResult.data?.map(r => r.role) || ['customer'];
       const wallet  = walletResult.data;
 
-      const mergedRoles = ADMIN_EMAIL && authUser.email === ADMIN_EMAIL
-        ? [...new Set([...roles, 'admin'])]
-        : roles;
+      const mergedRoles = roles;
 
       const prof = {
         id: authUser.id,
@@ -692,13 +730,6 @@ export function AppProvider({ children }) {
   }, [isLoggedIn, currentUser?.id]);  
 
   // ── Auto-grant merchant/rider role (recovery) ───────────────────────────
-  useEffect(() => {
-    if (!isLoggedIn || !userProfile?.id) return;
-    const uid = userProfile.id;
-    if (restaurants.some(r => r.ownerId === uid) && !userRoles.includes('merchant')) grantRole(uid, 'merchant');
-    if (riders.some(r => r.userId === uid) && !userRoles.includes('rider')) grantRole(uid, 'rider');
-  }, [restaurants, riders, userProfile?.id, isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Sync userRoles from globalUserRoles ─────────────────────────────────
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -1128,13 +1159,12 @@ export function AppProvider({ children }) {
     ]);
     const latest = rolesResult.data?.map(r => r.role) || [];
     if (latest.length > 0) {
-      const withAdmin = ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL ? [...new Set([...latest, 'admin'])] : latest;
-      setUserRoles(withAdmin);
+      setUserRoles(latest);
     }
     if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
     await fetchAppData();
     notifySystem('อัปเดต', 'โหลดข้อมูลล่าสุดแล้ว', 'success');
-  }, [currentUser?.id, userProfile?.id, fetchAppData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, userProfile?.id, fetchAppData]);
 
   const forceRefresh = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1146,17 +1176,12 @@ export function AppProvider({ children }) {
 
   // ── Auth Functions ───────────────────────────────────────────────────────
   const handleLogin = async () => {
-    const input = (loginForm.email || loginForm.phone || '').trim();
-    if (!input) return notifySystem('ผิดพลาด', 'กรุณากรอกเบอร์โทรหรืออีเมล', 'error');
+    const email = (loginForm.email || loginForm.phone || '').trim().toLowerCase();
+    if (!email) return notifySystem('ผิดพลาด', 'กรุณากรอกอีเมล', 'error');
+    if (!email.includes('@')) return notifySystem('ผิดพลาด', 'กรุณาเข้าสู่ระบบด้วยอีเมล', 'error');
     if (!loginForm.password) return notifySystem('ผิดพลาด', 'กรุณากรอกรหัสผ่าน', 'error');
     setAuthLoading(true);
     try {
-      let email = input;
-      if (!input.includes('@')) {
-        const { data: profile } = await supabase.from('profiles').select('email').eq('phone', input).maybeSingle();
-        if (!profile?.email) return notifySystem('ผิดพลาด', 'ไม่พบบัญชีสำหรับเบอร์นี้', 'error');
-        email = profile.email;
-      }
       let signInRes = { error: null };
       try {
         signInRes = await supabase.auth.signInWithPassword({ email, password: loginForm.password });
@@ -1165,7 +1190,7 @@ export function AppProvider({ children }) {
       }
       const error = signInRes.error;
       if (error) {
-        if (import.meta.env.DEV || import.meta.env.VITE_SUPABASE_URL?.includes('dummy')) {
+        if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEV_AUTH === 'true') {
           const prof = { id: 'dev-user-id', name: 'ลูกค้าทดสอบ (Dev)', phone: '0812345678', email: email || 'customer@boomrider.com', location: USER_LOCATION };
           setIsLoggedIn(true);
           setCurrentUser({ id: 'dev-user-id', email: prof.email, ...prof, roles: ['customer'] });
@@ -1179,7 +1204,7 @@ export function AppProvider({ children }) {
         }
         return notifySystem('ผิดพลาด', 'อีเมล/รหัสผ่านไม่ถูกต้อง', 'error');
       }
-      const { data: profile } = await supabase.from('profiles').select('banned').eq('email', email).maybeSingle();
+      const { data: profile } = await supabase.from('profiles').select('banned').eq('id', signInRes.data.user.id).maybeSingle();
       if (profile?.banned) {
         await supabase.auth.signOut();
         return notifySystem('ผิดพลาด', 'บัญชีนี้ถูกระงับการใช้งาน', 'error');
@@ -1202,23 +1227,12 @@ export function AppProvider({ children }) {
       const { data, error } = await supabase.auth.signUp({
         email: registerForm.email,
         password: registerForm.password,
-        options: { data: { name: registerForm.name } },
+        options: { data: { name: registerForm.name, phone: registerForm.phone || null } },
       });
       if (error) return notifySystem('ผิดพลาด', error.message, 'error');
       if (!data.user) return notifySystem('ผิดพลาด', 'สมัครไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
-      const uid = data.user.id;
-      await Promise.all([
-        supabase.from('profiles').insert({
-          id: uid,
-          name: registerForm.name,
-          phone: registerForm.phone || null,
-          email: registerForm.email,
-          location: USER_LOCATION,
-          addresses: [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }],
-        }),
-        supabase.from('wallets').insert({ user_id: uid, balance: 0, history: [] }),
-        supabase.from('user_roles').insert({ user_id: uid, role: 'customer' }),
-      ]);
+      // Database trigger handle_new_auth_user initializes profile, wallet and
+      // customer role atomically, including when email confirmation is enabled.
       setRegisterForm({ phone: '', email: '', password: '', confirmPassword: '', name: '' });
       notifySystem('สำเร็จ', 'สมัครใช้งานเรียบร้อย! ยินดีต้อนรับ 🎉', 'success');
     } finally {
@@ -1236,10 +1250,14 @@ export function AppProvider({ children }) {
     setWalletClearedAt(new Date());
     const uid = currentUser?.id || userProfile?.id;
     if (uid) {
-      const { data: w } = await supabase.from('wallets').select('balance').eq('user_id', uid).single();
-      await supabase.from('wallets').upsert({ user_id: uid, balance: w?.balance || 0, history: [] });
+      const { error } = await supabase.rpc('clear_wallet_history', { p_user_id: uid });
+      if (error) {
+        console.error('clearWalletHistory error', error);
+        await loadUserSession(currentUser);
+        notifySystem('ไม่สำเร็จ', 'ไม่สามารถล้างประวัติกระเป๋าเงินได้', 'error');
+      }
     }
-  }, [currentUser?.id, userProfile?.id]);  
+  }, [currentUser, userProfile?.id, loadUserSession]);
 
   // ── Rating ────────────────────────────────────────────────────────────────
   const openRatingModal  = useCallback((order) => { setRatingOrderData(order); setShowRatingModal(true); }, []);
@@ -1454,3 +1472,4 @@ export function AppProvider({ children }) {
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
+

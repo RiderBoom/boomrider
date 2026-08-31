@@ -1,7 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
+const appOrigin = Deno.env.get('APP_ORIGIN') ?? 'https://boomrider.vercel.app';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': appOrigin,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -18,6 +19,12 @@ serve(async (req: Request) => {
   }
 
   try {
+    const webhookSecret = Deno.env.get('NOTIFICATION_WEBHOOK_SECRET');
+    if (!webhookSecret || req.headers.get('x-webhook-secret') !== webhookSecret) {
+      return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401,
+      });
+    }
     const payload: WebhookPayload = await req.json();
     console.log(`[send-notification] Received ${payload.type} event on table ${payload.table}`);
 
@@ -72,3 +79,4 @@ serve(async (req: Request) => {
     );
   }
 });
+
