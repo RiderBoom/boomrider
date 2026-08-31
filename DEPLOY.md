@@ -84,6 +84,9 @@ supabase link --project-ref YOUR_SUPABASE_PROJECT_REF
 ```bash
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 supabase secrets set FCM_SERVER_KEY=your_fcm_server_key # (ถ้าใช้งาน Push Notification)
+supabase secrets set APP_ORIGIN=https://boomrider.vercel.app
+supabase secrets set CRON_SECRET=generate-a-long-random-value
+supabase secrets set NOTIFICATION_WEBHOOK_SECRET=generate-a-different-long-random-value
 ```
 
 ### Deploy Edge Functions
@@ -92,8 +95,13 @@ supabase functions deploy process-expired-offers
 supabase functions deploy send-notification
 ```
 
+กำหนด `x-cron-secret` ในระบบที่เรียก `process-expired-offers` และ
+`x-webhook-secret` ใน Database Webhook ที่เรียก `send-notification` ห้ามนำค่าเหล่านี้
+ไปใส่ในตัวแปร `VITE_*` หรือ frontend bundle
+
 ---
 
 ## Step 6: รัน SQL Migrations
 
 นำไฟล์ SQL ในโฟลเดอร์ `supabase/migrations/` (โดยเฉพาะ `018_edge_functions_and_cron_setup.sql`) ไปรันที่ **Supabase Dashboard → SQL Editor** เพื่อเปิดใช้งานระบบ Cron Job และ Webhooks อัตโนมัติ
+
