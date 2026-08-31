@@ -33,7 +33,10 @@ jobs:
         with:
           version: latest
       - name: Prepare the documented baseline for an isolated rebuild
-        run: cp supabase_schema.sql supabase/migrations/000_baseline_schema.sql
+        run: |
+          cp supabase_schema.sql supabase/migrations/000_baseline_schema.sql
+          # Migration 002 owns this publication entry; avoid defining it twice.
+          sed -i '/alter publication supabase_realtime add table public.orders;/d' supabase/migrations/000_baseline_schema.sql
       - name: Start isolated local Supabase
         run: supabase start -x studio,imgproxy,inbucket,edge-runtime,logflare,vector
       - name: Rebuild database from every migration
