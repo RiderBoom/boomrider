@@ -52,15 +52,15 @@ export default function AuthView() {
         {authMode === 'login' ? (
           <div className="space-y-3">
             <div>
-              <label htmlFor="login-identifier" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">{t('email_or_phone')}</label>
+              <label htmlFor="login-identifier" className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">อีเมล</label>
               <input
                 id="login-identifier"
                 name="identifier"
-                type="text"
+                type="email"
                 value={loginForm.phone || loginForm.email}
                 onChange={(e) => setLoginForm({ ...loginForm, phone: e.target.value, email: e.target.value })}
                 className="input-field dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                placeholder="081-xxx-xxxx หรือ email@example.com"
+                placeholder="email@example.com"
                 autoComplete="username"
               />
             </div>
@@ -150,3 +150,4 @@ export default function AuthView() {
     </div>
   );
 }
+
