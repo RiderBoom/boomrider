@@ -859,7 +859,7 @@ export function AppProvider({ children }) {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Polling fallback for active orders (every 4s) ──────────────────────
+  // ── Polling fallback for active orders (every 60s) ─────────────────────
   useEffect(() => {
     if (!isLoggedIn) return;
     const poll = setInterval(async () => {
@@ -933,7 +933,7 @@ export function AppProvider({ children }) {
         });
         return changed ? Array.from(map.values()) : prev;
       });
-    }, 4000);
+    }, 60000);
     return () => clearInterval(poll);
   }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
