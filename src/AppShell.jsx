@@ -10,10 +10,11 @@ import AuthView from './views/AuthView';
 import { USER_LOCATION } from './constants';
 
 // Lazy load — each role loads its own chunk on first login
-const CustomerView = lazy(() => import('./views/CustomerView'));
-const MerchantView = lazy(() => import('./views/MerchantView'));
-const RiderView    = lazy(() => import('./views/RiderView'));
-const AdminView    = lazy(() => import('./views/AdminView'));
+const CustomerView  = lazy(() => import('./views/CustomerView'));
+const MerchantView  = lazy(() => import('./views/MerchantView'));
+const RiderView     = lazy(() => import('./views/RiderView'));
+const AdminView     = lazy(() => import('./views/AdminView'));
+const PortfolioView = lazy(() => import('./views/PortfolioView'));
 
 function ViewLoader() {
   return (
@@ -58,6 +59,17 @@ function RoleSwitcher() {
           >
             {isDarkMode ? <Sun size={13} /> : <Moon size={13} />}
             <span>{isDarkMode ? t('light_mode') : t('dark_mode')}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveRole(activeRole === 'portfolio' ? 'customer' : 'portfolio')}
+            className={`px-2.5 py-1 rounded-full font-bold text-xs flex items-center gap-1 transition-all ${
+              activeRole === 'portfolio' ? 'bg-orange-500 text-white' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30 hover:bg-orange-500/30'
+            }`}
+            title="บริการรับทำแอป / Agency Portfolio"
+          >
+            <Sparkles size={13} />
+            <span>รับทำแอป</span>
           </button>
         </div>
       </div>
@@ -109,10 +121,11 @@ function AppRouter() {
           </button>
 
           <Suspense fallback={<ViewLoader />}>
-            {activeRole === 'customer' && <CustomerView />}
-            {activeRole === 'merchant' && <MerchantView />}
-            {activeRole === 'rider'    && <RiderView />}
-            {activeRole === 'admin'    && <AdminView />}
+            {activeRole === 'portfolio' && <PortfolioView />}
+            {activeRole === 'customer'  && <CustomerView />}
+            {activeRole === 'merchant'  && <MerchantView />}
+            {activeRole === 'rider'     && <RiderView />}
+            {activeRole === 'admin'     && <AdminView />}
           </Suspense>
         </>
       )}
