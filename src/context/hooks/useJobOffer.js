@@ -41,11 +41,7 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
     // Auto-timeout: mark expired on server + dismiss UI
     timerRef.current = setTimeout(async () => {
       clearTimers();
-      await supabase
-        .from('job_offers')
-        .update({ status: 'timeout', responded_at: new Date().toISOString() })
-        .eq('id', newOffer.id)
-        .eq('status', 'pending');
+      await supabase.rpc('respond_job_offer', { p_offer_id: newOffer.id, p_status: 'timeout' });
       setOffer(null);
       setCountdown(0);
     }, secsLeft * 1000);
@@ -88,11 +84,7 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
   // ── Reject / Re-dispatch ──────────────────────────────────────────────────
   const rejectOffer = useCallback(async (offerId, orderForRedispatch) => {
     clearTimers();
-    await supabase
-      .from('job_offers')
-      .update({ status: 'rejected', responded_at: new Date().toISOString() })
-      .eq('id', offerId)
-      .eq('status', 'pending');
+    await supabase.rpc('respond_job_offer', { p_offer_id: offerId, p_status: 'rejected' });
     setOffer(null);
     setCountdown(0);
 
@@ -154,3 +146,4 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
 
   return { offer, countdown, accepting, acceptOffer, rejectOffer };
 }
+
