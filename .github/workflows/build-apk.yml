@@ -9,6 +9,7 @@ jobs:
   build-apk:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write           # ต้องการสำหรับสร้าง/อัปเดต GitHub Release
     env:
