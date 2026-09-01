@@ -5,6 +5,7 @@ import {
 } from '../constants';
 import { generateId, getDistanceFromLatLonInKm, playNotificationSound, playOrderNotificationSound, r2, initPushNotifications } from '../utils';
 import { supabase } from '../lib/supabase';
+import { canApplyOrderUpdate, ORDER_STATUS_RANK } from '../domain/orderStatus';
 
 import { useWalletActions }  from './hooks/useWalletActions';
 import { useOrderActions }   from './hooks/useOrderActions';
@@ -14,17 +15,6 @@ import { useRegistration }   from './hooks/useRegistration';
 import { usePromoActions }   from './hooks/usePromoActions';
 
 const AppContext = createContext(null);
-
-// Forward-only guard: never let polling/realtime regress an order's status
-const ORDER_STATUS_RANK = { pending:0, preparing:1, ready_to_pickup:2, rider_accepted:3, picking_up:4, delivering:5, delivered:6, completed:7, cancelled:99 };
-const canApplyOrderUpdate = (existing, incoming) => {
-  if (!existing) return true;
-  // Never cancel an already-delivered or completed order via realtime/polling
-  if (incoming.status === 'cancelled') {
-    return !['delivered', 'completed'].includes(existing.status);
-  }
-  return (ORDER_STATUS_RANK[incoming.status] ?? -1) >= (ORDER_STATUS_RANK[existing.status] ?? -1);
-};
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
