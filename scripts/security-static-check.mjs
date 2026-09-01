@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const checks = [
@@ -33,6 +34,24 @@ for (const check of checks) {
   }
   for (const pattern of check.forbidden ?? []) {
     if (pattern.test(source)) failures.push(`${check.file}: forbidden ${pattern}`);
+  }
+}
+
+// Scan every tracked text file so previously removed client credentials cannot
+// be reintroduced under a different path. Firebase client keys still need API
+// and application restrictions; they should be injected during deployment.
+const trackedFiles = execFileSync('git', ['ls-files', '-z'])
+  .toString('utf8')
+  .split('\0')
+  .filter(Boolean);
+const googleApiKeyPattern = /AIza[A-Za-z0-9_-]{35}/;
+for (const file of trackedFiles) {
+  try {
+    if (googleApiKeyPattern.test(readFileSync(file, 'utf8'))) {
+      failures.push(`${file}: tracked Google API key; inject it at build/deploy time instead`);
+    }
+  } catch {
+    // Binary and platform-specific files are intentionally skipped.
   }
 }
 

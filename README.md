@@ -1,7 +1,7 @@
 # 🛵 BoomRider — Enterprise On-Demand Super App Platform
 
 **แพลตฟอร์ม Super App ออนไลน์ครบวงจร (สั่งอาหาร, เรียกรถรับส่ง, ส่งพัสดุ และเรียกบริการทั่วไป)**
-พัฒนาด้วย React 19 + Vite 7 + TailwindCSS 3 + Capacitor 8 + Supabase
+พัฒนาด้วย React 19 + Vite 8 + TailwindCSS 3 + Capacitor 8 + Supabase
 *ส่งเร็ว ส่งถึง ส่งใจ — Deployed on Vercel*
 
 [![Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?logo=vercel)](https://boomrider.vercel.app)

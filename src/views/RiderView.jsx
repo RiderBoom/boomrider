@@ -7,9 +7,10 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
-import { getDistanceFromLatLonInKm, formatDateTimeFromMs, compressImage, parseDateMs, isSameDay } from '../utils';
+import { getDistanceFromLatLonInKm, formatDateTimeFromMs, compressImage, isSameDay } from '../utils';
 import { USER_LOCATION } from '../constants';
 import { useJobOffer } from '../context/hooks/useJobOffer';
+import { getRiderJobDoneMs, getRiderJobIncome } from '../domain/riderJobs';
 
 export default function RiderView() {
   const { t, i18n } = useTranslation();
@@ -227,41 +228,11 @@ export default function RiderView() {
     ['delivered', 'completed', 'cancelled'].includes(o.status) && o.riderId === me.id,
   );
 
-  // Earnings stats & today calculation helper
-  const getJobIncome = (j) => {
-    if (typeof j.riderIncome === 'number') return j.riderIncome;
-    if (j.type === 'parcel') {
-      const gp = (appConfig.gpDelivery ?? 15) / 100;
-      return (j.deliveryFee || j.grandTotal || 0) * (1 - gp);
-    }
-    if (j.type === 'ride') {
-      const gp = (appConfig.gpRide ?? 15) / 100;
-      return (j.grandTotal || j.deliveryFee || 0) * (1 - gp);
-    }
-    if (j.type === 'service') {
-      const gp = (appConfig.gpService ?? 15) / 100;
-      return (j.grandTotal || j.deliveryFee || 0) * (1 - gp);
-    }
-    return j.deliveryFee || 0;
-  };
-
-  const getJobDoneMs = (j) => {
-    if (typeof j.deliveredAtMs === 'number') return j.deliveredAtMs;
-    if (typeof j.completedAtMs === 'number') return j.completedAtMs;
-    let ms = parseDateMs(j.deliveredAt);
-    if (!isNaN(ms)) return ms;
-    ms = parseDateMs(j.completedAt);
-    if (!isNaN(ms)) return ms;
-    if (typeof j.createdAtMs === 'number') return j.createdAtMs;
-    ms = parseDateMs(j.createdAt || j.timestamp);
-    return isNaN(ms) ? NaN : ms;
-  };
-
   const completedJobs = historyJobs.filter(j => ['delivered', 'completed'].includes(j.status));
   const nowMs = Date.now();
-  const todayJobs = completedJobs.filter(j => isSameDay(getJobDoneMs(j), nowMs));
-  const todayEarning = todayJobs.reduce((s, j) => s + getJobIncome(j), 0);
-  const totalEarning = completedJobs.reduce((s, j) => s + getJobIncome(j), 0);
+  const todayJobs = completedJobs.filter(j => isSameDay(getRiderJobDoneMs(j), nowMs));
+  const todayEarning = todayJobs.reduce((s, j) => s + getRiderJobIncome(j, appConfig), 0);
+  const totalEarning = completedJobs.reduce((s, j) => s + getRiderJobIncome(j, appConfig), 0);
 
   return (
     <div className={`min-h-screen pt-14 pb-20 transition-colors duration-200 ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
@@ -1349,7 +1320,7 @@ export default function RiderView() {
               historyJobs.map(job => {
                 // ✅ FIX: ตรวจสอบทั้ง 'delivered' และ 'completed' (status เปลี่ยนเป็น completed ทันที)
                 const isSuccess = job.status === 'delivered' || job.status === 'completed';
-                const income = getJobIncome(job);
+                const income = getRiderJobIncome(job, appConfig);
 
                 return (
                   <div key={job.id} className="bg-gray-800 p-3 rounded-xl border border-gray-700 mb-2">
