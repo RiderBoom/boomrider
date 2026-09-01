@@ -39,8 +39,8 @@ export default defineConfig({
       },
     },
 
-    // Minification (esbuild is built-in, faster than terser)
-    minify: 'esbuild',
+    // Vite 8 uses Oxc for production minification and legacy transforms.
+    minify: 'oxc',
   },
 
   // Dev server
