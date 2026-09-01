@@ -9,11 +9,33 @@ updates:
         dependency-type: production
       development-dependencies:
         dependency-type: development
+    # Major toolchain upgrades need dedicated migration PRs. Keeping them out
+    # of the weekly group prevents a single incompatible package from breaking
+    # lint and Vercel for otherwise safe patch/minor updates.
+    ignore:
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-plugin-react-hooks"
+        versions: [">= 7.1.0, < 8.0.0"]
+      - dependency-name: "globals"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      # 8.5.0-8.5.1 pull an xcode/uuid chain with a moderate advisory.
+      - dependency-name: "@capacitor/cli"
+        versions: ["8.5.0", "8.5.1"]
 
   - package-ecosystem: gradle
     directory: /android
     schedule:
       interval: monthly
+    # Gradle 9.6+ removed an internal API still used by the current AGP.
+    # Upgrade Gradle and AGP together in a dedicated Android migration PR.
+    ignore:
+      - dependency-name: "gradle-wrapper"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

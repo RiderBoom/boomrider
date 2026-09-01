@@ -3,6 +3,14 @@ name: 🤖 Build Android APK
 on:
   push:
     branches: [ main, master ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-apk.yml'
+      - 'android/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:          # กดปุ่ม Run ใน GitHub Actions ได้เลย
 
 jobs:
@@ -70,6 +78,7 @@ jobs:
 
       # ── 7. Rename APK with build date ────────────────────────────────────────
       - name: 📝 Rename APK
+        if: github.event_name != 'pull_request'
         run: |
           BUILD_DATE=$(date +'%Y%m%d-%H%M')
           SHORT_SHA=$(echo "$GITHUB_SHA" | head -c7)
@@ -79,6 +88,7 @@ jobs:
 
       # ── 8. Update GitHub Release (latest-build tag) ──────────────────────────
       - name: 🚀 Publish to GitHub Releases
+        if: github.event_name != 'pull_request'
         run: |
           SHORT_SHA=$(echo "$GITHUB_SHA" | head -c7)
           BUILD_DATE=$(date +'%d/%m/%Y %H:%M น.')
@@ -105,6 +115,7 @@ jobs:
 
       # ── 9. Show download link ────────────────────────────────────────────────
       - name: ✅ Build complete
+        if: github.event_name != 'pull_request'
         run: |
           echo "================================================================"
           echo "✅ APK built and published to GitHub Releases!"
