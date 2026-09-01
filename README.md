@@ -1,6 +1,7 @@
-# 🛵 BoomRider — แอปสั่งอาหารและส่งพัสดุ
+# 🛵 BoomRider — Enterprise On-Demand Super App Platform
 
-**แอปส่งอาหารและพัสดุออนไลน์** พัฒนาด้วย React + Vite + Capacitor  
+**แพลตฟอร์ม Super App ออนไลน์ครบวงจร (สั่งอาหาร, เรียกรถรับส่ง, ส่งพัสดุ และเรียกบริการทั่วไป)**
+พัฒนาด้วย React 19 + Vite 7 + TailwindCSS 3 + Capacitor 8 + Supabase
 *ส่งเร็ว ส่งถึง ส่งใจ — Deployed on Vercel*
 
 [![Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?logo=vercel)](https://boomrider.vercel.app)
@@ -12,24 +13,30 @@
 
 | ฟีเจอร์ | รายละเอียด |
 |---------|-----------|
-| 🍔 **สั่งอาหาร** | เลือกร้าน → เพิ่มเมนู → ชำระเงิน (Wallet/เงินสด) |
-| 📦 **ส่งพัสดุ** | ปักหมุดจุดรับ-ส่ง → คำนวณค่าส่ง → เรียกไรเดอร์ |
-| 🛵 **ระบบไรเดอร์** | รับงาน → ถ่ายรูปหลักฐาน → รับรายได้ |
-| 🏪 **ระบบร้านค้า** | จัดการเมนู → รับออเดอร์ → ดูรายได้ |
-| 👑 **Admin Panel** | Dashboard, อนุมัติสมาชิก, จัดการระบบ |
-| 💬 **Live Chat** | แชทระหว่าง ลูกค้า ↔ ร้านค้า ↔ ไรเดอร์ |
-| 🔔 **Notifications** | แจ้งเตือนสถานะออเดอร์ real-time |
-| 💳 **Wallet System** | เติมเงิน ถอนเงิน ประวัติธุรกรรม |
+| 🍔 **สั่งอาหาร (Food Delivery)** | เลือกร้าน → เลือกท็อปปิ้ง/เมนูพิเศษ → ชำระเงิน (Wallet/เงินสด/PromptPay) |
+| 🚗 **เรียกรถรับส่ง (Ride-Hailing)** | คำนวณค่าบริการตามระยะทาง (Base Fee + Per Km) → เรียกคนขับ/วิน/แท็กซี่ real-time |
+| 📦 **ส่งพัสดุ (Parcel Delivery)** | ปักหมุดจุดรับ-ส่งบนแผนที่ OSRM → คำนวณค่าส่งอัตโนมัติ → เรียกไรเดอร์พร้อมถ่ายรูปหลักฐาน |
+| 🛠️ **เรียกบริการทั่วไป (On-Demand Service)** | เลือกบริการช่าง/ทำความสะอาด/ซ่อมแอร์/ประปา/ขนย้าย → คำนวณค่าบริการ |
+| 🛵 **ระบบไรเดอร์ & คนขับ** | รับงานสั่งอาหาร/ส่งพัสดุ/เรียกรถ/งานบริการ → นำทาง GPS → ถ่ายรูปหลักฐาน → สรุปรายได้/หัก GP อัตโนมัติ |
+| 🏪 **ระบบร้านค้า (Merchant Panel)** | จัดการร้านค้า → จัดการเมนู & ท็อปปิ้ง → รับออเดอร์ real-time → ดูรายงานรายได้ |
+| 👑 **Admin Panel** | Dashboard สรุปผล, อนุมัติสมาชิก/ร้านค้า/พาร์ทเนอร์, กำหนด GP & ตั้งค่าระบบ |
+| 💬 **Live Chat** | ระบบแชท real-time ระหว่าง ลูกค้า ↔ ร้านค้า ↔ ไรเดอร์/คนขับ |
+| 🔔 **Notifications & Audio Alert** | แจ้งเตือนสถานะออเดอร์ real-time พร้อมเสียงเตือนและระบบสั่น |
+| 💳 **Wallet System** | เติมเงินผ่าน PromptPay QR Code, ถอนเงิน, ประวัติธุรกรรม, ตัด GP อัตโนมัติ |
+| 🤖 **ผู้ช่วย AI (น้องบูม AI)** | AI Chatbot ช่วยเช็คสถานะออเดอร์ เช็คยอดเงิน และแนะนำการใช้งาน 24 ชั่วโมง |
+| 💼 **Portfolio Mode** | โหมดนำเสนอผลงาน แพ็กเกจระบบ Whitelabel/SaaS และฟอร์มติดต่อสอบถาม |
+| 🌓 **Dark Mode / Multi-language** | รองรับโหมดมืด (Dark Mode) และรองรับ 2 ภาษา (ไทย / English) |
 
-## 🚀 Tech Stack
+## 🚀 Tech Stack & Architecture
 
-- **Frontend**: React 19 + Vite 7 + TailwindCSS 3
-- **Mobile**: Capacitor 8 (Android)
-- **Backend & Auth**: Supabase Auth, Postgres, Realtime, RLS และ Edge Functions
-- **Local storage**: เก็บ Supabase session และการตั้งค่าฝั่งอุปกรณ์
-- **Deploy**: Vercel (Web) + Play Store (Android)
-- **Icons**: Lucide React
-- **Fonts**: Noto Sans Thai + Inter (Google Fonts)
+- **Frontend Framework**: React 19 + Vite 7 + TailwindCSS 3
+- **Mobile Native**: Capacitor 8 (Android APK & iOS Ready)
+- **Backend & Database**: Supabase (PostgreSQL 15, Realtime WebSockets, Row Level Security RLS, Edge Functions)
+- **Mapping & Routing**: Leaflet, OpenStreetMap, OSRM Routing Engine
+- **AI Integration**: Google Gemini API (น้องบูม AI Assistant)
+- **Internationalization**: i18next (ไทย / English)
+- **Deploy**: Vercel (Web App) + Play Store (Android App)
+- **Icons & Fonts**: Lucide React + Noto Sans Thai / Inter (Google Fonts)
 
 ## 📦 Setup
 
@@ -69,28 +76,28 @@ npx cap open android
 # Build APK จาก Android Studio
 ```
 
-## 🗺️ SEO
+## 🗺️ SEO & Web Performance
 
 - **Structured Data**: MobileApplication, Organization, WebSite (JSON-LD)
 - **Open Graph**: Facebook/LINE sharing
 - **Twitter Card**: Twitter/X sharing
-- **Sitemap**: `/sitemap.xml`
-- **Robots**: `/robots.txt`
-- **PWA**: installable, offline support
+- **Sitemap & Robots**: `/sitemap.xml`, `/robots.txt`
+- **PWA**: Installable, Web App Manifest & Service Worker
 
 ## 📁 Project Structure
 
 ```
 src/
-├── App.jsx              # Entry point
-├── AppShell.jsx         # Layout + routing
+├── App.jsx              # Entry point & Providers
+├── AppShell.jsx         # Layout, Routing & Navigation
 ├── context/
-│   ├── AppContext.jsx   # Global state (auth, orders, wallet)
+│   ├── AppContext.jsx   # Global state (auth, orders, wallet, theme)
 │   └── hooks/          # useOrderActions, useWalletActions, ...
-├── views/              # CustomerView, RiderView, AdminView, AuthView
-├── components/         # Shared UI components
-├── constants.js        # App config, initial data
-└── utils.js            # Helpers (generateId, formatDateTime, ...)
+├── views/              # CustomerView, RiderView, MerchantView, AdminView, PortfolioView, AuthView
+├── components/         # InteractiveMap, AIChatModal, LiveChatModal, ...
+├── constants.js        # App config, GP rates, initial data
+├── i18n.js             # Internationalization config (th/en)
+└── utils.js            # Helpers (distance calculation, date parsing, audio/vibration)
 public/
 ├── manifest.json       # PWA manifest
 ├── sw.js               # Service Worker
@@ -98,22 +105,21 @@ public/
 └── sitemap.xml         # SEO sitemap
 ```
 
-## 👥 Roles
+## 👥 Roles & Access Control
 
-| Role | Access |
-|------|--------|
-| Customer | สั่งอาหาร, ส่งพัสดุ, Wallet, Profile |
-| Merchant | จัดการร้าน, เมนู, รับออเดอร์ |
-| Rider | รับงาน, นำทาง, ถ่ายรูปหลักฐาน |
-| Admin | Dashboard, อนุมัติ, จัดการระบบ |
+| Role | Access & Capabilities |
+|------|------------------------|
+| **Customer** (ลูกค้า) | สั่งอาหาร, เรียกรถรับส่ง, ส่งพัสดุ, เรียกบริการช่าง/ทำความสะอาด, Wallet, Profile, น้องบูม AI |
+| **Merchant** (ร้านค้า) | จัดการข้อมูลร้านค้า, เพิ่ม/แก้ไขเมนู & ตัวเลือกเสริม, รับออเดอร์, ดูสรุปรายได้ |
+| **Rider / Driver / Service Provider** (พาร์ทเนอร์ผู้ให้บริการ) | รับงานส่งอาหาร/พัสดุ, รับงานเรียกรถรับส่ง, รับงานบริการทั่วไป, นำทาง GPS, ถ่ายรูปหลักฐาน, สรุปรายได้/กระเป๋าเงิน |
+| **Admin** (ผู้ดูแลระบบ) | Dashboard สรุปภาพรวมระบบ, อนุมัติสมาชิก/ร้านค้า/ไรเดอร์, กำหนด GP & ค่าบริการ, จัดการกระเป๋าเงิน |
 
 ## 📄 License
 
 MIT © 2026 BoomRider Co., Ltd.
 
-## 🔐 Security deployment
+## 🔐 Security Deployment
 
 การปรับ policy หรือ authentication ต้องทดสอบใน staging ก่อน production และห้ามรัน
 `supabase_schema.sql` ทับฐานข้อมูลที่มีข้อมูลแล้ว ดูขั้นตอนและ rollback ใน
 [`SECURITY_DEPLOYMENT.md`](SECURITY_DEPLOYMENT.md)
-
