@@ -54,8 +54,10 @@ jobs:
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
       - name: Verify staging deployment
         shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          npx vercel --token="${{ secrets.VERCEL_TOKEN }}" curl / \
+          npx vercel curl / \
             --deployment "${{ steps.deploy.outputs.url }}" \
             --fail --silent --show-error \
             --output /tmp/boomrider-staging.html \
