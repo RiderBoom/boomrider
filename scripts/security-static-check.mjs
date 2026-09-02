@@ -24,6 +24,16 @@ const checks = [
     file: '.gitignore',
     required: [/^\.env$/m],
   },
+  {
+    file: 'src/components/AIChatModal.jsx',
+    required: [/generateAiReply/],
+    forbidden: [/VITE_GEMINI_API_KEY/, /generativelanguage\.googleapis\.com/],
+  },
+  {
+    file: 'supabase/functions/ai-chat/index.ts',
+    required: [/GEMINI_API_KEY/, /auth\.getUser\(\)/, /MAX_TEXT_LENGTH/, /Rate limit exceeded/],
+    forbidden: [/Access-Control-Allow-Origin['"]:\s*['"]\*['"]/],
+  },
 ];
 
 const failures = [];
@@ -45,10 +55,15 @@ const trackedFiles = execFileSync('git', ['ls-files', '-z'])
   .split('\0')
   .filter(Boolean);
 const googleApiKeyPattern = /AIza[A-Za-z0-9_-]{35}/;
+const clientSecretNamePattern = /VITE_(?:GEMINI_API_KEY|SUPABASE_SERVICE_ROLE_KEY|CRON_SECRET|NOTIFICATION_WEBHOOK_SECRET)/;
 for (const file of trackedFiles) {
   try {
-    if (googleApiKeyPattern.test(readFileSync(file, 'utf8'))) {
+    const source = readFileSync(file, 'utf8');
+    if (googleApiKeyPattern.test(source)) {
       failures.push(`${file}: tracked Google API key; inject it at build/deploy time instead`);
+    }
+    if (file !== 'scripts/security-static-check.mjs' && clientSecretNamePattern.test(source)) {
+      failures.push(`${file}: server secret uses a VITE_ name and would be exposed to the browser`);
     }
   } catch {
     // Binary and platform-specific files are intentionally skipped.

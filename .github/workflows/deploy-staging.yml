@@ -53,4 +53,16 @@ jobs:
           deployment_url="$(npx vercel deploy --prebuilt --token="${{ secrets.VERCEL_TOKEN }}")"
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
       - name: Verify staging deployment
-        run: npm run smoke -- "${{ steps.deploy.outputs.url }}"
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx vercel curl / \
+            --deployment "${{ steps.deploy.outputs.url }}" \
+            --fail --silent --show-error \
+            --output /tmp/boomrider-staging.html \
+            --dump-header /tmp/boomrider-staging.headers
+          npm run smoke -- \
+            "${{ steps.deploy.outputs.url }}" \
+            /tmp/boomrider-staging.html \
+            /tmp/boomrider-staging.headers

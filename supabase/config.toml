@@ -28,3 +28,6 @@ verify_jwt = true
 [functions.send-notification]
 verify_jwt = true
 
+[functions.ai-chat]
+verify_jwt = true
+

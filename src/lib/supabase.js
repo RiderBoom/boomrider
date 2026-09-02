@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import { validatePublicEnv } from '../config/env.js';
+
+const config = validatePublicEnv(import.meta.env);
 
 export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  config.supabaseUrl,
+  config.supabaseAnonKey,
   {
     auth: {
       autoRefreshToken: true,

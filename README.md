@@ -1,6 +1,6 @@
 # 🛵 BoomRider — Enterprise On-Demand Super App Platform
 
-**แพลตฟอร์ม Super App ออนไลน์ครบวงจร (สั่งอาหาร, เรียกรถรับส่ง, ส่งพัสดุ และเรียกบริการทั่วไป)**
+**แพลตฟอร์ม Super App สำหรับการใช้งานจริงระยะเริ่มต้น (สั่งอาหาร, เรียกรถรับส่ง, ส่งพัสดุ และเรียกบริการทั่วไป)**
 พัฒนาด้วย React 19 + Vite 8 + TailwindCSS 3 + Capacitor 8 + Supabase
 *ส่งเร็ว ส่งถึง ส่งใจ — Deployed on Vercel*
 
@@ -29,13 +29,13 @@
 
 ## 🚀 Tech Stack & Architecture
 
-- **Frontend Framework**: React 19 + Vite 7 + TailwindCSS 3
-- **Mobile Native**: Capacitor 8 (Android APK & iOS Ready)
+- **Frontend Framework**: React 19 + Vite 8 + TailwindCSS 3
+- **Mobile Native**: Capacitor 8 (Android; iOS ยังไม่มี native project ใน repository นี้)
 - **Backend & Database**: Supabase (PostgreSQL 15, Realtime WebSockets, Row Level Security RLS, Edge Functions)
 - **Mapping & Routing**: Leaflet, OpenStreetMap, OSRM Routing Engine
-- **AI Integration**: Google Gemini API (น้องบูม AI Assistant)
+- **AI Integration**: Google Gemini ผ่าน Supabase Edge Function ที่ตรวจ session
 - **Internationalization**: i18next (ไทย / English)
-- **Deploy**: Vercel (Web App) + Play Store (Android App)
+- **Deploy**: Vercel (Web App) + Android development artifact; Play Store release pipeline ยังอยู่ใน checklist
 - **Icons & Fonts**: Lucide React + Noto Sans Thai / Inter (Google Fonts)
 
 ## 📦 Setup
@@ -50,6 +50,7 @@ npm install
 ### 2. Run Dev
 ```bash
 npm run dev
+# คัดลอก .env.example เป็น .env และใส่ Supabase public configuration ก่อน
 # เปิด http://localhost:5173
 ```
 
@@ -67,7 +68,7 @@ vercel --prod
 
 หรือ connect repo กับ Vercel Dashboard — จะ deploy อัตโนมัติทุกครั้งที่ push ไป main
 
-## 📱 Android Build
+## 📱 Android Development Build
 
 ```bash
 npm run build
@@ -76,13 +77,17 @@ npx cap open android
 # Build APK จาก Android Studio
 ```
 
+คำสั่งนี้สร้าง development/debug build เท่านั้น การเผยแพร่ production ต้องใช้ signed
+AAB, protected signing credentials และ release checklist ใน
+[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md)
+
 ## 🗺️ SEO & Web Performance
 
 - **Structured Data**: MobileApplication, Organization, WebSite (JSON-LD)
 - **Open Graph**: Facebook/LINE sharing
 - **Twitter Card**: Twitter/X sharing
 - **Sitemap & Robots**: `/sitemap.xml`, `/robots.txt`
-- **PWA**: Installable, Web App Manifest & Service Worker
+- **Installable Web App**: มี Web App Manifest; offline caching ถูกปิดไว้จนกว่าจะมี cache/update strategy ที่ทดสอบแล้ว
 
 ## 📁 Project Structure
 
@@ -123,3 +128,6 @@ MIT © 2026 BoomRider Co., Ltd.
 การปรับ policy หรือ authentication ต้องทดสอบใน staging ก่อน production และห้ามรัน
 `supabase_schema.sql` ทับฐานข้อมูลที่มีข้อมูลแล้ว ดูขั้นตอนและ rollback ใน
 [`SECURITY_DEPLOYMENT.md`](SECURITY_DEPLOYMENT.md)
+
+ขั้นตอนรับมือเหตุขัดข้องและการกู้คืนอยู่ใน
+[`docs/PRODUCTION_RUNBOOK.md`](docs/PRODUCTION_RUNBOOK.md)
