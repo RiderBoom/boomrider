@@ -61,3 +61,10 @@ dependencies {
 
 // นำเข้าค่าจาก Capacitor
 apply from: 'capacitor.build.gradle'
+
+// Firebase configuration is injected locally or by CI and is never committed.
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.lifecycle('google-services.json not found; building without background FCM registration')
+}

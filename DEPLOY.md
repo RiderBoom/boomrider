@@ -83,7 +83,9 @@ supabase link --project-ref YOUR_SUPABASE_PROJECT_REF
 ### ตั้งค่า Environment Variables (Secrets)
 ```bash
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-supabase secrets set FCM_SERVER_KEY=your_fcm_server_key # (ถ้าใช้งาน Push Notification)
+# JSON ของ Firebase service account สำหรับโปรเจกต์ BoomRider โดยเฉพาะ
+# ใส่ผ่าน terminal โดยตรง ห้ามบันทึกลงไฟล์ .env หรือ repository
+supabase secrets set FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
 supabase secrets set APP_ORIGIN=https://boomrider.vercel.app
 supabase secrets set CRON_SECRET=generate-a-long-random-value
 supabase secrets set NOTIFICATION_WEBHOOK_SECRET=generate-a-different-long-random-value
@@ -102,6 +104,20 @@ supabase functions deploy ai-chat
 กำหนด `x-cron-secret` ในระบบที่เรียก `process-expired-offers` และ
 `x-webhook-secret` ใน Database Webhook ที่เรียก `send-notification` ห้ามนำค่าเหล่านี้
 ไปใส่ในตัวแปร `VITE_*` หรือ frontend bundle
+
+สร้าง Database Webhook สำหรับเหตุการณ์ต่อไปนี้ โดยชี้ไปที่
+`https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-notification`:
+
+- `job_offers`: `INSERT`
+- `orders`: `INSERT`, `UPDATE`
+- `admin_notifs`: `INSERT`
+
+ทุก webhook ต้องส่ง `x-webhook-secret` ให้ตรงกับ `NOTIFICATION_WEBHOOK_SECRET`
+และ Authorization header สำหรับ Edge Function ห้ามส่ง service-role key ไปยัง client
+
+สำหรับ Android ให้สร้าง Firebase app package `com.boomrider.app` แล้วเก็บ
+`google-services.json` เป็น GitHub Actions secret ชื่อ `GOOGLE_SERVICES_JSON_BASE64`
+โดย base64 encode ไฟล์ทั้งก้อน ไฟล์จริงถูก `.gitignore` และห้าม commit
 
 หลัง deploy `ai-chat` แล้ว ให้ยืนยันว่า user ที่ login เรียกได้, request ที่ไม่มี JWT
 ได้ 401 และ browser bundle ไม่มี Google API key จากนั้นหมุนเวียน Gemini key เดิมที่เคย
