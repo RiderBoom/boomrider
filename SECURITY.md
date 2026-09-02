@@ -28,3 +28,10 @@ If GitHub secret scanning detects a key:
 3. Confirm web and Android notification flows still work.
 4. Remove the key from the current tree and prevent reintroduction in CI.
 5. Resolve the GitHub alert only after revocation/restriction is verified.
+
+Gemini is a server-only credential in BoomRider. Store `GEMINI_API_KEY` only as a
+Supabase Edge Function secret. Never rename it with a `VITE_` prefix, include it
+in `.env.example`, or call the Gemini API directly from browser code. The
+`ai-chat` function authenticates the Supabase user, validates request size, and
+applies an instance-level burst limit. Provider-side quotas remain required
+because instances do not share in-memory counters.

@@ -87,21 +87,51 @@ supabase secrets set FCM_SERVER_KEY=your_fcm_server_key # (ถ้าใช้ง
 supabase secrets set APP_ORIGIN=https://boomrider.vercel.app
 supabase secrets set CRON_SECRET=generate-a-long-random-value
 supabase secrets set NOTIFICATION_WEBHOOK_SECRET=generate-a-different-long-random-value
+supabase secrets set GEMINI_API_KEY=your-server-side-gemini-key
+# Optional: pin a tested model instead of using the function default
+supabase secrets set GEMINI_MODEL=gemini-1.5-flash
 ```
 
 ### Deploy Edge Functions
 ```bash
 supabase functions deploy process-expired-offers
 supabase functions deploy send-notification
+supabase functions deploy ai-chat
 ```
 
 กำหนด `x-cron-secret` ในระบบที่เรียก `process-expired-offers` และ
 `x-webhook-secret` ใน Database Webhook ที่เรียก `send-notification` ห้ามนำค่าเหล่านี้
 ไปใส่ในตัวแปร `VITE_*` หรือ frontend bundle
 
+หลัง deploy `ai-chat` แล้ว ให้ยืนยันว่า user ที่ login เรียกได้, request ที่ไม่มี JWT
+ได้ 401 และ browser bundle ไม่มี Google API key จากนั้นหมุนเวียน Gemini key เดิมที่เคย
+ถูกส่งไป frontend และตั้ง API/quota restrictions ใน Google Cloud Console
+
 ---
 
-## Step 6: รัน SQL Migrations
+## Step 6: Deploy SQL migrations
 
-นำไฟล์ SQL ในโฟลเดอร์ `supabase/migrations/` (โดยเฉพาะ `018_edge_functions_and_cron_setup.sql`) ไปรันที่ **Supabase Dashboard → SQL Editor** เพื่อเปิดใช้งานระบบ Cron Job และ Webhooks อัตโนมัติ
+สำหรับฐานข้อมูลที่มีข้อมูลจริง ห้ามคัดลอก SQL ทั้งชุดหรือรัน `supabase_schema.sql`
+ผ่าน SQL Editor ให้ตรวจ migration history, backup และ staging ตาม
+[`SECURITY_DEPLOYMENT.md`](SECURITY_DEPLOYMENT.md) แล้ว deploy เฉพาะ forward migrations
+ใหม่ด้วย Supabase CLI จาก trusted environment:
+
+```bash
+supabase migration list
+supabase db push --dry-run
+supabase db push
+```
+
+ตรวจรายการจาก `--dry-run` ก่อนทุกครั้ง และหยุดทันทีถ้าประวัติ migration ของ remote
+ไม่ตรงกับ repository
+
+---
+
+## Step 7: Production verification
+
+1. ตรวจ `VITE_SUPABASE_URL` และ `VITE_SUPABASE_ANON_KEY` ใน deployment environment
+2. รัน `npm ci && npm run lint && npm test && npm run security:check && npm run build`
+3. ทดสอบ login, order, wallet, dispatch, settlement และ AI ด้วย test accounts
+4. ตรวจ error logs โดยห้ามบันทึก token, พิกัดละเอียด หรือข้อมูลส่วนบุคคล
+5. ตรวจ checklist และ rollback ใน [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md)
 

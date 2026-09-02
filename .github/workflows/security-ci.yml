@@ -25,6 +25,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      - run: npm run test:coverage
       - run: npm run security:check
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
@@ -46,3 +47,24 @@ jobs:
         run: supabase start -x studio,imgproxy,inbucket,edge-runtime,logflare,vector
       - name: Rebuild database from every migration
         run: supabase db reset
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

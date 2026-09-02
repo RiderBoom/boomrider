@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { generateAiReply } from '../lib/aiGateway.js';
 import ReactDOM from 'react-dom';
 import { X, Bot, Send, Loader2, Sparkles, User, ShoppingBag, Star, Store, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -646,7 +647,6 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     setLoading(true);
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       let replyText = '';
 
       const openShops = (restaurants || []).filter((r) => r.status === 'open');
@@ -703,13 +703,13 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
           ''
         );
         replyText = await executeSendOrderChatMessage({ message: cleanMsg || text });
-      } else if (isPlaceFoodIntent && (!apiKey || text.length < 30)) {
+      } else if (isPlaceFoodIntent && text.length < 30) {
         replyText = await executePlaceFoodOrder({
           restaurantName: openShops[0]?.name || '',
           items: [{ itemName: text, qty: 1 }],
           paymentMethod: 'wallet',
         });
-      } else if (isPlaceParcelIntent && !apiKey) {
+      } else if (isPlaceParcelIntent) {
         replyText = await executePlaceParcelOrder({
           pickup: 'จุดรับของปัจจุบัน',
           dropoff: 'จุดส่งของปลายทาง',
@@ -722,45 +722,22 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })} ครับ สามารถใช้ชำระค่าอาหารและค่าส่งพัสดุได้ทันที! 💳`;
-      } else if (apiKey) {
+      } else {
         const systemPromptWithContext = buildContextPrompt();
+        const data = await generateAiReply({
+          text,
+          systemPrompt: `${SYSTEM_PROMPT}\n\n${systemPromptWithContext}`,
+          tools: GEMINI_TOOLS,
+        });
 
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: {
-                parts: [{ text: `${SYSTEM_PROMPT}\n\n${systemPromptWithContext}` }],
-              },
-              contents: [
-                {
-                  role: 'user',
-                  parts: [{ text }],
-                },
-              ],
-              tools: GEMINI_TOOLS,
-            }),
-          }
-        );
-
-        const data = await response.json();
-        const candidate = data?.candidates?.[0];
-        const functionCallPart = candidate?.content?.parts?.find((p) => p.functionCall);
-
-        if (functionCallPart?.functionCall) {
-          const { name: fnName, args: fnArgs } = functionCallPart.functionCall;
+        if (data.functionCall) {
+          const { name: fnName, args: fnArgs } = data.functionCall;
           const toolRes = await executeTool(fnName, fnArgs);
           replyText = toolRes.text;
           replyCardData = toolRes.cardData || null;
         } else {
-          replyText =
-            candidate?.content?.parts?.[0]?.text ||
-            'ขออภัยครับ เกิดปัญหาในการประมวลผล กรุณาลองใหม่อีกครั้งครับ';
+          replyText = data.text;
         }
-      } else {
-        replyText = `น้องบูมยินดีรับฟังครับ! สำหรับเรื่อง "${text}" คุณสามารถให้ผมสั่งอาหาร, ดูเมนูร้านค้า, เรียกส่งพัสดุ, ส่งข้อความแจ้งร้านค้า/ไรเดอร์ หรือเช็คยอดเงิน Wallet (฿${balanceNum.toLocaleString()}) ได้เลยครับ 🛵✨`;
       }
 
       setMessages((prev) => [
@@ -772,7 +749,8 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
           time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
-    } catch {
+    } catch (error) {
+      console.error('AI chat request failed:', error);
       setMessages((prev) => [
         ...prev,
         {

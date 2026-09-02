@@ -1,0 +1,56 @@
+name: Deploy staging
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: boomrider-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.STAGING_SUPABASE_PROJECT_REF }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint && npm test && npm run security:check && npm run build
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+      - name: Configure staging Edge Function secrets
+        run: >-
+          supabase secrets set
+          APP_ORIGIN="${{ vars.STAGING_APP_ORIGIN }}"
+          GEMINI_API_KEY="${{ secrets.STAGING_GEMINI_API_KEY }}"
+          GEMINI_MODEL="${{ vars.STAGING_GEMINI_MODEL }}"
+          --project-ref "$SUPABASE_PROJECT_REF"
+      - name: Deploy authenticated AI function to staging
+        run: supabase functions deploy ai-chat --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Pull Vercel staging configuration
+        run: npx vercel pull --yes --environment=preview --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Build Vercel artifact
+        run: npx vercel build --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Deploy Vercel staging artifact
+        id: deploy
+        shell: bash
+        run: |
+          deployment_url="$(npx vercel deploy --prebuilt --token="${{ secrets.VERCEL_TOKEN }}")"
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+      - name: Verify staging deployment
+        run: npm run smoke -- "${{ steps.deploy.outputs.url }}"
