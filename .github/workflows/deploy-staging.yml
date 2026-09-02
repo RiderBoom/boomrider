@@ -55,9 +55,8 @@ jobs:
       - name: Verify staging deployment
         shell: bash
         run: |
-          npx vercel curl / \
+          npx vercel --token="${{ secrets.VERCEL_TOKEN }}" curl / \
             --deployment "${{ steps.deploy.outputs.url }}" \
-            --token="${{ secrets.VERCEL_TOKEN }}" \
             --fail --silent --show-error \
             --output /tmp/boomrider-staging.html \
             --dump-header /tmp/boomrider-staging.headers
