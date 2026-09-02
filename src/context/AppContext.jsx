@@ -150,6 +150,7 @@ export function AppProvider({ children }) {
   const prevOrdersRef           = React.useRef([]);
   const gpsSessionRef           = React.useRef('');
   const shownAdminNotifIds      = React.useRef(new Set());
+  const pushTokenRef            = React.useRef('');
   const isClearingAuthRef       = React.useRef(false);
 
   // --- Global Wallet Store (in-memory cache for all wallets) ---
@@ -332,10 +333,34 @@ export function AppProvider({ children }) {
     validatePromoCode, applyPromoCode, createPromoCode, togglePromoCode, deletePromoCode,
   } = usePromoActions({ notifySystem, supabase });
 
-  // ── Initialize Native Push Notifications on Mount ────────────────────────
+  // ── Register this native device for authenticated background push ────────
   useEffect(() => {
-    initPushNotifications();
-  }, []);
+    if (!currentUser?.id) return undefined;
+    let cleanup = () => {};
+    let cancelled = false;
+    initPushNotifications({
+      onToken: async (token) => {
+        if (cancelled || !token) return;
+        pushTokenRef.current = token;
+        const { error } = await supabase.rpc('register_push_device', {
+          p_token: token,
+          p_platform: 'android',
+        });
+        if (error) console.error('Push device registration failed:', error.message);
+      },
+      onAction: (data) => {
+        if (data?.orderId) setActiveTab('activity');
+        if (data?.type === 'new_job') setRiderTab('jobs');
+      },
+    }).then(fn => {
+      if (cancelled) fn?.();
+      else cleanup = fn || (() => {});
+    });
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+  }, [currentUser?.id]);
 
   // ── Centralized fetch app data from Supabase ──────────────────────────
   const fetchAppData = useCallback(async () => {
@@ -417,6 +442,10 @@ export function AppProvider({ children }) {
     if (isClearingAuthRef.current) return;
     isClearingAuthRef.current = true;
     try {
+      if (pushTokenRef.current) {
+        await supabase.rpc('disable_push_device', { p_token: pushTokenRef.current }).catch(() => {});
+        pushTokenRef.current = '';
+      }
       await supabase.auth.signOut().catch(() => {});
     } finally {
       clearAuthStorageKeys();

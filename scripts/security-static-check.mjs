@@ -17,8 +17,8 @@ const checks = [
   },
   {
     file: 'supabase/functions/send-notification/index.ts',
-    required: [/NOTIFICATION_WEBHOOK_SECRET/, /x-webhook-secret/],
-    forbidden: [/Access-Control-Allow-Origin['"]:\s*['"]\*['"]/],
+    required: [/NOTIFICATION_WEBHOOK_SECRET/, /x-webhook-secret/, /FIREBASE_SERVICE_ACCOUNT_JSON/, /fcm\.googleapis\.com\/v1\/projects/],
+    forbidden: [/Access-Control-Allow-Origin['"]:\s*['"]\*['"]/, /FCM_SERVER_KEY/],
   },
   {
     file: '.gitignore',

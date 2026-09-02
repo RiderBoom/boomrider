@@ -209,12 +209,47 @@ export const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
 /**
  * ติดตั้งและตั้งค่า Native Push Notifications สำหรับ Capacitor (Android/iOS)
  */
-export const initPushNotifications = async () => {
+export const initPushNotifications = async ({ onToken, onAction } = {}) => {
   try {
     const { Capacitor } = await import('@capacitor/core');
-    if (!Capacitor.isNativePlatform()) return;
+    if (!Capacitor.isNativePlatform()) return () => {};
 
     const { PushNotifications } = await import('@capacitor/push-notifications');
+
+    if (Capacitor.getPlatform() === 'android') {
+      await Promise.all([
+        PushNotifications.createChannel({
+          id: 'orders', name: 'Order updates', description: 'Order status updates',
+          importance: 4, visibility: 1, vibration: true, sound: 'default',
+        }),
+        PushNotifications.createChannel({
+          id: 'new_jobs', name: 'New rider jobs', description: 'Time-sensitive rider job offers',
+          importance: 5, visibility: 1, vibration: true, sound: 'default',
+        }),
+        PushNotifications.createChannel({
+          id: 'merchant_orders', name: 'Merchant orders', description: 'New and updated merchant orders',
+          importance: 5, visibility: 1, vibration: true, sound: 'default',
+        }),
+        PushNotifications.createChannel({
+          id: 'admin_alerts', name: 'Admin alerts', description: 'Operational alerts requiring attention',
+          importance: 4, visibility: 1, vibration: true, sound: 'default',
+        }),
+      ]);
+    }
+
+    const handles = [];
+    handles.push(await PushNotifications.addListener('registration', (token) => {
+      onToken?.(token.value);
+    }));
+    handles.push(await PushNotifications.addListener('registrationError', (error) => {
+      console.error('Push registration failed:', error);
+    }));
+    handles.push(await PushNotifications.addListener('pushNotificationReceived', () => {
+      playOrderNotificationSound();
+    }));
+    handles.push(await PushNotifications.addListener('pushNotificationActionPerformed', (event) => {
+      onAction?.(event.notification?.data || {});
+    }));
 
     let permStatus = await PushNotifications.checkPermissions();
     if (permStatus.receive === 'prompt') {
@@ -225,23 +260,11 @@ export const initPushNotifications = async () => {
       await PushNotifications.register();
     }
 
-    PushNotifications.addListener('registration', (token) => {
-      console.log('Push Registration Token:', token.value);
-    });
-
-    PushNotifications.addListener('registrationError', (error) => {
-      console.error('Push Registration Error:', error);
-    });
-
-    PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.log('Push Notification Received:', notification);
-      playOrderNotificationSound();
-    });
-
-    PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-      console.log('Push Notification Action Performed:', notification);
-    });
+    return async () => {
+      await Promise.all(handles.map(handle => handle.remove()));
+    };
   } catch (err) {
     console.error('Failed to initialize push notifications:', err);
+    return () => {};
   }
 };
