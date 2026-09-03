@@ -11,6 +11,7 @@
     "test:coverage": "node --test --experimental-test-coverage",
     "test:e2e": "playwright test",
     "security:check": "node scripts/security-static-check.mjs",
+    "release:check": "node scripts/release-check.mjs",
     "smoke": "node scripts/deployment-smoke.mjs",
     "preview": "vite preview"
   },

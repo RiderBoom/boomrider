@@ -27,7 +27,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run lint && npm test && npm run security:check && npm run build
+      - run: npm run lint
+      - run: npm test
+      - run: npm run security:check
+      - run: npm run build
+      - run: npm run release:check
+
+      - name: Install Playwright Browsers for CI
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E Tests
+        run: npm run test:e2e
 
       - uses: supabase/setup-cli@v3
         with:
@@ -39,6 +49,7 @@ jobs:
           GEMINI_MODEL: ${{ vars.STAGING_GEMINI_MODEL }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           NOTIFICATION_WEBHOOK_SECRET: ${{ secrets.NOTIFICATION_WEBHOOK_SECRET }}
+          CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
         shell: bash
         run: |
           supabase secrets set \
@@ -47,6 +58,7 @@ jobs:
             GEMINI_MODEL="$GEMINI_MODEL" \
             FIREBASE_SERVICE_ACCOUNT_JSON="$FIREBASE_SERVICE_ACCOUNT_JSON" \
             NOTIFICATION_WEBHOOK_SECRET="$NOTIFICATION_WEBHOOK_SECRET" \
+            CRON_SECRET="$CRON_SECRET" \
             --project-ref "$SUPABASE_PROJECT_REF"
       - name: Apply forward database migrations
         run: supabase db push --project-ref "$SUPABASE_PROJECT_REF"
@@ -54,6 +66,8 @@ jobs:
         run: supabase functions deploy ai-chat --project-ref "$SUPABASE_PROJECT_REF"
       - name: Deploy push notification function to staging
         run: supabase functions deploy send-notification --project-ref "$SUPABASE_PROJECT_REF"
+      - name: Deploy expired job offers background function to staging
+        run: supabase functions deploy process-expired-offers --project-ref "$SUPABASE_PROJECT_REF"
 
       - name: Pull Vercel staging configuration
         run: npx vercel pull --yes --environment=preview --token="${{ secrets.VERCEL_TOKEN }}"
