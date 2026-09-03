@@ -119,6 +119,14 @@ export default function RiderView() {
   );
   activeJobRef.current = _activeJob ? { id: _activeJob.id, status: _activeJob.status } : null;
 
+  // ── Sync online status to DB whenever rider mounts or online state/meRider changes ──
+  React.useEffect(() => {
+    const rid = meRider?.id || riderIdRef.current;
+    if (rid) {
+      supabase.from('riders').update({ is_available: isOnline }).eq('id', rid).then(() => {});
+    }
+  }, [isOnline, meRider?.id, supabase]);
+
   // ── watchPosition — mount ครั้งเดียว, cleanup ตอน unmount ────────────────
   React.useEffect(() => {
     if (!navigator.geolocation) {
@@ -134,7 +142,7 @@ export default function RiderView() {
       setGpsStatus('tracking');
 
       const riderId = riderIdRef.current;
-      if (riderId) updateRiderWorkingLocation(riderId, loc);
+      if (riderId) updateRiderWorkingLocation(riderId, loc, isOnline);
     };
 
     const onError = (err) => {

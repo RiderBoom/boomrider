@@ -1129,13 +1129,13 @@ export function AppProvider({ children }) {
   // ── Rider location update ─────────────────────────────────────────────────
   const _lastGpsWriteRef = useRef(0); // throttle: write to Supabase at most once per 5s
 
-  const updateRiderWorkingLocation = useCallback((riderId, location) => {
+  const updateRiderWorkingLocation = useCallback((riderId, location, isAvailable = true) => {
     if (!riderId || !location) return;
 
     // 1. Update local riders state immediately
     setRiders(prev => prev.map(r =>
       r.id === riderId
-        ? { ...r, location, current_lat: location.lat, current_lng: location.lng }
+        ? { ...r, location, current_lat: location.lat, current_lng: location.lng, is_available: isAvailable }
         : r,
     ));
 
@@ -1143,8 +1143,9 @@ export function AppProvider({ children }) {
     if (now - _lastGpsWriteRef.current < 5000) return; // throttle
     _lastGpsWriteRef.current = now;
 
-    // 2. Persist GPS to riders table (columns added by migration 001)
+    // 2. Persist GPS and availability to riders table (columns added by migration 001)
     supabase.from('riders').update({
+      is_available: isAvailable,
       current_lat: location.lat,
       current_lng: location.lng,
       last_location_at: new Date().toISOString(),
