@@ -72,6 +72,7 @@ jobs:
         run: |
           npx vercel curl / \
             --deployment "${{ steps.deploy.outputs.url }}" \
+            --token="${{ secrets.VERCEL_TOKEN }}" \
             --fail --silent --show-error \
             --output /tmp/boomrider-staging.html \
             --dump-header /tmp/boomrider-staging.headers
