@@ -46,7 +46,19 @@ CREATE INDEX IF NOT EXISTS idx_job_offers_order   ON job_offers (order_id, statu
 CREATE INDEX IF NOT EXISTS idx_job_offers_expires ON job_offers (expires_at) WHERE status = 'pending';
 
 -- Enable Realtime for rider push (INSERT fires Supabase Realtime event)
-ALTER PUBLICATION supabase_realtime ADD TABLE job_offers;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'job_offers'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE job_offers;
+  END IF;
+END
+$$;
 
 -- RLS: riders see only their own offers; service_role does everything
 ALTER TABLE job_offers ENABLE ROW LEVEL SECURITY;
