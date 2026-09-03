@@ -349,8 +349,20 @@ export function AppProvider({ children }) {
         if (error) console.error('Push device registration failed:', error.message);
       },
       onAction: (data) => {
-        if (data?.orderId) setActiveTab('activity');
-        if (data?.type === 'new_job') setRiderTab('jobs');
+        if (!data) return;
+        if (data.type === 'new_job') {
+          setActiveRole('rider');
+          setRiderTab('jobs');
+        } else if (data.type === 'new_order') {
+          setActiveRole('merchant');
+          setMerchantTab('orders');
+        } else if (data.type === 'admin_alert') {
+          setActiveRole('admin');
+          setAdminTab('dashboard');
+        } else if (data.type === 'order_status' || data.orderId) {
+          setActiveRole('customer');
+          setActiveTab('activity');
+        }
       },
     }).then(fn => {
       if (cancelled) fn?.();

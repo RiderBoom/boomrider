@@ -84,13 +84,28 @@ const buildNotification = async (payload: WebhookPayload) => {
     body = `คุณมีออเดอร์ใหม่ #${String(record.order_id || '').slice(-6)} รอรับงาน`;
     channel = 'new_jobs'; kind = 'new_job'; orderId = String(record.order_id || '');
   } else if (payload.table === 'orders' && payload.type === 'INSERT') {
-    [data.customerId, data.restaurantOwnerId].filter(Boolean).forEach(id => users.add(String(id)));
+    let merchantOwnerId = data.restaurantOwnerId;
+    if (!merchantOwnerId && data.restaurantId) {
+      const restData = await rest(`restaurants?select=owner_id&id=eq.${encodeURIComponent(data.restaurantId)}`);
+      if (restData?.[0]?.owner_id) merchantOwnerId = restData[0].owner_id;
+    }
+    [data.customerId, merchantOwnerId].filter(Boolean).forEach(id => users.add(String(id)));
     title = '🛎️ ออเดอร์ใหม่'; body = `ออเดอร์ #${orderId.slice(-6)} ถูกสร้างเรียบร้อยแล้ว`;
     channel = 'merchant_orders'; kind = 'new_order';
   } else if (payload.table === 'orders' && payload.type === 'UPDATE') {
     const oldData = rowData(payload.old_record || {});
     if (!data.status || data.status === oldData.status) return null;
-    [data.customerId, data.restaurantOwnerId, data.riderUserId]
+    let merchantOwnerId = data.restaurantOwnerId;
+    if (!merchantOwnerId && data.restaurantId) {
+      const restData = await rest(`restaurants?select=owner_id&id=eq.${encodeURIComponent(data.restaurantId)}`);
+      if (restData?.[0]?.owner_id) merchantOwnerId = restData[0].owner_id;
+    }
+    let riderUserId = data.riderUserId;
+    if (!riderUserId && data.riderId) {
+      const riderData = await rest(`riders?select=user_id&id=eq.${encodeURIComponent(data.riderId)}`);
+      if (riderData?.[0]?.user_id) riderUserId = riderData[0].user_id;
+    }
+    [data.customerId, merchantOwnerId, riderUserId]
       .filter(Boolean).forEach(id => users.add(String(id)));
     const labels: Json = {
       preparing: 'ร้านกำลังเตรียมอาหาร', ready_to_pickup: 'อาหารพร้อมรับแล้ว',
@@ -180,7 +195,7 @@ Deno.serve(async req => {
       else {
         failure += 1;
         const detail = await response.text();
-        if (/UNREGISTERED|registration-token-not-registered/.test(detail)) {
+        if (/UNREGISTERED|INVALID_ARGUMENT|NOT_FOUND|registration-token-not-registered/i.test(detail)) {
           await rest(`push_devices?id=eq.${device.id}`, {
             method: 'PATCH', body: JSON.stringify({ enabled: false, updated_at: new Date().toISOString() }),
           });
