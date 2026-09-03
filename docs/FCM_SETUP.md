@@ -93,6 +93,17 @@ npx supabase secrets set NOTIFICATION_WEBHOOK_SECRET="your_secure_webhook_secret
   - `Content-Type`: `application/json`
   - `x-webhook-secret`: `<ค่า NOTIFICATION_WEBHOOK_SECRET ที่ตั้งไว้>`
 
+### Webhook 3: สำหรับแจ้งเตือนผู้ดูแลระบบเมื่อมี Admin Notification (`admin_notifs`)
+- **Name**: `send-admin-notifications`
+- **Table**: `public.admin_notifs`
+- **Events**: `INSERT`
+- **Type**: `HTTP Request`
+- **Method**: `POST`
+- **URL**: `https://<your-project-ref>.supabase.co/functions/v1/send-notification`
+- **HTTP Headers**:
+  - `Content-Type`: `application/json`
+  - `x-webhook-secret`: `<ค่า NOTIFICATION_WEBHOOK_SECRET ที่ตั้งไว้>`
+
 ---
 
 ## 5. วิธีการทดสอบการแจ้งเตือนตอนล็อกหน้าจอ (Lock Screen Test)
