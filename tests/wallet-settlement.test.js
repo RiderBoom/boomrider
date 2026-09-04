@@ -239,3 +239,80 @@ test('8. Duplicate completion request -> Idempotent response, no duplicate trans
   assert.equal(res2.skipped, 'already_settled');
   assert.equal(walletStore['rider-u1'], 0); // Wallet unchanged!
 });
+
+test('9. Atomic Customer Order Placement -> Validates wallet balance and debits atomically', () => {
+  const wallets = { 'cust-1': 100 };
+  const orders = [];
+
+  // Helper mimicking place_customer_order RPC
+  function mockPlaceCustomerOrder(order, walletStore, orderStore) {
+    const custId = order.customerId;
+    const method = order.paymentMethod ?? 'cash';
+    const total = order.grandTotal ?? 0;
+
+    if (method === 'wallet') {
+      const bal = walletStore[custId] ?? 0;
+      if (bal < total) {
+        return {
+          ok: false,
+          reason: 'INSUFFICIENT_CUSTOMER_WALLET',
+          requiredBalance: total,
+          currentBalance: bal,
+        };
+      }
+      walletStore[custId] = bal - total;
+    }
+
+    orderStore.push(order);
+    return { ok: true, order_id: order.id };
+  }
+
+  // Order 1 (80 THB) -> Succeeds
+  const o1 = { id: 'ord-1', customerId: 'cust-1', paymentMethod: 'wallet', grandTotal: 80 };
+  const res1 = mockPlaceCustomerOrder(o1, wallets, orders);
+  assert.equal(res1.ok, true);
+  assert.equal(wallets['cust-1'], 20);
+  assert.equal(orders.length, 1);
+
+  // Order 2 (50 THB) -> Rejected due to insufficient balance
+  const o2 = { id: 'ord-2', customerId: 'cust-1', paymentMethod: 'wallet', grandTotal: 50 };
+  const res2 = mockPlaceCustomerOrder(o2, wallets, orders);
+  assert.equal(res2.ok, false);
+  assert.equal(res2.reason, 'INSUFFICIENT_CUSTOMER_WALLET');
+  assert.equal(wallets['cust-1'], 20); // Unchanged!
+  assert.equal(orders.length, 1); // No invalid unpaid order inserted!
+});
+
+test('10. Atomic Admin Request Approval -> Prevents double processing', () => {
+  const pendingRequests = {
+    'req-101': { id: 'req-101', type: 'topup', userId: 'user-a', amount: 500, processed: false },
+  };
+  const wallets = { 'user-a': 100 };
+
+  // Helper mimicking approve_pending_request RPC
+  function mockApprovePendingRequest(reqId, requests, walletStore) {
+    const req = requests[reqId];
+    if (!req || req.processed) {
+      return { ok: false, reason: 'request_already_processed' };
+    }
+
+    if (req.type === 'topup') {
+      walletStore[req.userId] = (walletStore[req.userId] || 0) + req.amount;
+    }
+
+    req.processed = true;
+    delete requests[reqId];
+    return { ok: true, request_id: reqId };
+  }
+
+  // First approval -> Succeeds
+  const res1 = mockApprovePendingRequest('req-101', pendingRequests, wallets);
+  assert.equal(res1.ok, true);
+  assert.equal(wallets['user-a'], 600);
+
+  // Second approval (Double tap by admin) -> Rejected, no double credit!
+  const res2 = mockApprovePendingRequest('req-101', pendingRequests, wallets);
+  assert.equal(res2.ok, false);
+  assert.equal(res2.reason, 'request_already_processed');
+  assert.equal(wallets['user-a'], 600); // Unchanged!
+});
