@@ -137,3 +137,4 @@ alter publication supabase_realtime add table public.orders;
 alter publication supabase_realtime add table public.admin_notifs;
 alter publication supabase_realtime add table public.chats;
 alter publication supabase_realtime add table public.pending_requests;
+alter publication supabase_realtime add table public.wallets;

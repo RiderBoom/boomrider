@@ -244,6 +244,34 @@ export function AppProvider({ children }) {
     return true;
   }, [currentUser?.id, userProfile?.id]);  
 
+  // ── Fetch current user wallet from Supabase ─────────────────────────────
+  const fetchUserWallet = useCallback(async (targetUid) => {
+    const uid = targetUid || currentUser?.id;
+    if (!uid) return;
+    try {
+      const walletKey = (ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL) ? ADMIN_EMAIL : uid;
+      const { data: wallet } = await supabase
+        .from('wallets')
+        .select('balance, history')
+        .eq('user_id', walletKey)
+        .maybeSingle();
+
+      if (wallet) {
+        const bal = r2(wallet.balance || 0);
+        const hist = wallet.history || [];
+        setUserWallet(bal);
+        setWalletAllEntries(hist);
+        setGlobalWallets(prev => ({
+          ...prev,
+          [walletKey]: { balance: bal, history: hist },
+          [uid]: { balance: bal, history: hist },
+        }));
+      }
+    } catch (e) {
+      console.error('fetchUserWallet error', e);
+    }
+  }, [currentUser?.id, currentUser?.email]);
+
   // ── Wallet hook ─────────────────────────────────────────────────────────────
   const { creditWallet, creditWalletLocal, processTransaction, requestTopUp, requestWithdraw, adminAdjustWallet } = useWalletActions({
     currentUser, currentUserRef,
@@ -276,7 +304,7 @@ export function AppProvider({ children }) {
     setSelectedRestaurant, setActiveTab,
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
-    creditWallet, creditWalletLocal, processTransaction, setUserWallet,
+    creditWallet, creditWalletLocal, processTransaction, setUserWallet, fetchUserWallet,
     seenOrderIdsRef,
     notifySystem, notifyAdmin,
     supabase,
@@ -600,6 +628,9 @@ export function AppProvider({ children }) {
             next[idx] = incoming;
             return next;
           });
+          if (incoming.status === 'completed') {
+            fetchUserWallet();
+          }
         };
         const o = payload.new?.data;
         if (o) {
@@ -618,7 +649,7 @@ export function AppProvider({ children }) {
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, [isLoggedIn]);  
+  }, [isLoggedIn, fetchUserWallet]);
 
   // ── Realtime: Pending Requests ──────────────────────────────────────────
   useEffect(() => {
@@ -687,6 +718,42 @@ export function AppProvider({ children }) {
       supabase.removeChannel(channel);
     };
   }, [isLoggedIn]);
+
+  // ── Realtime: Wallets ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isLoggedIn || !currentUser?.id) return;
+    const uid = currentUser.id;
+    const walletKey = (ADMIN_EMAIL && currentUser.email === ADMIN_EMAIL) ? ADMIN_EMAIL : uid;
+
+    const channel = supabase.channel('wallets-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, (payload) => {
+        const updated = payload.new;
+        if (!updated) return;
+        if (updated.user_id === uid || updated.user_id === walletKey) {
+          const bal = r2(updated.balance || 0);
+          const hist = updated.history || [];
+          setUserWallet(bal);
+          setWalletAllEntries(hist);
+          setGlobalWallets(prev => ({
+            ...prev,
+            [walletKey]: { balance: bal, history: hist },
+            [uid]: { balance: bal, history: hist },
+          }));
+        } else if (isAdmin) {
+          const bal = r2(updated.balance || 0);
+          const hist = updated.history || [];
+          setGlobalWallets(prev => ({
+            ...prev,
+            [updated.user_id]: { balance: bal, history: hist },
+          }));
+        }
+      })
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
+  }, [isLoggedIn, currentUser?.id, currentUser?.email, isAdmin]);
 
   // ── Auto-save to Supabase on state changes ──────────────────────────────
   const debounceRef = useRef({});
@@ -1498,6 +1565,7 @@ export function AppProvider({ children }) {
     requestCancelOrder,
     requestCancelByRole,
     forceRefresh,
+    fetchUserWallet,
     walletAllEntries,
     supabase,
   };
