@@ -249,18 +249,22 @@ export function AppProvider({ children }) {
     const uid = targetUid || currentUser?.id;
     if (!uid) return;
     try {
-      const walletKey = (ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL) ? ADMIN_EMAIL : uid;
       const { data: wallet } = await supabase
         .from('wallets')
         .select('balance, history')
-        .eq('user_id', walletKey)
+        .eq('user_id', uid)
         .maybeSingle();
 
       if (wallet) {
         const bal = r2(wallet.balance || 0);
         const hist = wallet.history || [];
-        setUserWallet(bal);
-        setWalletAllEntries(hist);
+        const isSelf = uid === currentUser?.id;
+        const walletKey = (ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL && isSelf) ? ADMIN_EMAIL : uid;
+
+        if (isSelf) {
+          setUserWallet(bal);
+          setWalletAllEntries(hist);
+        }
         setGlobalWallets(prev => ({
           ...prev,
           [walletKey]: { balance: bal, history: hist },
