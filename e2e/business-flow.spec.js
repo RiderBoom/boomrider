@@ -214,7 +214,7 @@ test('Customer logs in, views restaurant, and places an order', async ({ page })
   await page.locator('#login-password').fill('password123');
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).last().click();
 
-  await expect(page.getByText('BoomRider')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: 'BoomRider' })).toBeVisible({ timeout: 5000 });
   await expect(page.locator('body')).not.toBeEmpty();
 });
 
