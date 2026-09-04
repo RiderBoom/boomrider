@@ -169,11 +169,16 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', reason, 'error');
     }
 
+    const authOrder = rpcRes?.order || newOrder;
+    const finalGrandTotal = authOrder.grandTotal ?? grandTotal;
+
+    setOrders(prev => prev.map(o => o.id === orderId ? authOrder : o));
+
     if (paymentMethod === 'wallet') {
-      creditWalletLocal(uid, -grandTotal, `ชำระค่าอาหาร ออเดอร์ #${orderId.slice(-6)}`);
+      creditWalletLocal(uid, -finalGrandTotal, `ชำระค่าอาหาร ออเดอร์ #${orderId.slice(-6)}`);
     }
 
-    notifyAdmin('🛎️ ออเดอร์ใหม่', `${userProfile.name} สั่ง ${cart[0].restaurantName} ฿${grandTotal}`, 'info');
+    notifyAdmin('🛎️ ออเดอร์ใหม่', `${userProfile.name} สั่ง ${cart[0].restaurantName} ฿${finalGrandTotal}`, 'info');
     setCart([]);
     setSelectedRestaurant(null);
     setActiveTab('activity');
@@ -224,8 +229,13 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', reason, 'error');
     }
 
+    const authOrder = rpcRes?.order || newOrder;
+    const finalGrandTotal = authOrder.grandTotal ?? grandTotal;
+
+    setOrders(prev => prev.map(o => o.id === orderId ? authOrder : o));
+
     if (paymentMethod === 'wallet') {
-      creditWalletLocal(uid, -grandTotal, `ค่าส่งพัสดุ ออเดอร์ #${orderId.slice(-6)}`);
+      creditWalletLocal(uid, -finalGrandTotal, `ค่าส่งพัสดุ ออเดอร์ #${orderId.slice(-6)}`);
     }
     notifyAdmin('📦 พัสดุใหม่', `${userProfile.name} ส่ง ${parcelDetails.pickup} → ${parcelDetails.dropoff}`, 'info');
     setParcelDetails({ pickup: '', dropoff: '', weight: '1', distance: 0, receiverName: '', receiverPhone: '' });
@@ -294,8 +304,13 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', reason, 'error');
     }
 
+    const authOrder = rpcRes?.order || newOrder;
+    const finalGrandTotal = authOrder.grandTotal ?? grandTotal;
+
+    setOrders(prev => prev.map(o => o.id === orderId ? authOrder : o));
+
     if (paymentMethod === 'wallet') {
-      creditWalletLocal(uid, -grandTotal, `ชำระค่าโดยสาร ออเดอร์ #${orderId.slice(-6)}`);
+      creditWalletLocal(uid, -finalGrandTotal, `ชำระค่าโดยสาร ออเดอร์ #${orderId.slice(-6)}`);
     }
 
     notifyAdmin('🚗 เรียกรถใหม่', `${userProfile.name} เรียกรถ ${rideDetails.pickup} → ${rideDetails.dropoff}`, 'info');
@@ -355,8 +370,13 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', reason, 'error');
     }
 
+    const authOrder = rpcRes?.order || newOrder;
+    const finalGrandTotal = authOrder.grandTotal ?? grandTotal;
+
+    setOrders(prev => prev.map(o => o.id === orderId ? authOrder : o));
+
     if (paymentMethod === 'wallet') {
-      creditWalletLocal(uid, -grandTotal, `ชำระค่าบริการ ออเดอร์ #${orderId.slice(-6)}`);
+      creditWalletLocal(uid, -finalGrandTotal, `ชำระค่าบริการ ออเดอร์ #${orderId.slice(-6)}`);
     }
 
     notifyAdmin('🛠️ จองบริการใหม่', `${userProfile.name} จอง ${serviceDetails.serviceCategory}`, 'info');
