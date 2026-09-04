@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { playNotificationSound, vibrateDevice } from '../../utils';
 
-export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
+export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected, notifySystem }) {
   const [offer,     setOffer]     = useState(null);  // current job offer row
   const [countdown, setCountdown] = useState(0);     // seconds remaining
   const [accepting, setAccepting] = useState(false); // debounce guard
@@ -66,7 +66,13 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
 
       if (!data?.ok) {
         console.warn('[JobOffer] accept failed:', data?.reason);
-        // Popup silently closes if someone else got the job or if it expired
+        if (data?.reason === 'INSUFFICIENT_RIDER_WALLET') {
+          notifySystem?.(
+            'ยอดเงินในกระเป๋าไม่เพียงพอ',
+            'ยอดเงินในกระเป๋าไม่เพียงพอสำหรับรับงานนี้ กรุณาเติมเงินก่อนรับงาน',
+            'error'
+          );
+        }
         setOffer(null);
         setCountdown(0);
         return false;
@@ -79,7 +85,7 @@ export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected }) {
     } finally {
       setAccepting(false);
     }
-  }, [supabase, accepting, clearTimers, onAccepted]);
+  }, [supabase, accepting, clearTimers, onAccepted, notifySystem]);
 
   // ── Reject / Re-dispatch ──────────────────────────────────────────────────
   const rejectOffer = useCallback(async (offerId, orderForRedispatch) => {
