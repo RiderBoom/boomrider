@@ -38,10 +38,12 @@ export default function RiderView() {
   // ── Grab Auto-Dispatch: listen for incoming job offers ─────────────────────
   // (uses _uid which is declared below at line ~98 in the original sync block —
   //  useState/useEffect order is stable so we can reference it here via closure)
+  const { notifySystem } = useApp();
   const { offer: jobOffer, countdown: offerCountdown, accepting: offerAccepting,
     acceptOffer, rejectOffer } = useJobOffer({
     supabase,
     riderUserId: userProfile?.id || currentUser?.id,
+    notifySystem,
     onAccepted: (updatedOrder) => {
       if (updatedOrder) {
         setOrders(prev => {

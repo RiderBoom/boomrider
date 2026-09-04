@@ -989,16 +989,6 @@ export function AppProvider({ children }) {
         const isOrderRider = _uid && o.riderUserId === _uid;
         const isAdminUser  = !!ADMIN_EMAIL && _email === ADMIN_EMAIL;
         if (!isOrderRider && !isAdminUser) return;
-        const completed = {
-          ...o,
-          status: 'completed',
-          completedAt: new Date().toISOString(),
-          autoCompleted: true,
-        };
-        supabase.from('orders')
-          .update({ status: 'completed', data: completed })
-          .eq('id', r.id)
-          .then(() => {});
         const gpFoodRate    = (appConfig?.gpFood ?? 30) / 100;
         const gpDelivRate   = (appConfig?.gpDelivery ?? 15) / 100;
         const gpRideRate    = (appConfig?.gpRide ?? 15) / 100;
@@ -1009,7 +999,21 @@ export function AppProvider({ children }) {
           p_gp_delivery_rate: gpDelivRate,
           p_gp_ride_rate: gpRideRate,
           p_gp_service_rate: gpServiceRate,
-        }).then(() => {});
+        }).then(({ data: rpcRes }) => {
+          if (rpcRes?.ok) {
+            const completed = {
+              ...o,
+              status: 'completed',
+              completedAt: new Date().toISOString(),
+              autoCompleted: true,
+              settlementStatus: 'settled',
+            };
+            supabase.from('orders')
+              .update({ status: 'completed', data: completed })
+              .eq('id', r.id)
+              .then(() => {});
+          }
+        });
       });
 
       setOrders(prev => {

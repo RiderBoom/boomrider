@@ -368,41 +368,34 @@ export function useOrderActions(deps) {
     const rider = riders.find(r => r.userId === uid);
     if (!rider) return notifySystem('ผิดพลาด', 'ไม่พบข้อมูลไรเดอร์ของคุณ', 'error');
 
-    const { gpAmount: adminGP, merchantIncome, riderIncome } = _settlementAmounts(order);
+    // Call accept_order_direct RPC for atomic cash wallet validation and state updates
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('accept_order_direct', {
+      p_order_id: orderId,
+      p_rider_id: rider.id,
+    });
 
-    const patch = {
-      riderId: rider.id,
-      riderUserId: uid,
-      riderName: rider.name || userProfile?.name || 'ไรเดอร์',
-      riderPhone: rider.phone || userProfile?.phone || '',
-      status: 'rider_accepted',
-      riderAcceptedAt: formatDateTime(),
-      riderIncome,
-      merchantIncome,
-      adminGP,
-    };
-
-    const updatedOrderData = { ...order, ...patch };
-
-    // Atomic update to prevent race conditions (First-Come, First-Served manual accept)
-    const { data: updatedDbOrder, error } = await supabase
-      .from('orders')
-      .update({ status: patch.status, data: updatedOrderData })
-      .eq('id', orderId)
-      .in('status', ['pending', 'preparing', 'ready_to_pickup', 'rider_accepted'])
-      .select('id')
-      .maybeSingle();
-
-    if (error) {
-      console.error('[acceptOrder] update error:', error);
-      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + error.message, 'error');
+    if (rpcError) {
+      console.error('[acceptOrder] RPC error:', rpcError);
+      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + rpcError.message, 'error');
     }
 
-    if (!updatedDbOrder) {
-      return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
+    if (!rpcResult?.ok) {
+      if (rpcResult?.reason === 'INSUFFICIENT_RIDER_WALLET') {
+        return notifySystem(
+          'ยอดเงินในกระเป๋าไม่เพียงพอ',
+          'ยอดเงินในกระเป๋าไม่เพียงพอสำหรับรับงานนี้ กรุณาเติมเงินก่อนรับงาน',
+          'error'
+        );
+      }
+      if (rpcResult?.reason === 'order_already_taken') {
+        return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
+      }
+      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้ (' + (rpcResult?.reason || 'unknown error') + ')', 'error');
     }
 
-    // Since DB update succeeded, update local state (insert if wasn't present)
+    const updatedOrderData = rpcResult.order_data || order;
+
+    // Since DB update succeeded, update local state
     setOrders(prev => {
       const exists = prev.some(o => o.id === orderId);
       if (exists) {
@@ -410,18 +403,6 @@ export function useOrderActions(deps) {
       }
       return [updatedOrderData, ...prev];
     });
-
-    // Mark rider as unavailable in riders table and cancel any pending job_offers for this order
-    supabase.from('riders')
-      .update({ is_available: false })
-      .eq('id', rider.id)
-      .then(() => {});
-
-    supabase.from('job_offers')
-      .update({ status: 'missed', responded_at: new Date().toISOString() })
-      .eq('order_id', orderId)
-      .eq('status', 'pending')
-      .then(() => {});
 
     notifySystem('รับงานแล้ว!', `ออเดอร์ #${orderId.slice(-6)} — ไปรับของที่ร้านได้เลย`, 'success');
     return true;
@@ -444,28 +425,7 @@ export function useOrderActions(deps) {
       };
     }
 
-    const basePatch = newStatus === 'completed'
-      ? { status: newStatus, completedAt: new Date().toISOString(), completedAtMs: Date.now() }
-      : { status: newStatus };
-    const patch = { ...basePatch, ...incomePatch, ...extraData };
-    await _updateOrder(orderId, patch);
-
-    // ── Grab Auto-Dispatch: trigger when merchant marks ready_to_pickup ──────
-    if (newStatus === 'ready_to_pickup') {
-      const updatedOrder = { ...order, ...patch };
-      autoDispatch(supabase, updatedOrder);
-    }
-
-    // ── Rider's job ends at 'delivered' — release availability immediately ────
-    if (newStatus === 'delivered') {
-      const riderUid = order.riderUserId || riders.find(r => r.id === order.riderId)?.userId;
-      const riderRow = riders.find(r => r.userId === riderUid);
-      if (riderRow) {
-        supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
-      }
-    }
-
-    // ── Settlement: use SQL RPC first, fall back to JS wallet credits ────────
+    // ── Completion & Settlement Flow (Financial Settlement is Source of Truth) ──
     if (newStatus === 'completed') {
       const { foodTotal, gpAmount, merchantIncome, riderIncome: calcRiderIncome } = _settlementAmounts(order);
       const riderUid     = order.riderUserId || riders.find(r => r.id === order.riderId)?.userId;
@@ -476,6 +436,7 @@ export function useOrderActions(deps) {
       const gpRideRate    = (appConfig.gpRide ?? 15) / 100;
       const gpServiceRate = (appConfig.gpService ?? 15) / 100;
 
+      // Execute financial settlement in backend transaction FIRST before marking completed
       const { data: rpcResult, error: rpcError } = await supabase
         .rpc('process_order_settlement', {
           p_order_id: orderId,
@@ -484,6 +445,27 @@ export function useOrderActions(deps) {
           p_gp_ride_rate: gpRideRate,
           p_gp_service_rate: gpServiceRate
         });
+
+      if (rpcError || (rpcResult && !rpcResult.ok)) {
+        console.error('[updateOrderStatus] Settlement error:', rpcError || rpcResult?.error);
+        notifySystem('ผิดพลาด', 'ไม่สามารถทำรายการ settlement ได้ ออเดอร์ยังไม่ถูกปิด', 'error');
+        return false;
+      }
+
+      // Settlement succeeded or was already settled — update local state
+      const nowStr = new Date().toISOString();
+      const nowMs = Date.now();
+
+      const patch = {
+        ...incomePatch,
+        ...extraData,
+        status: 'completed',
+        completedAt: order.completedAt || nowStr,
+        completedAtMs: order.completedAtMs || nowMs,
+        settlementStatus: 'settled',
+      };
+
+      setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, ...patch } : o)));
 
       const getFeeLabel = (type) => {
         if (type === 'ride') return 'ค่าโดยสาร';
@@ -498,27 +480,7 @@ export function useOrderActions(deps) {
         return 'GP(สด)';
       };
 
-      if (rpcError || !rpcResult?.ok) {
-        // Fallback: JS-side wallet credits (keeps working if RPC unavailable)
-        if (order.paymentMethod === 'cash') {
-          if (['parcel', 'ride', 'service'].includes(order.type)) {
-            // Cash order: rider collected full cash. No credit needed, only debit GP to admin.
-            if (riderUid && gpAmount > 0)    creditWallet(riderUid,    -gpAmount, `หัก GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
-            if (ADMIN_EMAIL && gpAmount > 0) creditWallet(ADMIN_EMAIL, gpAmount,  `GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
-          } else {
-            // Food cash: rider collected (food + delivery) in cash. No credit needed for delivery fee, only debit food (minus GP) and GP to admin.
-            if (riderUid && foodTotal > 0)          creditWallet(riderUid,     -foodTotal,      `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
-            if (shopOwnerUid && merchantIncome > 0) creditWallet(shopOwnerUid, merchantIncome,  `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
-            if (ADMIN_EMAIL && gpAmount > 0)        creditWallet(ADMIN_EMAIL,  gpAmount,        `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
-          }
-        } else {
-          // Wallet: customer already paid at placement; distribute to stakeholders
-          if (shopOwnerUid && merchantIncome > 0) creditWallet(shopOwnerUid, merchantIncome,  `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
-          if (ADMIN_EMAIL && gpAmount > 0)        creditWallet(ADMIN_EMAIL,  gpAmount,        `GP ออเดอร์ #${orderId.slice(-6)}`);
-          if (riderUid && calcRiderIncome > 0)    creditWallet(riderUid,     calcRiderIncome, `${getFeeLabel(order.type)} ออเดอร์ #${orderId.slice(-6)}`);
-        }
-      } else if (!rpcResult.skipped) {
-        // RPC settled — DB already updated; sync React state only (no duplicate DB writes)
+      if (rpcResult && !rpcResult.skipped) {
         const riderEarned    = r2(rpcResult.riderIncome    ?? calcRiderIncome);
         const merchantEarned = r2(rpcResult.merchantIncome ?? merchantIncome);
         const gpEarned       = r2(rpcResult.gpAmount       ?? gpAmount);
@@ -549,6 +511,25 @@ export function useOrderActions(deps) {
       }
 
       notifySystem('✅ ส่งของสำเร็จ!', `ออเดอร์ #${orderId.slice(-6)} เสร็จสมบูรณ์`, 'success');
+      return true;
+    }
+
+    const patch = { status: newStatus, ...incomePatch, ...extraData };
+    await _updateOrder(orderId, patch);
+
+    // ── Grab Auto-Dispatch: trigger when merchant marks ready_to_pickup ──────
+    if (newStatus === 'ready_to_pickup') {
+      const updatedOrder = { ...order, ...patch };
+      autoDispatch(supabase, updatedOrder);
+    }
+
+    // ── Rider's job ends at 'delivered' — release availability immediately ────
+    if (newStatus === 'delivered') {
+      const riderUid = order.riderUserId || riders.find(r => r.id === order.riderId)?.userId;
+      const riderRow = riders.find(r => r.userId === riderUid);
+      if (riderRow) {
+        supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
+      }
     }
 
     // ── Mark rider available when job cancelled ──────────────────────────────
