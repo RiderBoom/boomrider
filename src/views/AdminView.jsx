@@ -460,10 +460,13 @@ export default function AdminView() {
           {(() => {
             const activeOrders   = orders.filter(o => !['completed','cancelled'].includes(o.status));
             const waitingDispatch = orders.filter(o => o.status === 'ready_to_pickup' && !o.riderId);
-            const ridersOnline   = riders.filter(r => r.is_available === true || r.isAvailable === true);
+            const pendingMerchant = orders.filter(o => (o.type === 'food' || !o.type) && o.status === 'pending');
+            const activeDeliveryRiderIds = new Set(orders.filter(o => o.riderId && ['rider_accepted', 'picking_up', 'delivering'].includes(o.status)).map(o => o.riderId));
+            const ridersOnline   = riders.filter(r => r.is_available === true || r.isAvailable === true || activeDeliveryRiderIds.has(r.id));
             const ridersActive   = riders.filter(r => r.status === 'active');
             const pendingCount   = pendingRequests.length;
             const alerts         = [];
+            if (pendingMerchant.length > 0) alerts.push(`⚠️ ${pendingMerchant.length} ออเดอร์รอร้านค้าตอบรับ`);
             if (waitingDispatch.length > 0) alerts.push(`⚠️ ${waitingDispatch.length} ออเดอร์รอไรเดอร์ (ยังไม่มีการจ่ายงาน)`);
             if (pendingCount > 0) alerts.push(`🔔 ${pendingCount} คำขอรออนุมัติ`);
             return (

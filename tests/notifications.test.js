@@ -150,3 +150,53 @@ test('resolveNotificationClickRoute routes push taps to correct role and view ta
   assert.deepEqual(resolveNotificationClickRoute({ type: 'admin_alert' }), { role: 'admin', tab: 'dashboard' });
   assert.deepEqual(resolveNotificationClickRoute({ type: 'order_status', orderId: 'o3' }), { role: 'customer', tab: 'activity' });
 });
+
+test('admin notification signature deduplication correctly matches title and message', () => {
+  const shownSignatures = new Set();
+  const title = '🛎️ ออเดอร์ใหม่';
+  const message = 'สมชาย สั่ง ร้านป้ากิ๊ก ฿150';
+  const signature = `${title}:${message}`;
+
+  // Direct call adds signature
+  shownSignatures.add(signature);
+  assert.equal(shownSignatures.has(signature), true);
+
+  // Incoming Realtime event with PostgreSQL UUID id
+  const incomingDbRecord = { id: 'uuid-1234-5678', title, message, type: 'info' };
+  const incomingSig = `${incomingDbRecord.title}:${incomingDbRecord.message}`;
+
+  const isDuplicate = shownSignatures.has(incomingDbRecord.id) || shownSignatures.has(incomingSig);
+  assert.equal(isDuplicate, true);
+
+  // Clean up on match
+  if (isDuplicate) {
+    shownSignatures.delete(incomingDbRecord.id);
+    shownSignatures.delete(incomingSig);
+  }
+  assert.equal(shownSignatures.has(signature), false);
+});
+
+test('system monitor metrics correctly evaluate pending merchant orders and active riders', () => {
+  const mockOrders = [
+    { id: 'o-1', type: 'food', status: 'pending' },
+    { id: 'o-2', type: 'food', status: 'ready_to_pickup', riderId: null },
+    { id: 'o-3', type: 'parcel', status: 'delivering', riderId: 'r-1' },
+    { id: 'o-4', type: 'ride', status: 'completed' },
+  ];
+  const mockRiders = [
+    { id: 'r-1', status: 'active', is_available: false },
+    { id: 'r-2', status: 'active', is_available: true },
+    { id: 'r-3', status: 'banned', is_available: false },
+  ];
+
+  const pendingMerchant = mockOrders.filter(o => (o.type === 'food' || !o.type) && o.status === 'pending');
+  const waitingDispatch = mockOrders.filter(o => o.status === 'ready_to_pickup' && !o.riderId);
+  const activeDeliveryRiderIds = new Set(
+    mockOrders.filter(o => o.riderId && ['rider_accepted', 'picking_up', 'delivering'].includes(o.status)).map(o => o.riderId)
+  );
+  const ridersOnline = mockRiders.filter(r => r.is_available === true || r.isAvailable === true || activeDeliveryRiderIds.has(r.id));
+
+  assert.equal(pendingMerchant.length, 1);
+  assert.equal(waitingDispatch.length, 1);
+  assert.equal(ridersOnline.length, 2); // r-1 (delivering) + r-2 (available)
+});

@@ -172,7 +172,7 @@ export function AppProvider({ children }) {
 
   // --- Admin notification → Supabase insert ---
   const notifyAdmin = useCallback((title, message, type = 'warning') => {
-    const id = Date.now();
+    const signature = `${title}:${message}`;
     supabase.rpc('create_admin_notification', {
       p_title: title,
       p_message: message,
@@ -181,7 +181,7 @@ export function AppProvider({ children }) {
       if (error) console.error('notifyAdmin error', error);
     });
     if (isAdmin) {
-      shownAdminNotifIds.current.add(id);
+      shownAdminNotifIds.current.add(signature);
       notifySystem(title, message, type);
     }
   }, [isAdmin]);  
@@ -689,9 +689,11 @@ export function AppProvider({ children }) {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_notifs' }, (payload) => {
         const n = payload.new;
         if (!n) return;
-        // Skip if this device already showed it via notifyAdmin direct call
-        if (shownAdminNotifIds.current.has(n.id)) {
+        const signature = `${n.title}:${n.message}`;
+        // Skip if this device already showed it via notifyAdmin direct call or UUID match
+        if (shownAdminNotifIds.current.has(n.id) || shownAdminNotifIds.current.has(signature)) {
           shownAdminNotifIds.current.delete(n.id);
+          shownAdminNotifIds.current.delete(signature);
           return;
         }
         notifySystem(n.title, n.message, n.type || 'info');
