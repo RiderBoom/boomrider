@@ -18,7 +18,7 @@ export function useOrderActions(deps) {
     setSelectedRestaurant, setActiveTab,
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
-    creditWallet, creditWalletLocal,
+    creditWallet, creditWalletLocal, fetchUserWallet,
     notifySystem, notifyAdmin,
     supabase,
   } = deps;
@@ -542,6 +542,10 @@ export function useOrderActions(deps) {
       const riderRow = riders.find(r => r.userId === riderUid);
       if (riderRow) {
         supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
+      }
+
+      if (fetchUserWallet) {
+        fetchUserWallet();
       }
 
       notifySystem('✅ ส่งของสำเร็จ!', `ออเดอร์ #${orderId.slice(-6)} เสร็จสมบูรณ์`, 'success');
