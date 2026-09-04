@@ -324,7 +324,7 @@ export function AppProvider({ children }) {
     editingShop, shopEditForm, setEditingShop,
     selectedRequestToReject, setSelectedRequestToReject,
     setShowRejectModal,
-    creditWallet, grantRole,
+    creditWallet, creditWalletLocal, grantRole,
     notifySystem,
     supabase,
   });
@@ -999,20 +999,6 @@ export function AppProvider({ children }) {
           p_gp_delivery_rate: gpDelivRate,
           p_gp_ride_rate: gpRideRate,
           p_gp_service_rate: gpServiceRate,
-        }).then(({ data: rpcRes }) => {
-          if (rpcRes?.ok) {
-            const completed = {
-              ...o,
-              status: 'completed',
-              completedAt: new Date().toISOString(),
-              autoCompleted: true,
-              settlementStatus: 'settled',
-            };
-            supabase.from('orders')
-              .update({ status: 'completed', data: completed })
-              .eq('id', r.id)
-              .then(() => {});
-          }
         });
       });
 

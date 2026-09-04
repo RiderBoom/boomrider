@@ -7,30 +7,36 @@ export function useAdminActions(deps) {
     restaurants, setRestaurants,
     setMenuItems,
     pendingRequests, setPendingRequests,
-    globalWallets,
     editingShop, shopEditForm, setEditingShop,
     selectedRequestToReject, setSelectedRequestToReject,
     setShowRejectModal,
-    creditWallet, grantRole,
+    creditWallet, creditWalletLocal, grantRole,
     notifySystem,
     supabase,
   } = deps;
 
   const handleApproveRequest = async (req) => {
-    if (req.type === 'topup') {
-      const amt = Number(req.data.amount);
-      await creditWallet(req.userId, amt, `เติมเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`);
-      notifySystem('Admin ✅', `อนุมัติเติมเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
-
-    } else if (req.type === 'withdraw') {
-      const amt = Number(req.data.amount);
-      const { data: walletData } = await supabase.from('wallets').select('balance').eq('user_id', req.userId).single();
-      const liveBalance = walletData?.balance ?? globalWallets[req.userId]?.balance ?? 0;
-      if (liveBalance < amt) {
-        return notifySystem('ผิดพลาด', `${req.user} มียอดเงินไม่พอ (มี ฿${liveBalance.toLocaleString()}, ต้องการ ฿${amt.toLocaleString()})`, 'error');
+    if (req.type === 'topup' || req.type === 'withdraw') {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('approve_pending_request', { p_request_id: req.id });
+      if (rpcErr || (rpcRes && !rpcRes.ok)) {
+        const msg = rpcRes?.reason === 'INSUFFICIENT_WALLET_BALANCE'
+          ? `${req.user} มียอดเงินไม่พอ (มี ฿${rpcRes.currentBalance}, ต้องการ ฿${rpcRes.requestedAmount})`
+          : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถอนุมัติรายการได้');
+        return notifySystem('ผิดพลาด', msg, 'error');
       }
-      await creditWallet(req.userId, -amt, `ถอนเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`);
-      notifySystem('Admin ✅', `อนุมัติถอนเงิน ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
+
+      const amt = Number(req.data?.amount || 0);
+      const adjustAmt = req.type === 'topup' ? amt : -amt;
+      const desc = req.type === 'topup'
+        ? `เติมเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`
+        : `ถอนเงิน ฿${amt.toLocaleString()} (Admin อนุมัติ)`;
+
+      if (creditWalletLocal) {
+        creditWalletLocal(req.userId, adjustAmt, desc);
+      }
+      setPendingRequests(prev => prev.filter(r => r.id !== req.id));
+      const actionLabel = req.type === 'topup' ? 'เติมเงิน' : 'ถอนเงิน';
+      notifySystem('Admin ✅', `อนุมัติ${actionLabel} ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
 
     } else if (req.type === 'merchant_reg') {
       // Guard: don't create a duplicate restaurant if one already exists for this user

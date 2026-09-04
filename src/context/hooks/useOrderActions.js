@@ -156,10 +156,21 @@ export function useOrderActions(deps) {
 
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
-    await supabase.from('orders').insert({ id: orderId, status: 'pending', data: newOrder });
+
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (rpcErr || (rpcRes && !rpcRes.ok)) {
+      pendingLocalOrderIdsRef.current.delete(orderId);
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      placingOrderRef.current = false;
+      const reason = rpcRes?.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
+        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
+        : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถสั่งอาหารได้');
+      return notifySystem('ผิดพลาด', reason, 'error');
+    }
 
     if (paymentMethod === 'wallet') {
-      creditWallet(uid, -grandTotal, `ชำระค่าอาหาร ออเดอร์ #${orderId.slice(-6)}`);
+      creditWalletLocal(uid, -grandTotal, `ชำระค่าอาหาร ออเดอร์ #${orderId.slice(-6)}`);
     }
 
     notifyAdmin('🛎️ ออเดอร์ใหม่', `${userProfile.name} สั่ง ${cart[0].restaurantName} ฿${grandTotal}`, 'info');
@@ -201,10 +212,20 @@ export function useOrderActions(deps) {
     };
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
-    await supabase.from('orders').insert({ id: orderId, status: 'ready_to_pickup', data: newOrder });
+
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (rpcErr || (rpcRes && !rpcRes.ok)) {
+      pendingLocalOrderIdsRef.current.delete(orderId);
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      const reason = rpcRes?.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
+        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
+        : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถสร้างออเดอร์พัสดุได้');
+      return notifySystem('ผิดพลาด', reason, 'error');
+    }
 
     if (paymentMethod === 'wallet') {
-      creditWallet(uid, -grandTotal, `ค่าส่งพัสดุ ออเดอร์ #${orderId.slice(-6)}`);
+      creditWalletLocal(uid, -grandTotal, `ค่าส่งพัสดุ ออเดอร์ #${orderId.slice(-6)}`);
     }
     notifyAdmin('📦 พัสดุใหม่', `${userProfile.name} ส่ง ${parcelDetails.pickup} → ${parcelDetails.dropoff}`, 'info');
     setParcelDetails({ pickup: '', dropoff: '', weight: '1', distance: 0, receiverName: '', receiverPhone: '' });
@@ -261,10 +282,20 @@ export function useOrderActions(deps) {
 
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
-    await supabase.from('orders').insert({ id: orderId, status: 'ready_to_pickup', data: newOrder });
+
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (rpcErr || (rpcRes && !rpcRes.ok)) {
+      pendingLocalOrderIdsRef.current.delete(orderId);
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      const reason = rpcRes?.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
+        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
+        : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถเรียกรถได้');
+      return notifySystem('ผิดพลาด', reason, 'error');
+    }
 
     if (paymentMethod === 'wallet') {
-      creditWallet(uid, -grandTotal, `ชำระค่าโดยสาร ออเดอร์ #${orderId.slice(-6)}`);
+      creditWalletLocal(uid, -grandTotal, `ชำระค่าโดยสาร ออเดอร์ #${orderId.slice(-6)}`);
     }
 
     notifyAdmin('🚗 เรียกรถใหม่', `${userProfile.name} เรียกรถ ${rideDetails.pickup} → ${rideDetails.dropoff}`, 'info');
@@ -312,10 +343,20 @@ export function useOrderActions(deps) {
 
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
-    await supabase.from('orders').insert({ id: orderId, status: 'ready_to_pickup', data: newOrder });
+
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (rpcErr || (rpcRes && !rpcRes.ok)) {
+      pendingLocalOrderIdsRef.current.delete(orderId);
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      const reason = rpcRes?.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
+        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
+        : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถสั่งบริการได้');
+      return notifySystem('ผิดพลาด', reason, 'error');
+    }
 
     if (paymentMethod === 'wallet') {
-      creditWallet(uid, -grandTotal, `ชำระค่าบริการ ออเดอร์ #${orderId.slice(-6)}`);
+      creditWalletLocal(uid, -grandTotal, `ชำระค่าบริการ ออเดอร์ #${orderId.slice(-6)}`);
     }
 
     notifyAdmin('🛠️ จองบริการใหม่', `${userProfile.name} จอง ${serviceDetails.serviceCategory}`, 'info');
