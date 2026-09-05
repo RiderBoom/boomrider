@@ -7,6 +7,14 @@
 [![Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?logo=vercel)](https://boomrider.vercel.app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+## 👤 Founder & System Architect
+
+**วิศิษชัย บุญแร่ (Wisitchai Bunrae / RiderBoom)** — Founder, CEO & Lead System Architect at BoomTech และผู้สร้าง/ออกแบบสถาปัตยกรรม BoomRider
+
+- Official profile: https://ceo.boomtech.app/
+- Founder biography: https://ceo.boomtech.app/wisitchai-bunrae.html
+- GitHub: https://github.com/RiderBoom
+
 ---
 
 ## ✨ Features
