@@ -1,6 +1,6 @@
-import { generateId, formatDateTime, r2, getDistanceFromLatLonInKm } from '../../utils';
-import { ADMIN_EMAIL, USER_LOCATION } from '../../constants';
-import { autoDispatch } from './useAutoDispatch';
+import { generateId, formatDateTime, r2, getDistanceFromLatLonInKm } from '../../utils.js';
+import { ADMIN_EMAIL, USER_LOCATION } from '../../constants.js';
+import { autoDispatch } from './useAutoDispatch.js';
 
 export function useOrderActions(deps) {
   const {
@@ -22,6 +22,18 @@ export function useOrderActions(deps) {
     notifySystem, notifyAdmin,
     supabase,
   } = deps;
+
+  const isRpcMissingError = (err) => {
+    if (!err) return false;
+    const msg = (err.message || '').toLowerCase();
+    return (
+      err.code === 'PGRST202' ||
+      err.code === '42883' ||
+      msg.includes('could not find the function') ||
+      msg.includes('schema cache') ||
+      msg.includes('function public.place_customer_order')
+    );
+  };
 
   const calculateDeliveryFee = (distance) => appConfig.baseFee + (Math.ceil(distance) * appConfig.perKmFee);
   const calculateRideFee     = (distance) => (appConfig.rideBaseFee ?? appConfig.baseFee) + (Math.ceil(distance) * (appConfig.ridePerKmFee ?? appConfig.perKmFee));
@@ -157,7 +169,23 @@ export function useOrderActions(deps) {
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
 
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    let { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (rpcErr && isRpcMissingError(rpcErr)) {
+      console.warn('[placeOrder] RPC place_customer_order missing on backend, falling back to direct insert.');
+      const { error: insertErr } = await supabase.from('orders').insert({
+        id: newOrder.id,
+        status: newOrder.status,
+        data: newOrder,
+      });
+
+      if (!insertErr) {
+        rpcErr = null;
+        rpcRes = { ok: true, order: newOrder };
+      } else {
+        rpcErr = insertErr;
+      }
+    }
 
     if (rpcErr || (rpcRes && !rpcRes.ok)) {
       pendingLocalOrderIdsRef.current.delete(orderId);
@@ -218,7 +246,23 @@ export function useOrderActions(deps) {
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
 
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    let { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (rpcErr && isRpcMissingError(rpcErr)) {
+      console.warn('[placeParcelOrder] RPC place_customer_order missing on backend, falling back to direct insert.');
+      const { error: insertErr } = await supabase.from('orders').insert({
+        id: newOrder.id,
+        status: newOrder.status,
+        data: newOrder,
+      });
+
+      if (!insertErr) {
+        rpcErr = null;
+        rpcRes = { ok: true, order: newOrder };
+      } else {
+        rpcErr = insertErr;
+      }
+    }
 
     if (rpcErr || (rpcRes && !rpcRes.ok)) {
       pendingLocalOrderIdsRef.current.delete(orderId);
@@ -293,7 +337,23 @@ export function useOrderActions(deps) {
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
 
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    let { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (rpcErr && isRpcMissingError(rpcErr)) {
+      console.warn('[placeRideOrder] RPC place_customer_order missing on backend, falling back to direct insert.');
+      const { error: insertErr } = await supabase.from('orders').insert({
+        id: newOrder.id,
+        status: newOrder.status,
+        data: newOrder,
+      });
+
+      if (!insertErr) {
+        rpcErr = null;
+        rpcRes = { ok: true, order: newOrder };
+      } else {
+        rpcErr = insertErr;
+      }
+    }
 
     if (rpcErr || (rpcRes && !rpcRes.ok)) {
       pendingLocalOrderIdsRef.current.delete(orderId);
@@ -359,7 +419,23 @@ export function useOrderActions(deps) {
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
 
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    let { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (rpcErr && isRpcMissingError(rpcErr)) {
+      console.warn('[placeServiceOrder] RPC place_customer_order missing on backend, falling back to direct insert.');
+      const { error: insertErr } = await supabase.from('orders').insert({
+        id: newOrder.id,
+        status: newOrder.status,
+        data: newOrder,
+      });
+
+      if (!insertErr) {
+        rpcErr = null;
+        rpcRes = { ok: true, order: newOrder };
+      } else {
+        rpcErr = insertErr;
+      }
+    }
 
     if (rpcErr || (rpcRes && !rpcRes.ok)) {
       pendingLocalOrderIdsRef.current.delete(orderId);
