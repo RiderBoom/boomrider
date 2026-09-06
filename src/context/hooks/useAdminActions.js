@@ -144,7 +144,7 @@ export function useAdminActions(deps) {
   };
 
   const adminBanUser = async (userId) => {
-    const { data: profile } = await supabase.from('profiles').select('banned').eq('id', userId).single();
+    const { data: profile } = await supabase.from('profiles').select('banned').eq('id', userId).maybeSingle();
     const newBanned = !profile?.banned;
     await supabase.from('profiles').update({ banned: newBanned }).eq('id', userId);
     notifySystem('Admin', `${newBanned ? 'ระงับ' : 'ปลดระงับ'}บัญชีเรียบร้อย`, 'success');

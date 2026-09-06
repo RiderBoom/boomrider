@@ -370,7 +370,7 @@ export default function AdminView() {
   const loadUserWalletEntries = async (userId) => {
     if (!userId) return;
     setUserWalletLoading(prev => ({ ...prev, [userId]: true }));
-    const { data } = await supabase.from('wallets').select('history').eq('user_id', userId).single();
+    const { data } = await supabase.from('wallets').select('history').eq('user_id', userId).maybeSingle();
     setUserWalletEntries(prev => ({ ...prev, [userId]: data?.history || [] }));
     setUserWalletLoading(prev => ({ ...prev, [userId]: false }));
   };
