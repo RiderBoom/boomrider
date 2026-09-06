@@ -807,7 +807,7 @@ CREATE OR REPLACE FUNCTION public._wallet_credit(
   p_user_id TEXT,
   p_amount NUMERIC,
   p_order_id TEXT,
-  p_desc TEXT
+  p_note TEXT
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -835,7 +835,7 @@ BEGIN
     'type',        CASE WHEN p_amount > 0 THEN 'topup' ELSE 'withdraw' END,
     'amount',      p_amount,
     'date',        v_now_bangkok,
-    'desc',        p_desc || ' (ออเดอร์ #' || RIGHT(p_order_id, 6) || ')',
+    'desc',        p_note || ' (ออเดอร์ #' || RIGHT(p_order_id, 6) || ')',
     'refOrderId',  p_order_id,
     'createdAtMs', v_now_epoch_ms
   );
