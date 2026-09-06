@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { generateId, formatDateTime, r2 } from '../../utils';
+import { generateId, formatDateTime, r2 } from '../../utils.js';
 
 export function useWalletActions(deps) {
   const {
@@ -24,7 +24,11 @@ export function useWalletActions(deps) {
   } = deps;
 
   // Serial queue per userId — prevents concurrent reads from corrupting balance
-  const walletQueues = useRef({});
+  const defaultWalletQueues = useRef({});
+  const walletQueues = deps.walletQueues || defaultWalletQueues;
+
+  const defaultSubmittingRef = useRef(false);
+  const submittingRef = deps.submittingRef || defaultSubmittingRef;
 
   const _makeEntry = (amount, desc) => ({
     id: generateId(),
@@ -104,7 +108,10 @@ export function useWalletActions(deps) {
     setWalletAllEntries(prev => [_makeEntry(amount, description), ...prev]);
   };
 
-  const requestTopUp = (amount, slipImage, bankInfo = {}) => {
+  const requestTopUp = async (amount, slipImage, bankInfo = {}) => {
+    if (submittingRef.current) return false;
+    submittingRef.current = true;
+
     const uid = userProfile.id || currentUser?.id || '';
     const newReq = {
       id: generateId(), type: 'topup',
@@ -119,32 +126,57 @@ export function useWalletActions(deps) {
       userId: uid, user: userProfile.name || 'ผู้ใช้',
       timestamp: formatDateTime(),
     };
+
     setPendingRequests(prev => [newReq, ...prev]);
-    supabase.from('pending_requests').insert({ id: newReq.id, data: newReq }).then(() => {});
-    setShowTopUpModal(false);
-    setTopUpSlip(null);
-    setWithdrawAmount('');
-    notifySystem('ส่งคำขอแล้ว ✅', `แจ้งเติมกระเป๋าเงิน ฿${Number(amount).toLocaleString()} — รอ Admin อนุมัติ`, 'success');
-    notifyAdmin('💰 เติมเงินใหม่', `${userProfile.name || 'ผู้ใช้'} แจ้งเติม ฿${amount}`, 'warning');
+
+    try {
+      const { error } = await supabase.from('pending_requests').insert({ id: newReq.id, data: newReq });
+      if (error) throw error;
+
+      setShowTopUpModal(false);
+      setTopUpSlip(null);
+      setWithdrawAmount('');
+      notifySystem('ส่งคำขอแล้ว ✅', `แจ้งเติมกระเป๋าเงิน ฿${Number(amount).toLocaleString()} — รอ Admin อนุมัติ`, 'success');
+      notifyAdmin('💰 เติมเงินใหม่', `${userProfile.name || 'ผู้ใช้'} แจ้งเติม ฿${amount}`, 'warning');
+      return true;
+    } catch (e) {
+      console.error('requestTopUp insert error', e);
+      setPendingRequests(prev => prev.filter(r => r.id !== newReq.id));
+      notifySystem('ไม่สำเร็จ', 'ไม่สามารถส่งคำขอเติมเงินได้ กรุณาลองใหม่อีกครั้ง', 'error');
+      return false;
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
-  const requestWithdraw = (amount, bankInfo) => {
+  const requestWithdraw = async (amount, bankInfo) => {
     const parsedAmount = parseFloat(amount);
-    if (!parsedAmount || parsedAmount <= 0) return notifySystem('ผิดพลาด', 'กรุณาระบุจำนวนเงิน', 'error');
+    if (!parsedAmount || parsedAmount <= 0) {
+      notifySystem('ผิดพลาด', 'กรุณาระบุจำนวนเงิน', 'error');
+      return false;
+    }
+
+    if (submittingRef.current) return false;
+    submittingRef.current = true;
+
     const uid = userProfile.id || currentUser?.id || '';
     const pendingWithdrawTotal = pendingRequests
       .filter(r => r.userId === uid && r.type === 'withdraw')
       .reduce((sum, r) => sum + (Number(r.data?.amount) || 0), 0);
     const effectiveBalance = userWallet - pendingWithdrawTotal;
+
     if (effectiveBalance < parsedAmount) {
-      return notifySystem(
+      submittingRef.current = false;
+      notifySystem(
         'ผิดพลาด',
         pendingWithdrawTotal > 0
           ? `ยอดคงเหลือที่ถอนได้ ฿${effectiveBalance.toLocaleString()} (หักยอดรอถอน ฿${pendingWithdrawTotal.toLocaleString()} แล้ว)`
           : 'ยอดเงินในกระเป๋าไม่เพียงพอ',
         'error',
       );
+      return false;
     }
+
     const bank          = bankInfo.bank          || bankInfo.bankName   || '';
     const accountName   = bankInfo.accountName   || bankInfo.name       || '';
     const accountNumber = bankInfo.accountNumber || bankInfo.account    || '';
@@ -154,12 +186,26 @@ export function useWalletActions(deps) {
       userId: uid, user: userProfile.name || 'ผู้ใช้',
       timestamp: formatDateTime(),
     };
+
     setPendingRequests(prev => [newReq, ...prev]);
-    supabase.from('pending_requests').insert({ id: newReq.id, data: newReq }).then(() => {});
-    setWithdrawAmount(''); setWithdrawBank(''); setWithdrawAccount(''); setWithdrawName('');
-    setWithdrawMode(false);
-    notifySystem('ส่งคำขอแล้ว ✅', `แจ้งถอนกระเป๋าเงิน ฿${parsedAmount.toLocaleString()} — รอ Admin อนุมัติ`, 'success');
-    notifyAdmin('💸 ถอนเงินใหม่', `${userProfile.name || 'ผู้ใช้'} แจ้งถอน ฿${parsedAmount}`, 'warning');
+
+    try {
+      const { error } = await supabase.from('pending_requests').insert({ id: newReq.id, data: newReq });
+      if (error) throw error;
+
+      setWithdrawAmount(''); setWithdrawBank(''); setWithdrawAccount(''); setWithdrawName('');
+      setWithdrawMode(false);
+      notifySystem('ส่งคำขอแล้ว ✅', `แจ้งถอนกระเป๋าเงิน ฿${parsedAmount.toLocaleString()} — รอ Admin อนุมัติ`, 'success');
+      notifyAdmin('💸 ถอนเงินใหม่', `${userProfile.name || 'ผู้ใช้'} แจ้งถอน ฿${parsedAmount}`, 'warning');
+      return true;
+    } catch (e) {
+      console.error('requestWithdraw insert error', e);
+      setPendingRequests(prev => prev.filter(r => r.id !== newReq.id));
+      notifySystem('ไม่สำเร็จ', 'ไม่สามารถส่งคำขอถอนเงินได้ กรุณาลองใหม่อีกครั้ง', 'error');
+      return false;
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   const adminAdjustWallet = (userId, amount, desc) => {

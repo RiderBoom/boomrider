@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { generateId } from '../../utils';
+import { generateId } from '../../utils.js';
 
 export function usePromoActions({ notifySystem, supabase }) {
   const [promoCodes, setPromoCodes] = useState([]);
