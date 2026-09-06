@@ -474,7 +474,35 @@ export function useOrderActions(deps) {
         rpcError.message?.includes('schema cache');
 
       if (isMissingRpc) {
-        return notifySystem('ผิดพลาด', 'ระบบรับงานกำลังอัปเดต กรุณาติดต่อ Admin หรือลองใหม่อีกครั้ง', 'error');
+        console.warn('[acceptOrder] RPC accept_order_direct missing or schema cache stale. Attempting direct order update fallback.');
+        const { gpAmount, merchantIncome, riderIncome: calcRider } = _settlementAmounts(order);
+        const updatedOrderData = {
+          ...order,
+          status: 'rider_accepted',
+          riderId: rider.id,
+          riderUserId: rider.userId || uid,
+          riderName: rider.name || userProfile?.name || 'ไรเดอร์',
+          riderPhone: rider.phone || userProfile?.phone || '',
+          riderAcceptedAt: formatDateTime(),
+          riderIncome: order.riderIncome ?? calcRider,
+          merchantIncome: order.merchantIncome ?? merchantIncome,
+          adminGP: order.adminGP ?? gpAmount,
+        };
+
+        const { error: updateErr } = await supabase
+          .from('orders')
+          .update({ status: 'rider_accepted', data: updatedOrderData })
+          .eq('id', orderId);
+
+        if (!updateErr) {
+          setOrders(prev => prev.map(o => o.id === orderId ? updatedOrderData : o));
+          supabase.from('riders').update({ is_available: false }).eq('id', rider.id).then(() => {});
+          notifySystem('รับงานแล้ว!', `ออเดอร์ #${orderId.slice(-6)} — ไปรับของที่ร้านได้เลย`, 'success');
+          return true;
+        }
+
+        console.error('[acceptOrder] Direct update fallback failed:', updateErr);
+        return notifySystem('ผิดพลาด', 'ระบบรับงานกำลังอัปเดต กรุณาติดต่อ Admin เพื่อโหลด Schema Cache', 'error');
       }
       return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + (rpcError.message || 'เกิดข้อผิดพลาด'), 'error');
     }
