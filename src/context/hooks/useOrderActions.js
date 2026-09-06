@@ -609,6 +609,39 @@ export function useOrderActions(deps) {
 
         setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, ...patch } : o)));
 
+        // Perform wallet credits/debits in fallback mode
+        const riderEarned    = r2(incomePatch.riderIncome    ?? calcRiderIncome);
+        const merchantEarned = r2(incomePatch.merchantIncome ?? merchantIncome);
+        const gpEarned       = r2(incomePatch.adminGP        ?? gpAmount);
+        const getFeeLabel = (type) => {
+          if (type === 'ride') return 'ค่าโดยสาร';
+          if (type === 'service') return 'ค่าบริการ';
+          if (type === 'parcel') return 'ค่าส่งพัสดุ';
+          return 'ค่าส่ง';
+        };
+        const getGpLabel = (type) => {
+          if (type === 'ride') return 'เรียกรถ(สด)';
+          if (type === 'service') return 'บริการ(สด)';
+          if (type === 'parcel') return 'พัสดุ(สด)';
+          return 'GP(สด)';
+        };
+
+        const adminKey = ADMIN_EMAIL || 'boomzalnw2@gmail.com';
+        if (order.paymentMethod === 'cash') {
+          if (['parcel', 'ride', 'service'].includes(order.type)) {
+            if (riderUid && gpEarned > 0) creditWallet(riderUid, -gpEarned, `หัก GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
+            if (gpEarned > 0)             creditWallet(adminKey, gpEarned,  `GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
+          } else {
+            if (riderUid && foodTotal > 0)          creditWallet(riderUid,     -foodTotal,     `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
+            if (shopOwnerUid && merchantEarned > 0) creditWallet(shopOwnerUid, merchantEarned, `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
+            if (gpEarned > 0)                       creditWallet(adminKey,     gpEarned,       `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
+          }
+        } else {
+          if (shopOwnerUid && merchantEarned > 0) creditWallet(shopOwnerUid, merchantEarned, `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
+          if (gpEarned > 0)                       creditWallet(adminKey,     gpEarned,       `GP ออเดอร์ #${orderId.slice(-6)}`);
+          if (riderUid && riderEarned > 0)        creditWallet(riderUid,     riderEarned,    `${getFeeLabel(order.type)} ออเดอร์ #${orderId.slice(-6)}`);
+        }
+
         // Mark rider as available again
         if (riderUid) {
           const riderRow = riders.find(r => r.userId === riderUid || r.id === order.riderId);
@@ -661,19 +694,20 @@ export function useOrderActions(deps) {
         const riderEarned    = r2(rpcResult.riderIncome    ?? calcRiderIncome);
         const merchantEarned = r2(rpcResult.merchantIncome ?? merchantIncome);
         const gpEarned       = r2(rpcResult.gpAmount       ?? gpAmount);
+        const adminKey = ADMIN_EMAIL || 'boomzalnw2@gmail.com';
         if (order.paymentMethod === 'cash') {
           if (['parcel', 'ride', 'service'].includes(order.type)) {
-            if (riderUid && gpEarned > 0)    creditWalletLocal(riderUid,    -gpEarned, `หัก GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
-            if (ADMIN_EMAIL && gpEarned > 0) creditWalletLocal(ADMIN_EMAIL, gpEarned,  `GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
+            if (riderUid && gpEarned > 0) creditWalletLocal(riderUid, -gpEarned, `หัก GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
+            if (gpEarned > 0)             creditWalletLocal(adminKey, gpEarned,  `GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
           } else {
-            if (riderUid && foodTotal > 0)           creditWalletLocal(riderUid,     -foodTotal,      `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
-            if (shopOwnerUid && merchantEarned > 0)  creditWalletLocal(shopOwnerUid, merchantEarned,  `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
-            if (ADMIN_EMAIL && gpEarned > 0)         creditWalletLocal(ADMIN_EMAIL,  gpEarned,        `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
+            if (riderUid && foodTotal > 0)          creditWalletLocal(riderUid,     -foodTotal,     `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
+            if (shopOwnerUid && merchantEarned > 0) creditWalletLocal(shopOwnerUid, merchantEarned, `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
+            if (gpEarned > 0)                       creditWalletLocal(adminKey,     gpEarned,       `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
           }
         } else {
-          if (shopOwnerUid && merchantEarned > 0)  creditWalletLocal(shopOwnerUid, merchantEarned,  `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
-          if (ADMIN_EMAIL && gpEarned > 0)         creditWalletLocal(ADMIN_EMAIL,  gpEarned,        `GP ออเดอร์ #${orderId.slice(-6)}`);
-          if (riderUid && riderEarned > 0)         creditWalletLocal(riderUid,     riderEarned,     `${getFeeLabel(order.type)} ออเดอร์ #${orderId.slice(-6)}`);
+          if (shopOwnerUid && merchantEarned > 0) creditWalletLocal(shopOwnerUid, merchantEarned, `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
+          if (gpEarned > 0)                       creditWalletLocal(adminKey,     gpEarned,       `GP ออเดอร์ #${orderId.slice(-6)}`);
+          if (riderUid && riderEarned > 0)        creditWalletLocal(riderUid,     riderEarned,    `${getFeeLabel(order.type)} ออเดอร์ #${orderId.slice(-6)}`);
         }
       }
 

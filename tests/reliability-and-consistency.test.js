@@ -216,6 +216,7 @@ test('requestRegisterMerchant rolls back local state and returns false on Supaba
 
 test('updateOrderStatus falls back to direct order completion when process_order_settlement RPC returns schema cache error', async () => {
   let updatedOrders = [];
+  let walletCredits = [];
   let notifiedSystem = null;
   let ordersState = [{
     id: 'ord-settle-fallback',
@@ -227,6 +228,7 @@ test('updateOrderStatus falls back to direct order completion when process_order
     paymentMethod: 'cash',
     riderUserId: 'rider-user-1',
     riderId: 'r-100',
+    restaurantOwnerId: 'owner-1',
   }];
 
   const mockSupabase = {
@@ -267,11 +269,14 @@ test('updateOrderStatus falls back to direct order completion when process_order
     setOrders: (updater) => {
       ordersState = typeof updater === 'function' ? updater(ordersState) : updater;
     },
-    restaurants: [],
+    restaurants: [{ id: 'rest-1', ownerId: 'owner-1' }],
     riders: [{ id: 'r-100', userId: 'rider-user-1' }],
     appConfig: { gpFood: 30, gpDelivery: 15 },
     currentUser: { id: 'cust-1' },
     userProfile: { id: 'cust-1', name: 'Customer 1' },
+    creditWallet: (userId, amount, desc) => {
+      walletCredits.push({ userId, amount, desc });
+    },
     notifySystem: (title, message, type) => {
       notifiedSystem = { title, message, type };
     },
@@ -285,6 +290,9 @@ test('updateOrderStatus falls back to direct order completion when process_order
   assert.equal(updatedOrders.length, 1, 'Direct order update fallback should be executed');
   assert.equal(updatedOrders[0].payload.status, 'completed');
   assert.equal(updatedOrders[0].payload.data.settlementStatus, 'settled');
+  assert.equal(walletCredits.length, 3, 'Wallet credits/debits should be executed in fallback mode for rider, merchant, and admin');
+  assert.equal(walletCredits.find(c => c.userId === 'rider-user-1')?.amount, -100, 'Rider should be debited food total on cash order');
+  assert.equal(walletCredits.find(c => c.userId === 'owner-1')?.amount, 70, 'Merchant should be credited merchant income');
   assert.equal(notifiedSystem?.type, 'success', 'Success notification should be shown');
   assert.equal(ordersState[0].status, 'completed', 'Local state order status should be completed');
 });
