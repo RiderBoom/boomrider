@@ -416,22 +416,24 @@ export function AppProvider({ children }) {
         supabase.from('promo_codes').select('id, data'),
       ]);
 
-      if (restsResult.data?.length) setRestaurants(restsResult.data.map(r => r.data));
-      if (menusResult.data?.length) {
+      if (!restsResult.error) setRestaurants((restsResult.data || []).map(r => r.data));
+      if (!menusResult.error) {
         const obj = {};
-        menusResult.data.forEach(m => { obj[m.restaurant_id] = m.items; });
+        (menusResult.data || []).forEach(m => { obj[m.restaurant_id] = m.items; });
         setMenuItems(obj);
       }
-      if (ridersResult.data?.length) setRiders(ridersResult.data.map(r => r.data));
-      if (ordersResult.data?.length) setOrders(ordersResult.data.map(o => o.data));
-      if (pendingResult.data?.length) setPendingRequests(pendingResult.data.map(r => r.data));
+      if (!ridersResult.error) setRiders((ridersResult.data || []).map(r => r.data));
+      if (!ordersResult.error) setOrders((ordersResult.data || []).map(o => o.data));
+      if (!pendingResult.error) setPendingRequests((pendingResult.data || []).map(r => r.data));
 
-      const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
-      if (configRow?.data) {
-        setAppConfig(configRow.data);
-        setEditConfig(configRow.data);
+      if (!configResult.error) {
+        const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
+        if (configRow?.data) {
+          setAppConfig(configRow.data);
+          setEditConfig(configRow.data);
+        }
       }
-      if (promosResult.data?.length) setPromoCodes(promosResult.data.map(p => p.data));
+      if (!promosResult.error) setPromoCodes((promosResult.data || []).map(p => p.data));
     } catch (e) {
       console.error('fetchAppData error', e);
     } finally {
@@ -767,32 +769,38 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     if (!dataLoadedRef.current || !restaurants.length) return;
-    debouncedUpsert('restaurants', () => {
+    debouncedUpsert('restaurants', async () => {
       const rows = restaurants.map(r => ({ id: r.id, owner_id: r.ownerId || null, data: r }));
-      supabase.from('restaurants').upsert(rows).then(() => {});
+      const { error } = await supabase.from('restaurants').upsert(rows);
+      if (error) console.error('Auto-save restaurants error:', error);
     });
   }, [restaurants]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!dataLoadedRef.current) return;
-    debouncedUpsert('menu_items', () => {
+    debouncedUpsert('menu_items', async () => {
       const rows = Object.entries(menuItems).map(([rid, items]) => ({ restaurant_id: rid, items }));
-      if (rows.length) supabase.from('menu_items').upsert(rows).then(() => {});
+      if (rows.length) {
+        const { error } = await supabase.from('menu_items').upsert(rows);
+        if (error) console.error('Auto-save menu_items error:', error);
+      }
     });
   }, [menuItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!dataLoadedRef.current || !riders.length) return;
-    debouncedUpsert('riders', () => {
+    debouncedUpsert('riders', async () => {
       const rows = riders.map(r => ({ id: r.id, user_id: r.userId || null, data: r }));
-      supabase.from('riders').upsert(rows).then(() => {});
+      const { error } = await supabase.from('riders').upsert(rows);
+      if (error) console.error('Auto-save riders error:', error);
     });
   }, [riders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!dataLoadedRef.current) return;
-    debouncedUpsert('app_config', () => {
-      supabase.from('app_config').upsert({ id: 1, data: appConfig }).then(() => {});
+    debouncedUpsert('app_config', async () => {
+      const { error } = await supabase.from('app_config').upsert({ id: 1, data: appConfig });
+      if (error) console.error('Auto-save app_config error:', error);
     }, 2000);
   }, [appConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -928,14 +936,15 @@ export function AppProvider({ children }) {
   // ── Save profile to Supabase on change ──────────────────────────────────
   useEffect(() => {
     if (!isLoggedIn || !currentUser?.id) return;
-    debouncedUpsert('profile', () => {
-      supabase.from('profiles').update({
+    debouncedUpsert('profile', async () => {
+      const { error } = await supabase.from('profiles').update({
         name: userProfile.name,
         phone: userProfile.phone,
         avatar: userProfile.image || null,
         location: userProfile.location,
         addresses: userAddresses,
-      }).eq('id', currentUser.id).then(() => {});
+      }).eq('id', currentUser.id);
+      if (error) console.error('Auto-save profile error:', error);
     }, 2000);
   }, [userProfile, userAddresses]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -1,5 +1,5 @@
-import { generateId, formatDateTime, r2, getDistanceFromLatLonInKm } from '../../utils';
-import { ADMIN_EMAIL, USER_LOCATION } from '../../constants';
+import { generateId, formatDateTime, r2, getDistanceFromLatLonInKm } from '../../utils.js';
+import { ADMIN_EMAIL, USER_LOCATION } from '../../constants.js';
 import { autoDispatch } from './useAutoDispatch';
 
 export function useOrderActions(deps) {

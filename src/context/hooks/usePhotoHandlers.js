@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { compressImage } from '../../utils';
+import { compressImage } from '../../utils.js';
 
 export function usePhotoHandlers({
   setTempProfile, setRestaurants, setEditForm, setTopUpSlip,

@@ -4,7 +4,7 @@
 // Handles accept / reject / timeout with race-condition protection.
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { playNotificationSound, vibrateDevice } from '../../utils';
+import { playNotificationSound, vibrateDevice } from '../../utils.js';
 
 export function useJobOffer({ supabase, riderUserId, onAccepted, onRejected, notifySystem }) {
   const [offer,     setOffer]     = useState(null);  // current job offer row

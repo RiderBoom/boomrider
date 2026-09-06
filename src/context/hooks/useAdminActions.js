@@ -1,4 +1,4 @@
-import { USER_LOCATION } from '../../constants';
+import { USER_LOCATION } from '../../constants.js';
 
 export function useAdminActions(deps) {
   const {
