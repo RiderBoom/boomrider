@@ -837,8 +837,8 @@ grant execute on function public.respond_job_offer(uuid, text) to authenticated;
 -- ── RPC: dispatch_order ───────────────────────────────────────────────────────
 create or replace function public.dispatch_order(
   p_order_id text,
-  p_pickup_lat float default null,
-  p_pickup_lng float default null,
+  p_pickup_lat float,
+  p_pickup_lng float,
   p_radius_km float default 5
 )
 returns jsonb
