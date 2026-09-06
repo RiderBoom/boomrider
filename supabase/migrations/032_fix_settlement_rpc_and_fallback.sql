@@ -33,9 +33,14 @@ DECLARE
   v_admin_uid  TEXT;
   v_now_ms     BIGINT;
 BEGIN
-  -- Resolve admin UUID from profiles
-  SELECT id::TEXT INTO v_admin_uid
-  FROM profiles WHERE email = 'boomzalnw2@gmail.com' LIMIT 1;
+  -- Resolve admin UUID from user_roles or profiles
+  SELECT user_id::TEXT INTO v_admin_uid
+  FROM public.user_roles WHERE role = 'admin' LIMIT 1;
+
+  IF v_admin_uid IS NULL THEN
+    SELECT id::TEXT INTO v_admin_uid
+    FROM public.profiles WHERE email = 'boomzalnw2@gmail.com' LIMIT 1;
+  END IF;
 
   IF v_admin_uid IS NULL THEN
     v_admin_uid := 'boomzalnw2@gmail.com';
@@ -221,6 +226,14 @@ BEGIN
      )
   THEN
     RAISE EXCEPTION 'settlement_access_denied' USING ERRCODE = '42501';
+  END IF;
+
+  -- Prevent non-admin callers from tampering with platform GP rates
+  IF NOT public.is_admin(auth.uid()) THEN
+    p_gp_food_rate     := 0.30;
+    p_gp_delivery_rate := 0.15;
+    p_gp_ride_rate     := 0.15;
+    p_gp_service_rate  := 0.15;
   END IF;
 
   RETURN public.process_order_settlement_internal(
