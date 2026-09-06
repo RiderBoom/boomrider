@@ -66,6 +66,7 @@ $$;
 REVOKE ALL ON FUNCTION public.dispatch_order(text, double precision, double precision, double precision) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.dispatch_order(text, double precision, double precision, double precision) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.process_order_settlement_internal(text, numeric, numeric, numeric, numeric);
 ALTER FUNCTION public.process_order_settlement(text, numeric, numeric, numeric, numeric)
   RENAME TO process_order_settlement_internal;
 REVOKE ALL ON FUNCTION public.process_order_settlement_internal(text, numeric, numeric, numeric, numeric)
