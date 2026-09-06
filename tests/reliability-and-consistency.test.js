@@ -383,6 +383,85 @@ test('acceptOrder falls back to direct table updates when accept_order_direct RP
   assert.equal(ordersState[0].status, 'rider_accepted', 'Local state should be updated to rider_accepted');
 });
 
+test('updateOrderStatus falls back to direct order update when process_order_settlement RPC returns schema cache error', async () => {
+  let updatedOrders = [];
+  let notifiedSystem = null;
+  let ordersState = [{
+    id: 'ord-settle-1',
+    type: 'food',
+    status: 'delivered',
+    foodTotal: 100,
+    deliveryFee: 30,
+    grandTotal: 130,
+    paymentMethod: 'cash',
+    riderUserId: 'rider-u1',
+    restaurantOwnerId: 'owner-u1'
+  }];
+
+  const mockSupabase = {
+    rpc: async (fnName) => {
+      if (fnName === 'process_order_settlement') {
+        return {
+          data: null,
+          error: {
+            code: 'PGRST202',
+            message: 'Could not find the function public.process_order_settlement(p_order_id, p_gp_food_rate) in the schema cache'
+          }
+        };
+      }
+      return { data: null, error: null };
+    },
+    from: (table) => {
+      if (table === 'orders') {
+        return {
+          update: (payload) => ({
+            eq: async (col, val) => {
+              updatedOrders.push({ col, val, payload });
+              return { error: null };
+            }
+          })
+        };
+      }
+      if (table === 'riders') {
+        return {
+          update: () => ({
+            eq: async () => ({ error: null })
+          })
+        };
+      }
+      return {};
+    }
+  };
+
+  const deps = {
+    orders: ordersState,
+    setOrders: (updater) => {
+      ordersState = typeof updater === 'function' ? updater(ordersState) : updater;
+    },
+    restaurants: [],
+    riders: [],
+    appConfig: { gpFood: 30, gpDelivery: 15, gpRide: 15, gpService: 15 },
+    currentUser: { id: 'cust-u1' },
+    userProfile: { id: 'cust-u1', name: 'ลูกค้า' },
+    notifySystem: (title, message, type) => {
+      notifiedSystem = { title, message, type };
+    },
+    creditWalletLocal: () => {},
+    fetchUserWallet: () => {},
+    supabase: mockSupabase,
+  };
+
+  const orderActions = useOrderActions(deps);
+  const result = await orderActions.updateOrderStatus('ord-settle-1', 'completed');
+
+  assert.equal(result, true, 'updateOrderStatus should return true on completion fallback');
+  assert.equal(updatedOrders.length, 1, 'Direct order completion update should be executed');
+  assert.equal(updatedOrders[0].payload.status, 'completed');
+  assert.equal(updatedOrders[0].payload.data.settlementStatus, 'settled');
+  assert.equal(notifiedSystem?.type, 'success', 'Success notification should be shown for completion');
+  assert.equal(ordersState[0].status, 'completed', 'Local state should update to completed');
+});
+
 test('requestRegisterRider rolls back local state and returns false on Supabase insert failure', async () => {
   let pendingRequests = [];
   let notifiedSystem = null;
