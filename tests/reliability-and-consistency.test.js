@@ -214,6 +214,81 @@ test('requestRegisterMerchant rolls back local state and returns false on Supaba
   assert.equal(adminNotified, false, 'notifyAdmin must not be called when DB insert fails');
 });
 
+test('updateOrderStatus falls back to direct order completion when process_order_settlement RPC returns schema cache error', async () => {
+  let updatedOrders = [];
+  let notifiedSystem = null;
+  let ordersState = [{
+    id: 'ord-settle-fallback',
+    type: 'food',
+    status: 'delivered',
+    foodTotal: 100,
+    deliveryFee: 30,
+    grandTotal: 130,
+    paymentMethod: 'cash',
+    riderUserId: 'rider-user-1',
+    riderId: 'r-100',
+  }];
+
+  const mockSupabase = {
+    rpc: async (fnName) => {
+      if (fnName === 'process_order_settlement') {
+        return {
+          data: null,
+          error: {
+            code: 'PGRST202',
+            message: 'Could not find the function public.process_order_settlement in the schema cache'
+          }
+        };
+      }
+      return { data: null, error: null };
+    },
+    from: (table) => {
+      if (table === 'orders') {
+        return {
+          update: (payload) => ({
+            eq: async (col, val) => {
+              updatedOrders.push({ col, val, payload });
+              return { error: null };
+            }
+          })
+        };
+      }
+      if (table === 'riders') {
+        return {
+          update: () => ({ eq: async () => ({ error: null }) })
+        };
+      }
+      return {};
+    }
+  };
+
+  const deps = {
+    orders: ordersState,
+    setOrders: (updater) => {
+      ordersState = typeof updater === 'function' ? updater(ordersState) : updater;
+    },
+    restaurants: [],
+    riders: [{ id: 'r-100', userId: 'rider-user-1' }],
+    appConfig: { gpFood: 30, gpDelivery: 15 },
+    currentUser: { id: 'cust-1' },
+    userProfile: { id: 'cust-1', name: 'Customer 1' },
+    notifySystem: (title, message, type) => {
+      notifiedSystem = { title, message, type };
+    },
+    supabase: mockSupabase,
+  };
+
+  const orderActions = useOrderActions(deps);
+  const result = await orderActions.updateOrderStatus('ord-settle-fallback', 'completed');
+
+  assert.equal(result, true, 'updateOrderStatus should return true after fallback');
+  assert.equal(updatedOrders.length, 1, 'Direct order update fallback should be executed');
+  assert.equal(updatedOrders[0].payload.status, 'completed');
+  assert.equal(updatedOrders[0].payload.data.settlementStatus, 'settled');
+  assert.equal(notifiedSystem?.type, 'success', 'Success notification should be shown');
+  assert.equal(ordersState[0].status, 'completed', 'Local state order status should be completed');
+});
+
 test('placeOrder falls back to direct insert when place_customer_order RPC returns schema cache error', async () => {
   let insertedOrders = [];
   let notifiedSystem = null;
