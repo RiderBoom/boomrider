@@ -466,26 +466,64 @@ export function useOrderActions(deps) {
       p_rider_id: rider.id,
     });
 
-    if (rpcError) {
-      console.error('[acceptOrder] RPC error:', rpcError);
-      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + rpcError.message, 'error');
-    }
+    let updatedOrderData = null;
 
-    if (!rpcResult?.ok) {
-      if (rpcResult?.reason === 'INSUFFICIENT_RIDER_WALLET') {
-        return notifySystem(
-          'ยอดเงินในกระเป๋าไม่เพียงพอ',
-          'ยอดเงินในกระเป๋าไม่เพียงพอสำหรับรับงานนี้ กรุณาเติมเงินก่อนรับงาน',
-          'error'
-        );
-      }
-      if (rpcResult?.reason === 'order_already_taken') {
-        return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
-      }
-      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้ (' + (rpcResult?.reason || 'unknown error') + ')', 'error');
-    }
+    const isMissingRpcError = rpcError && (
+      rpcError.code === 'PGRST202' ||
+      rpcError.message?.includes('accept_order_direct') ||
+      rpcError.message?.includes('Could not find the function') ||
+      rpcError.message?.includes('schema cache')
+    );
 
-    const updatedOrderData = rpcResult.order_data || order;
+    if (isMissingRpcError) {
+      console.warn('[acceptOrder] RPC accept_order_direct missing or schema cache stale. Falling back to direct table updates.');
+      const { gpAmount, merchantIncome, riderIncome: calcRider } = _settlementAmounts(order);
+      updatedOrderData = {
+        ...order,
+        status: 'rider_accepted',
+        riderId: rider.id,
+        riderUserId: uid,
+        riderName: rider.name || rider.data?.name || userProfile?.name || 'ไรเดอร์',
+        riderPhone: rider.phone || rider.data?.phone || userProfile?.phone || '',
+        riderAcceptedAt: formatDateTime(),
+        riderIncome: order.riderIncome ?? calcRider,
+        merchantIncome: order.merchantIncome ?? merchantIncome,
+        adminGP: order.adminGP ?? gpAmount,
+      };
+
+      const { error: updateErr } = await supabase
+        .from('orders')
+        .update({ status: 'rider_accepted', data: updatedOrderData })
+        .eq('id', orderId);
+
+      if (updateErr) {
+        console.error('[acceptOrder] Direct order update fallback failed:', updateErr);
+        return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + updateErr.message, 'error');
+      }
+
+      await supabase.from('riders').update({ is_available: false }).eq('id', rider.id);
+    } else {
+      if (rpcError) {
+        console.error('[acceptOrder] RPC error:', rpcError);
+        return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + rpcError.message, 'error');
+      }
+
+      if (!rpcResult?.ok) {
+        if (rpcResult?.reason === 'INSUFFICIENT_RIDER_WALLET') {
+          return notifySystem(
+            'ยอดเงินในกระเป๋าไม่เพียงพอ',
+            'ยอดเงินในกระเป๋าไม่เพียงพอสำหรับรับงานนี้ กรุณาเติมเงินก่อนรับงาน',
+            'error'
+          );
+        }
+        if (rpcResult?.reason === 'order_already_taken') {
+          return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
+        }
+        return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้ (' + (rpcResult?.reason || 'unknown error') + ')', 'error');
+      }
+
+      updatedOrderData = rpcResult.order_data || order;
+    }
 
     // Since DB update succeeded, update local state
     setOrders(prev => {
