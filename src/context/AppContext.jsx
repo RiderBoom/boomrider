@@ -666,7 +666,7 @@ export function AppProvider({ children }) {
           // Fall back to a direct fetch for the specific row (or full list if id missing)
           const rowId = payload.new?.id;
           if (rowId) {
-            const { data: row } = await supabase.from('pending_requests').select('id, data').eq('id', rowId).single();
+            const { data: row } = await supabase.from('pending_requests').select('id, data').eq('id', rowId).maybeSingle();
             if (row?.data) setPendingRequests(prev => prev.some(x => x.id === row.data.id) ? prev : [row.data, ...prev]);
           } else {
             const { data: rows } = await supabase.from('pending_requests').select('id, data');
