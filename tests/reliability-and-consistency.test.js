@@ -214,6 +214,57 @@ test('requestRegisterMerchant rolls back local state and returns false on Supaba
   assert.equal(adminNotified, false, 'notifyAdmin must not be called when DB insert fails');
 });
 
+test('acceptOrder resolves rider by targetRiderId or userId and handles accept_order_direct RPC', async () => {
+  let calledRpcName = null;
+  let calledRpcArgs = null;
+  let notifiedSystem = null;
+  let ordersState = [
+    { id: 'ord-100', status: 'ready_to_pickup', data: { id: 'ord-100', status: 'ready_to_pickup' } }
+  ];
+
+  const mockSupabase = {
+    rpc: async (fnName, args) => {
+      calledRpcName = fnName;
+      calledRpcArgs = args;
+      return {
+        data: {
+          ok: true,
+          order_id: 'ord-100',
+          order_data: { id: 'ord-100', status: 'rider_accepted', riderId: 'rider-abc', riderName: 'นายไรเดอร์' }
+        },
+        error: null
+      };
+    },
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }) })
+  };
+
+  const deps = {
+    orders: ordersState,
+    setOrders: (updater) => {
+      ordersState = typeof updater === 'function' ? updater(ordersState) : updater;
+    },
+    riders: [
+      { id: 'rider-abc', userId: 'user-999', name: 'นายไรเดอร์' }
+    ],
+    currentUser: { id: 'user-999' },
+    userProfile: { id: 'user-999', name: 'นายไรเดอร์' },
+    notifySystem: (title, message, type) => {
+      notifiedSystem = { title, message, type };
+    },
+    supabase: mockSupabase,
+  };
+
+  const orderActions = useOrderActions(deps);
+  const result = await orderActions.acceptOrder('ord-100', 'rider-abc');
+
+  assert.equal(result, true, 'acceptOrder should return true on success');
+  assert.equal(calledRpcName, 'accept_order_direct');
+  assert.equal(calledRpcArgs.p_order_id, 'ord-100');
+  assert.equal(calledRpcArgs.p_rider_id, 'rider-abc');
+  assert.equal(notifiedSystem?.type, 'success');
+  assert.equal(ordersState[0].status, 'rider_accepted');
+});
+
 test('placeOrder falls back to direct insert when place_customer_order RPC returns schema cache error', async () => {
   let insertedOrders = [];
   let notifiedSystem = null;

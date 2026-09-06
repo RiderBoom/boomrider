@@ -442,7 +442,7 @@ export function useOrderActions(deps) {
     await supabase.from('orders').update({ status: updated.status, data: updated }).eq('id', orderId);
   };
 
-  const acceptOrder = async (orderId) => {
+  const acceptOrder = async (orderId, targetRiderId = null) => {
     let order = orders.find(o => o.id === orderId);
     if (!order) {
       const { data: dbRow } = await supabase
@@ -457,7 +457,7 @@ export function useOrderActions(deps) {
     if (!order) return notifySystem('ผิดพลาด', 'ไม่พบข้อมูลออเดอร์นี้', 'error');
 
     const uid   = currentUser?.id || userProfile?.id || '';
-    const rider = riders.find(r => r.userId === uid);
+    const rider = riders.find(r => r.userId === uid || r.id === uid || (targetRiderId && (r.id === targetRiderId || r.userId === targetRiderId)));
     if (!rider) return notifySystem('ผิดพลาด', 'ไม่พบข้อมูลไรเดอร์ของคุณ', 'error');
 
     // Call accept_order_direct RPC for atomic cash wallet validation and state updates
@@ -468,21 +468,29 @@ export function useOrderActions(deps) {
 
     if (rpcError) {
       console.error('[acceptOrder] RPC error:', rpcError);
-      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + rpcError.message, 'error');
+      const isMissingRpc = rpcError.code === 'PGRST202' ||
+        rpcError.message?.includes('accept_order_direct') ||
+        rpcError.message?.includes('Could not find the function') ||
+        rpcError.message?.includes('schema cache');
+
+      if (isMissingRpc) {
+        return notifySystem('ผิดพลาด', 'ระบบรับงานกำลังอัปเดต กรุณาติดต่อ Admin หรือลองใหม่อีกครั้ง', 'error');
+      }
+      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + (rpcError.message || 'เกิดข้อผิดพลาด'), 'error');
     }
 
     if (!rpcResult?.ok) {
       if (rpcResult?.reason === 'INSUFFICIENT_RIDER_WALLET') {
         return notifySystem(
           'ยอดเงินในกระเป๋าไม่เพียงพอ',
-          'ยอดเงินในกระเป๋าไม่เพียงพอสำหรับรับงานนี้ กรุณาเติมเงินก่อนรับงาน',
+          `ยอดเงินในกระเป๋าไม่เพียงพอสำหรับรับงานนี้ (มี ฿${rpcResult.currentBalance ?? 0} ต้องการสำรอง ฿${rpcResult.requiredBalance ?? 0}) กรุณาเติมเงินก่อนรับงาน`,
           'error'
         );
       }
       if (rpcResult?.reason === 'order_already_taken') {
         return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
       }
-      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้ (' + (rpcResult?.reason || 'unknown error') + ')', 'error');
+      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้ (' + (rpcResult?.reason || 'เกิดข้อผิดพลาด') + ')', 'error');
     }
 
     const updatedOrderData = rpcResult.order_data || order;
