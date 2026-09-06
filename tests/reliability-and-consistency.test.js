@@ -296,6 +296,93 @@ test('placeOrder falls back to direct insert when place_customer_order RPC retur
   assert.equal(ordersState.length, 1, 'Order should remain in local state');
 });
 
+test('acceptOrder falls back to direct table updates when accept_order_direct RPC returns schema cache error', async () => {
+  let updatedOrders = [];
+  let updatedRiders = [];
+  let notifiedSystem = null;
+  let ordersState = [{
+    id: 'ord-999',
+    type: 'food',
+    status: 'ready_to_pickup',
+    foodTotal: 100,
+    deliveryFee: 30,
+    grandTotal: 130,
+    paymentMethod: 'cash'
+  }];
+
+  const mockRiders = [{
+    id: 'r-100',
+    userId: 'rider-user-1',
+    name: 'พี่สมชาย ไรเดอร์',
+    phone: '0899999999',
+  }];
+
+  const mockSupabase = {
+    rpc: async (fnName) => {
+      if (fnName === 'accept_order_direct') {
+        return {
+          data: null,
+          error: {
+            code: 'PGRST202',
+            message: 'Could not find the function public.accept_order_direct(p_order_id, p_rider_id) in the schema cache'
+          }
+        };
+      }
+      return { data: null, error: null };
+    },
+    from: (table) => {
+      if (table === 'orders') {
+        return {
+          update: (payload) => ({
+            eq: async (col, val) => {
+              updatedOrders.push({ col, val, payload });
+              return { error: null };
+            }
+          })
+        };
+      }
+      if (table === 'riders') {
+        return {
+          update: (payload) => ({
+            eq: async (col, val) => {
+              updatedRiders.push({ col, val, payload });
+              return { error: null };
+            }
+          })
+        };
+      }
+      return {};
+    }
+  };
+
+  const deps = {
+    orders: ordersState,
+    setOrders: (updater) => {
+      ordersState = typeof updater === 'function' ? updater(ordersState) : updater;
+    },
+    riders: mockRiders,
+    appConfig: { gpFood: 30, gpDelivery: 15 },
+    currentUser: { id: 'rider-user-1' },
+    userProfile: { id: 'rider-user-1', name: 'พี่สมชาย ไรเดอร์', phone: '0899999999' },
+    notifySystem: (title, message, type) => {
+      notifiedSystem = { title, message, type };
+    },
+    supabase: mockSupabase,
+  };
+
+  const orderActions = useOrderActions(deps);
+  const result = await orderActions.acceptOrder('ord-999');
+
+  assert.equal(result, true, 'acceptOrder should return true after successful fallback');
+  assert.equal(updatedOrders.length, 1, 'Direct order update should be executed');
+  assert.equal(updatedOrders[0].payload.status, 'rider_accepted');
+  assert.equal(updatedOrders[0].payload.data.riderId, 'r-100');
+  assert.equal(updatedRiders.length, 1, 'Direct rider availability update should be executed');
+  assert.equal(updatedRiders[0].payload.is_available, false);
+  assert.equal(notifiedSystem?.type, 'success', 'Success notification should be shown to rider');
+  assert.equal(ordersState[0].status, 'rider_accepted', 'Local state should be updated to rider_accepted');
+});
+
 test('requestRegisterRider rolls back local state and returns false on Supabase insert failure', async () => {
   let pendingRequests = [];
   let notifiedSystem = null;
