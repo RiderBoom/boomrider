@@ -186,8 +186,8 @@ grant execute on function public.is_admin(uuid) to authenticated;
 create or replace function public._wallet_credit(
   p_user_id text,
   p_amount numeric,
-  p_order_id text default null,
-  p_note text default null
+  p_order_id text,
+  p_note text
 )
 returns void
 language plpgsql
