@@ -1,6 +1,6 @@
 import { generateId, formatDateTime, r2, getDistanceFromLatLonInKm } from '../../utils.js';
 import { ADMIN_EMAIL, USER_LOCATION } from '../../constants.js';
-import { autoDispatch } from './useAutoDispatch';
+import { autoDispatch } from './useAutoDispatch.js';
 
 export function useOrderActions(deps) {
   const {
@@ -65,6 +65,49 @@ export function useOrderActions(deps) {
       gpAmount:       r2(foodTotal * gpFoodRate),
       merchantIncome: r2(foodTotal * (1 - gpFoodRate)),
       riderIncome:    deliveryFee,
+    };
+  };
+
+  const _executeOrderPlacement = async (orderId, newOrder) => {
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+
+    if (!rpcErr && rpcRes && rpcRes.ok) {
+      return { ok: true, order: rpcRes.order || newOrder };
+    }
+
+    const isMissingRpcError = rpcErr && (
+      rpcErr.code === 'PGRST202' ||
+      rpcErr.message?.includes('place_customer_order') ||
+      rpcErr.message?.includes('Could not find the function') ||
+      rpcErr.message?.includes('schema cache')
+    );
+
+    if (isMissingRpcError) {
+      console.warn('[orderPlacement] RPC place_customer_order missing or schema cache stale. Falling back to direct orders insert.');
+      const { error: insertErr } = await supabase
+        .from('orders')
+        .insert({ id: orderId, status: newOrder.status, data: newOrder });
+
+      if (!insertErr) {
+        return { ok: true, order: newOrder, fallbackUsed: true };
+      }
+      console.error('[orderPlacement] Direct insert fallback failed:', insertErr);
+      return {
+        ok: false,
+        reason: insertErr.message || 'ไม่สามารถสั่งซื้อได้ กรุณาลองใหม่อีกครั้ง'
+      };
+    }
+
+    if (rpcRes && !rpcRes.ok) {
+      const reason = rpcRes.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
+        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
+        : (rpcRes.reason || 'ไม่สามารถสั่งซื้อได้');
+      return { ok: false, reason };
+    }
+
+    return {
+      ok: false,
+      reason: rpcErr?.message || 'เกิดข้อผิดพลาดในการสั่งซื้อ'
     };
   };
 
@@ -157,19 +200,16 @@ export function useOrderActions(deps) {
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
 
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    const res = await _executeOrderPlacement(orderId, newOrder);
 
-    if (rpcErr || (rpcRes && !rpcRes.ok)) {
+    if (!res.ok) {
       pendingLocalOrderIdsRef.current.delete(orderId);
       setOrders(prev => prev.filter(o => o.id !== orderId));
       placingOrderRef.current = false;
-      const reason = rpcRes?.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
-        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
-        : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถสั่งอาหารได้');
-      return notifySystem('ผิดพลาด', reason, 'error');
+      return notifySystem('ผิดพลาด', res.reason, 'error');
     }
 
-    const authOrder = rpcRes?.order || newOrder;
+    const authOrder = res.order || newOrder;
     const finalGrandTotal = authOrder.grandTotal ?? grandTotal;
 
     setOrders(prev => prev.map(o => o.id === orderId ? authOrder : o));
@@ -218,18 +258,15 @@ export function useOrderActions(deps) {
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
 
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    const res = await _executeOrderPlacement(orderId, newOrder);
 
-    if (rpcErr || (rpcRes && !rpcRes.ok)) {
+    if (!res.ok) {
       pendingLocalOrderIdsRef.current.delete(orderId);
       setOrders(prev => prev.filter(o => o.id !== orderId));
-      const reason = rpcRes?.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
-        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
-        : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถสร้างออเดอร์พัสดุได้');
-      return notifySystem('ผิดพลาด', reason, 'error');
+      return notifySystem('ผิดพลาด', res.reason, 'error');
     }
 
-    const authOrder = rpcRes?.order || newOrder;
+    const authOrder = res.order || newOrder;
     const finalGrandTotal = authOrder.grandTotal ?? grandTotal;
 
     setOrders(prev => prev.map(o => o.id === orderId ? authOrder : o));
@@ -293,18 +330,15 @@ export function useOrderActions(deps) {
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
 
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    const res = await _executeOrderPlacement(orderId, newOrder);
 
-    if (rpcErr || (rpcRes && !rpcRes.ok)) {
+    if (!res.ok) {
       pendingLocalOrderIdsRef.current.delete(orderId);
       setOrders(prev => prev.filter(o => o.id !== orderId));
-      const reason = rpcRes?.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
-        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
-        : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถเรียกรถได้');
-      return notifySystem('ผิดพลาด', reason, 'error');
+      return notifySystem('ผิดพลาด', res.reason, 'error');
     }
 
-    const authOrder = rpcRes?.order || newOrder;
+    const authOrder = res.order || newOrder;
     const finalGrandTotal = authOrder.grandTotal ?? grandTotal;
 
     setOrders(prev => prev.map(o => o.id === orderId ? authOrder : o));
@@ -359,18 +393,15 @@ export function useOrderActions(deps) {
     pendingLocalOrderIdsRef.current.add(orderId);
     setOrders(prev => [newOrder, ...prev]);
 
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    const res = await _executeOrderPlacement(orderId, newOrder);
 
-    if (rpcErr || (rpcRes && !rpcRes.ok)) {
+    if (!res.ok) {
       pendingLocalOrderIdsRef.current.delete(orderId);
       setOrders(prev => prev.filter(o => o.id !== orderId));
-      const reason = rpcRes?.reason === 'INSUFFICIENT_CUSTOMER_WALLET'
-        ? `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${rpcRes.currentBalance} ต้องการ ฿${rpcRes.requiredBalance})`
-        : (rpcErr?.message || rpcRes?.reason || 'ไม่สามารถสั่งบริการได้');
-      return notifySystem('ผิดพลาด', reason, 'error');
+      return notifySystem('ผิดพลาด', res.reason, 'error');
     }
 
-    const authOrder = rpcRes?.order || newOrder;
+    const authOrder = res.order || newOrder;
     const finalGrandTotal = authOrder.grandTotal ?? grandTotal;
 
     setOrders(prev => prev.map(o => o.id === orderId ? authOrder : o));

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { useWalletActions } from '../src/context/hooks/useWalletActions.js';
 import { useRegistration } from '../src/context/hooks/useRegistration.js';
+import { useOrderActions } from '../src/context/hooks/useOrderActions.js';
 
 // Setup minimal React hooks dispatcher mock for React 19 in Node test runner
 const reactInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
@@ -211,6 +212,88 @@ test('requestRegisterMerchant rolls back local state and returns false on Supaba
   assert.equal(pendingRequests.length, 0, 'Local pendingRequests should be rolled back');
   assert.equal(notifiedSystem?.type, 'error', 'Error notification should be displayed');
   assert.equal(adminNotified, false, 'notifyAdmin must not be called when DB insert fails');
+});
+
+test('placeOrder falls back to direct insert when place_customer_order RPC returns schema cache error', async () => {
+  let insertedOrders = [];
+  let notifiedSystem = null;
+  let ordersState = [];
+
+  const mockSupabase = {
+    rpc: async (fnName) => {
+      if (fnName === 'place_customer_order') {
+        return {
+          data: null,
+          error: {
+            code: 'PGRST202',
+            message: 'Could not find the function public.place_customer_order(p_order) in the schema cache'
+          }
+        };
+      }
+      return { data: null, error: null };
+    },
+    from: (table) => {
+      if (table === 'orders') {
+        return {
+          insert: async (payload) => {
+            insertedOrders.push(payload);
+            return { error: null };
+          }
+        };
+      }
+      return {};
+    }
+  };
+
+  const deps = {
+    orders: ordersState,
+    setOrders: (updater) => {
+      ordersState = typeof updater === 'function' ? updater(ordersState) : updater;
+    },
+    cart: [{ id: 'm1', name: 'Pad Thai', price: 80, qty: 1, restaurantId: 'r1', restaurantName: 'Rest 1', distance: 2 }],
+    setCart: () => {},
+    restaurants: [{ id: 'r1', ownerId: 'owner-1', location: { lat: 13.7, lng: 100.5 } }],
+    riders: [],
+    appConfig: { baseFee: 20, perKmFee: 10 },
+    currentUser: { id: 'user-1' },
+    userProfile: { id: 'user-1', name: 'Test Customer', phone: '0812345678' },
+    userAddresses: [{ address: '123 BKK', location: { lat: 13.7, lng: 100.5 } }],
+    userWallet: 500,
+    parcelDetails: {},
+    setParcelDetails: () => {},
+    parcelEstimate: 0,
+    paymentMethod: 'cash',
+    pendingRequests: [],
+    setPendingRequests: () => {},
+    selectedOrderToCancel: null,
+    setSelectedOrderToCancel: () => {},
+    cancelReasonInput: '',
+    setCancelReasonInput: () => {},
+    setShowCancelModal: () => {},
+    setSelectedRestaurant: () => {},
+    setActiveTab: () => {},
+    setParcelMapTarget: () => {},
+    setParcelEstimate: () => {},
+    setParcelDistance: () => {},
+    placingOrderRef: { current: false },
+    pendingLocalOrderIdsRef: { current: new Set() },
+    creditWallet: () => {},
+    creditWalletLocal: () => {},
+    fetchUserWallet: () => {},
+    notifySystem: (title, message, type) => {
+      notifiedSystem = { title, message, type };
+    },
+    notifyAdmin: () => {},
+    supabase: mockSupabase,
+  };
+
+  const orderActions = useOrderActions(deps);
+  await orderActions.placeOrder(0, 'Extra spicy');
+
+  assert.equal(insertedOrders.length, 1, 'Direct insert should have been called as fallback');
+  assert.equal(insertedOrders[0].data.type, 'food');
+  assert.equal(notifiedSystem?.type, 'success', 'Success notification should be displayed despite RPC error');
+  assert.equal(ordersState.length, 1, 'Order should remain in local state');
 });
 
 test('requestRegisterRider rolls back local state and returns false on Supabase insert failure', async () => {
