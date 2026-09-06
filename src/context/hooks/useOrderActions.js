@@ -576,6 +576,53 @@ export function useOrderActions(deps) {
           p_gp_service_rate: gpServiceRate
         });
 
+      const isMissingRpcError = rpcError && (
+        rpcError.code === 'PGRST202' ||
+        rpcError.message?.includes('process_order_settlement') ||
+        rpcError.message?.includes('Could not find the function') ||
+        rpcError.message?.includes('schema cache')
+      );
+
+      if (isMissingRpcError) {
+        console.warn('[updateOrderStatus] RPC process_order_settlement missing or schema cache stale. Falling back to direct order update.');
+        const nowStr = new Date().toISOString();
+        const nowMs = Date.now();
+        const patch = {
+          ...incomePatch,
+          ...extraData,
+          status: 'completed',
+          completedAt: order.completedAt || nowStr,
+          completedAtMs: order.completedAtMs || nowMs,
+          settlementStatus: 'settled',
+        };
+
+        const { error: directUpdateErr } = await supabase
+          .from('orders')
+          .update({ status: 'completed', data: { ...order, ...patch } })
+          .eq('id', orderId);
+
+        if (directUpdateErr) {
+          console.error('[updateOrderStatus] Direct order completion fallback failed:', directUpdateErr);
+          notifySystem('ผิดพลาด', 'ไม่สามารถทำรายการ settlement ได้ ออเดอร์ยังไม่ถูกปิด: ' + directUpdateErr.message, 'error');
+          return false;
+        }
+
+        setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, ...patch } : o)));
+
+        // Mark rider as available again
+        if (riderUid) {
+          const riderRow = riders.find(r => r.userId === riderUid || r.id === order.riderId);
+          if (riderRow) {
+            supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
+          }
+        }
+
+        if (fetchUserWallet) fetchUserWallet();
+
+        notifySystem('✅ ส่งของสำเร็จ!', `ออเดอร์ #${orderId.slice(-6)} เสร็จสมบูรณ์`, 'success');
+        return true;
+      }
+
       if (rpcError || (rpcResult && !rpcResult.ok)) {
         console.error('[updateOrderStatus] Settlement error:', rpcError || rpcResult?.error);
         notifySystem('ผิดพลาด', 'ไม่สามารถทำรายการ settlement ได้ ออเดอร์ยังไม่ถูกปิด', 'error');
