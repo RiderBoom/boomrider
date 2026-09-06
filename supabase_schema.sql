@@ -388,7 +388,7 @@ grant execute on function public.admin_set_user_role(uuid, text, boolean) to aut
 
 -- ── RPC: admin_purge_app_data ─────────────────────────────────────────────────
 create or replace function public.admin_purge_app_data(p_scope text)
-returns void
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
