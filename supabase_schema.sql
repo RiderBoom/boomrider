@@ -388,7 +388,7 @@ grant execute on function public.admin_set_user_role(uuid, text, boolean) to aut
 
 -- ── RPC: admin_purge_app_data ─────────────────────────────────────────────────
 create or replace function public.admin_purge_app_data(p_scope text)
-returns jsonb
+returns void
 language plpgsql
 security definer
 set search_path = public
@@ -431,7 +431,7 @@ create or replace function public.append_chat_message(
   p_order_id text,
   p_message jsonb
 )
-returns jsonb
+returns void
 language plpgsql
 security definer
 set search_path = public
@@ -466,7 +466,7 @@ create or replace function public.register_push_device(
   p_token text,
   p_platform text default 'android'
 )
-returns jsonb
+returns uuid
 language plpgsql
 security definer
 set search_path = public
@@ -495,7 +495,7 @@ grant execute on function public.register_push_device(text, text) to authenticat
 
 -- ── RPC: disable_push_device ──────────────────────────────────────────────────
 create or replace function public.disable_push_device(p_token text)
-returns jsonb
+returns boolean
 language plpgsql
 security definer
 set search_path = public
@@ -550,7 +550,7 @@ $$;
 
 create or replace function public.get_rider_active_cash_liability(
   p_rider_id text,
-  p_rider_user_id text default null
+  p_rider_user_id text
 )
 returns numeric
 language plpgsql
@@ -812,7 +812,7 @@ revoke all on function public.accept_job_offer(uuid) from public;
 grant execute on function public.accept_job_offer(uuid) to authenticated;
 
 create or replace function public.respond_job_offer(p_offer_id uuid, p_status text)
-returns jsonb
+returns void
 language plpgsql
 security definer
 set search_path = public
