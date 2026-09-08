@@ -10,7 +10,7 @@ export function useAdminActions(deps) {
     editingShop, shopEditForm, setEditingShop,
     selectedRequestToReject, setSelectedRequestToReject,
     setShowRejectModal,
-    creditWallet, creditWalletLocal, grantRole,
+    creditWalletLocal, grantRole,
     notifySystem,
     supabase,
   } = deps;
@@ -94,7 +94,14 @@ export function useAdminActions(deps) {
       const roleName = req.data.requestedBy === 'rider' ? 'ไรเดอร์' : req.data.requestedBy === 'merchant' ? 'ร้านค้า' : 'ลูกค้า';
       const cancelReason = `${roleName}ขอยกเลิก: ${req.data.reason}`;
       if (targetOrder && !['cancelled', 'completed'].includes(targetOrder.status)) {
-        const cancelledOrder = { ...targetOrder, status: 'cancelled', cancelReason };
+        const { data: cancelRes, error: cancelErr } = await supabase.rpc('cancel_order_atomic', {
+          p_order_id: req.data.orderId,
+          p_reason: cancelReason,
+        });
+        if (cancelErr || !cancelRes?.ok) {
+          return notifySystem('ผิดพลาด', cancelErr?.message || cancelRes?.reason || 'ยกเลิกและคืนเงินไม่สำเร็จ', 'error');
+        }
+        const cancelledOrder = cancelRes.order || { ...targetOrder, status: 'cancelled', cancelReason };
         setOrders(prev => {
           const idx = prev.findIndex(o => o.id === req.data.orderId);
           if (idx === -1) return [cancelledOrder, ...prev];
@@ -102,17 +109,12 @@ export function useAdminActions(deps) {
           next[idx] = cancelledOrder;
           return next;
         });
-        await supabase.from('orders').update({ status: 'cancelled', data: cancelledOrder }).eq('id', req.data.orderId);
         if (cancelledOrder.riderId) {
           const riderRow = riders.find(r => r.id === cancelledOrder.riderId);
           if (riderRow) {
             await supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id);
           }
         }
-      }
-      if (req.data.paymentMethod === 'wallet' && req.data.grandTotal > 0) {
-        const refundTo = targetOrder?.customerId || req.data.customerId || req.userId;
-        await creditWallet(refundTo, req.data.grandTotal, `คืนเงิน: ยกเลิกออเดอร์ #${req.data.orderId.slice(-6)} (Admin อนุมัติ)`);
       }
       const refundNote = req.data.paymentMethod === 'wallet'
         ? ` — คืนเงิน ฿${(req.data.grandTotal || 0).toLocaleString()} แล้ว`
