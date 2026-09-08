@@ -447,7 +447,7 @@ BEGIN
   END IF;
 
   -- Extract delivery fee, promo discount, grand total, admin GP, rider income from quote
-  v_calc_deliv_fee := v_quote_rec.grand_total;
+  v_calc_deliv_fee := v_quote_rec.subtotal;
   v_promo_discount := v_quote_rec.discount;
   v_distance       := v_quote_rec.billable_km;
   v_admin_gp       := v_quote_rec.admin_gp;
@@ -562,7 +562,7 @@ BEGIN
 
   ELSE
     v_calc_food_total := 0;
-    v_calc_grand_total := v_calc_deliv_fee;
+    v_calc_grand_total := GREATEST(0, v_calc_deliv_fee - v_promo_discount);
   END IF;
 
   -- 8. Wallet Deduction (Atomic Row Lock)
