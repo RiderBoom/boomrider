@@ -9,7 +9,7 @@ export function useOrderActions(deps) {
     restaurants, riders, appConfig,
     currentUser, userProfile, userAddresses, userWallet,
     parcelDetails, setParcelDetails,
-    parcelEstimate,
+    parcelDistance,
     paymentMethod,
     pendingRequests, setPendingRequests,
     selectedOrderToCancel, setSelectedOrderToCancel,
@@ -180,6 +180,7 @@ export function useOrderActions(deps) {
       pickupLocation: restaurant?.location || USER_LOCATION,
       location: addr.location || USER_LOCATION,
       address: addr.address,
+      distance,
       items: cart.map(({ id, originalId, name, price, qty, selectedOptions }) => ({
         id,
         originalId: originalId || id,
@@ -229,7 +230,15 @@ export function useOrderActions(deps) {
     if (!parcelDetails.pickup || !parcelDetails.dropoff) {
       return notifySystem('ผิดพลาด', 'กรุณาระบุจุดรับและจุดส่ง', 'error');
     }
-    const grandTotal  = parcelEstimate;
+    const dist = parcelDistance > 0 ? parcelDistance : (
+      parcelDetails.pickupLocation && parcelDetails.dropoffLocation
+        ? getDistanceFromLatLonInKm(
+            parcelDetails.pickupLocation.lat, parcelDetails.pickupLocation.lng,
+            parcelDetails.dropoffLocation.lat, parcelDetails.dropoffLocation.lng
+          )
+        : 1
+    );
+    const grandTotal  = calculateDeliveryFee(dist);
     const uid = currentUser?.id || userProfile?.id || '';
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
       return notifySystem('ผิดพลาด', `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${userWallet} ต้องการ ฿${grandTotal})`, 'error');
@@ -246,6 +255,8 @@ export function useOrderActions(deps) {
       dropoff: parcelDetails.dropoff,
       pickupLocation: parcelDetails.pickupLocation || USER_LOCATION,
       location: parcelDetails.dropoffLocation || USER_LOCATION,
+      distance: dist,
+      parcelDetails: { ...parcelDetails, distance: dist },
       weight: parcelDetails.weight,
       receiverName: parcelDetails.receiverName,
       receiverPhone: parcelDetails.receiverPhone,
@@ -317,6 +328,7 @@ export function useOrderActions(deps) {
       dropoff: rideDetails.dropoff,
       pickupLocation: rideDetails.pickupLocation || USER_LOCATION,
       location: rideDetails.dropoffLocation || USER_LOCATION,
+      distance: dist,
       vehicleType: rideDetails.vehicleType || 'Motorcycle',
       notes: rideDetails.note || '',
       deliveryFee: grandTotal,

@@ -1044,9 +1044,9 @@ export function AppProvider({ children }) {
         parcelDetails.dropoffLocation.lat, parcelDetails.dropoffLocation.lng,
       );
       setParcelDistance(d);
-      setParcelEstimate(Math.ceil(appConfig.baseFee + (d * appConfig.perKmFee)));
+      setParcelEstimate(calculateDeliveryFee(d));
     }
-  }, [parcelDetails.pickupLocation, parcelDetails.dropoffLocation, appConfig]);
+  }, [parcelDetails.pickupLocation, parcelDetails.dropoffLocation, appConfig, calculateDeliveryFee]);
 
   // ── Chat ─────────────────────────────────────────────────────────────────
   const openChatWindow = (id, title, role) => {

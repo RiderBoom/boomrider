@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+function mockCalculateHaversineDistance(lat1, lon1, lat2, lon2) {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return 1;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * (Math.sin(dLon / 2) ** 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+  return Math.round(R * c * 100) / 100;
+}
+
 // Helper mimicking DB behavior of place_customer_order RPC (031_server_authoritative_order_pricing.sql)
 function mockPlaceCustomerOrderRPC(pOrder, authUid, dbStores) {
   const { menuItems = {}, promoCodes = {}, appConfig = {}, wallets = {}, orders = {} } = dbStores;
@@ -125,7 +135,16 @@ function mockPlaceCustomerOrderRPC(pOrder, authUid, dbStores) {
     riderIncome = deliveryFee;
 
   } else if (type === 'parcel') {
-    const dist = Math.max(0, pOrder.distance || pOrder.parcelDetails?.distance || 1);
+    let dist = pOrder.distance || pOrder.parcelDetails?.distance;
+    if (!dist || dist <= 0) {
+      if (pOrder.pickupLocation?.lat != null && pOrder.location?.lat != null) {
+        dist = mockCalculateHaversineDistance(
+          pOrder.pickupLocation.lat, pOrder.pickupLocation.lng,
+          pOrder.location.lat, pOrder.location.lng
+        );
+      }
+    }
+    dist = Math.max(0.1, dist || 1);
     deliveryFee = baseFee + (Math.ceil(dist) * perKmFee);
     grandTotal = deliveryFee;
     adminGP = Math.round(grandTotal * gpDelivRate * 100) / 100;
@@ -542,4 +561,48 @@ test('14. Promo code tampering -> calculated strictly against DB promo_codes tab
   assert.equal(res.ok, true);
   assert.equal(res.order.promoDiscount, 40); // 20% of 200 = 40, ignoring 999
   assert.equal(res.order.grandTotal, 190); // 200 + 30 - 40
+});
+
+test('15. Parcel order with explicit distance calculates correct delivery fee and income split', () => {
+  const dbStores = {
+    appConfig: { baseFee: 20, perKmFee: 10, gpDelivery: 15 },
+    wallets: { 'user-1': 500 },
+    orders: {},
+  };
+
+  const payload = {
+    id: 'parcel-dist-5_2',
+    type: 'parcel',
+    distance: 5.2, // Ceil(5.2) = 6 -> fee = 20 + 6 * 10 = 80
+    paymentMethod: 'wallet',
+  };
+
+  const res = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
+  assert.equal(res.ok, true);
+  assert.equal(res.order.deliveryFee, 80);
+  assert.equal(res.order.grandTotal, 80);
+  assert.equal(res.order.adminGP, 12); // 15% of 80
+  assert.equal(res.order.riderIncome, 68); // 80 - 12
+  assert.equal(dbStores.wallets['user-1'], 420); // 500 - 80
+});
+
+test('16. Parcel order without explicit distance falls back to Haversine calculation from coordinates', () => {
+  const dbStores = {
+    appConfig: { baseFee: 20, perKmFee: 10, gpDelivery: 15 },
+    wallets: { 'user-1': 500 },
+    orders: {},
+  };
+
+  // Coordinates ~ 3.5 km apart
+  const payload = {
+    id: 'parcel-coords-fallback',
+    type: 'parcel',
+    pickupLocation: { lat: 13.7563, lng: 100.5018 },
+    location: { lat: 13.7850, lng: 100.5200 },
+    paymentMethod: 'cash',
+  };
+
+  const res = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
+  assert.equal(res.ok, true);
+  assert.ok(res.order.deliveryFee > 30, 'Delivery fee should be computed from Haversine distance, not default 1km fee');
 });
