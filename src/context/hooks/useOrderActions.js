@@ -18,7 +18,7 @@ export function useOrderActions(deps) {
     setSelectedRestaurant, setActiveTab,
     setParcelMapTarget, setParcelEstimate, setParcelDistance,
     placingOrderRef, pendingLocalOrderIdsRef,
-    creditWallet, creditWalletLocal, fetchUserWallet,
+    creditWalletLocal, fetchUserWallet,
     notifySystem, notifyAdmin,
     supabase,
   } = deps;
@@ -736,14 +736,17 @@ export function useOrderActions(deps) {
     const orderId = selectedOrderToCancel;
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
-    await _updateOrder(orderId, { status: 'cancelled', cancelReason: cancelReasonInput || 'ลูกค้ายกเลิก' });
+    const { data: cancelRes, error: cancelErr } = await supabase.rpc('cancel_order_atomic', {
+      p_order_id: orderId,
+      p_reason: cancelReasonInput || 'ลูกค้ายกเลิก'
+    });
+    if (cancelErr || !cancelRes?.ok) {
+      return notifySystem('ผิดพลาด', cancelErr?.message || cancelRes?.reason || 'ยกเลิกออเดอร์ไม่สำเร็จ', 'error');
+    }
+    setOrders(prev => prev.map(o => o.id === orderId ? (cancelRes.order || o) : o));
     setShowCancelModal(false);
     setSelectedOrderToCancel(null);
     setCancelReasonInput('');
-    if (order.paymentMethod === 'wallet' && order.grandTotal > 0) {
-      const refundUid = order.customerId || currentUser?.id || userProfile?.id;
-      creditWallet(refundUid, order.grandTotal, `คืนเงิน: ยกเลิกออเดอร์ #${orderId.slice(-6)}`);
-    }
     // Release rider
     if (order.riderId) {
       const riderRow = riders.find(r => r.id === order.riderId);
@@ -799,11 +802,14 @@ export function useOrderActions(deps) {
   const cancelOrderDirectly = async (orderId, reason = 'ลูกค้ายกเลิก') => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
-    await _updateOrder(orderId, { status: 'cancelled', cancelReason: reason });
-    if (order.paymentMethod === 'wallet' && order.grandTotal > 0) {
-      const uid = currentUser?.id || userProfile?.id;
-      creditWallet(uid, order.grandTotal, `คืนเงิน: ยกเลิกออเดอร์ #${orderId.slice(-6)}`);
+    const { data: cancelRes, error: cancelErr } = await supabase.rpc('cancel_order_atomic', {
+      p_order_id: orderId,
+      p_reason: reason
+    });
+    if (cancelErr || !cancelRes?.ok) {
+      return notifySystem('ผิดพลาด', cancelErr?.message || cancelRes?.reason || 'ยกเลิกออเดอร์ไม่สำเร็จ', 'error');
     }
+    setOrders(prev => prev.map(o => o.id === orderId ? (cancelRes.order || o) : o));
     if (order.riderId) {
       const riderRow = riders.find(r => r.id === order.riderId);
       if (riderRow) supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
