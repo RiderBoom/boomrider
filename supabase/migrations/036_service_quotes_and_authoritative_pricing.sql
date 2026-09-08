@@ -83,8 +83,8 @@ DECLARE
   v_dlng              NUMERIC := p_dropoff_lng;
 
   -- Address / Restaurant Lookup Records
-  v_rest_data         RECORD;
-  v_addr_data         RECORD;
+  v_rest_data         JSONB;
+  v_addr_data         JSONB;
 
   -- Config Parameters
   v_config_data       JSONB;
@@ -140,18 +140,23 @@ BEGIN
   -- 3. Resolve Coordinates from Canonical DB Records
   IF v_service_type = 'food' THEN
     IF p_restaurant_id IS NOT NULL AND p_restaurant_id <> '' THEN
-      SELECT * INTO v_rest_data FROM public.restaurants WHERE id = p_restaurant_id;
-      IF v_rest_data.id IS NOT NULL AND v_rest_data.location IS NOT NULL THEN
-        v_plat := (v_rest_data.location->>'lat')::NUMERIC;
-        v_plng := (v_rest_data.location->>'lng')::NUMERIC;
+      SELECT data INTO v_rest_data FROM public.restaurants WHERE id = p_restaurant_id;
+      IF v_rest_data IS NOT NULL AND v_rest_data->'location' IS NOT NULL THEN
+        v_plat := (v_rest_data->'location'->>'lat')::NUMERIC;
+        v_plng := (v_rest_data->'location'->>'lng')::NUMERIC;
       END IF;
     END IF;
 
     IF p_address_id IS NOT NULL AND p_address_id <> '' THEN
-      SELECT * INTO v_addr_data FROM public.user_addresses WHERE id = p_address_id AND user_id = v_caller_uid;
-      IF v_addr_data.id IS NOT NULL AND v_addr_data.location IS NOT NULL THEN
-        v_dlat := (v_addr_data.location->>'lat')::NUMERIC;
-        v_dlng := (v_addr_data.location->>'lng')::NUMERIC;
+      SELECT address_item INTO v_addr_data
+      FROM public.profiles p
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(p.addresses, '[]'::JSONB)) AS address_item
+      WHERE p.id::TEXT = v_caller_uid
+        AND address_item->>'id' = p_address_id
+      LIMIT 1;
+      IF v_addr_data IS NOT NULL AND v_addr_data->'location' IS NOT NULL THEN
+        v_dlat := (v_addr_data->'location'->>'lat')::NUMERIC;
+        v_dlng := (v_addr_data->'location'->>'lng')::NUMERIC;
       END IF;
     END IF;
   END IF;
@@ -400,7 +405,7 @@ BEGIN
 
   -- 4. Payment Method & Type Validation
   v_method := LOWER(COALESCE(p_order->>'paymentMethod', 'cash'));
-  IF v_method NOT IN ('cash', 'wallet', 'online') THEN
+  IF v_method NOT IN ('cash', 'wallet') THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'INVALID_PAYMENT_METHOD');
   END IF;
 
@@ -452,11 +457,6 @@ BEGIN
   v_distance       := v_quote_rec.billable_km;
   v_admin_gp       := v_quote_rec.admin_gp;
   v_rider_income   := v_quote_rec.rider_income;
-
-  -- Mark quote used
-  UPDATE public.service_quotes
-  SET used_at = NOW()
-  WHERE id = v_quote_id;
 
   -- 6. Load DB Config for Base Rates
   SELECT data INTO v_config_data FROM public.app_config WHERE id = 1;
@@ -559,6 +559,8 @@ BEGIN
     END LOOP;
 
     v_calc_grand_total := GREATEST(0, v_calc_food_total + v_calc_deliv_fee - v_promo_discount);
+    v_admin_gp := ROUND(v_calc_food_total * v_gp_food_rate, 2);
+    v_rider_income := v_calc_deliv_fee;
 
   ELSE
     v_calc_food_total := 0;
@@ -629,11 +631,16 @@ BEGIN
     v_final_order := v_final_order || jsonb_build_object('items', v_auth_items);
   END IF;
 
-  -- 10. Persist Order
+  -- 10. Consume the quote only after all validation and wallet checks succeed.
+  UPDATE public.service_quotes
+  SET used_at = NOW()
+  WHERE id = v_quote_id;
+
+  -- 11. Persist Order
   INSERT INTO public.orders (id, status, data)
   VALUES (v_order_id, v_status, v_final_order);
 
-  -- 11. Return Authoritative Pricing Result
+  -- 12. Return Authoritative Pricing Result
   RETURN jsonb_build_object(
     'ok', true,
     'order_id', v_order_id,
