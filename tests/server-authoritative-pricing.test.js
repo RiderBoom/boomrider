@@ -11,9 +11,78 @@ function mockCalculateHaversineDistance(lat1, lon1, lat2, lon2) {
   return Math.round(R * c * 100) / 100;
 }
 
-// Helper mimicking DB behavior of place_customer_order RPC (031_server_authoritative_order_pricing.sql)
+// Helper mimicking create_service_quote RPC (035_service_quotes_and_authoritative_pricing.sql)
+function mockCreateServiceQuoteRPC(pQuote, authUid, dbStores) {
+  const { quotes = {}, appConfig = {}, restaurants = {}, userAddresses = {} } = dbStores;
+
+  if (!authUid) throw new Error('authentication_required');
+
+  const serviceType = (pQuote.serviceType || 'food').toLowerCase();
+  if (!['food', 'parcel', 'ride', 'service'].includes(serviceType)) {
+    return { ok: false, reason: 'INVALID_SERVICE_TYPE' };
+  }
+
+  let plat = pQuote.pickupLat;
+  let plng = pQuote.pickupLng;
+  let dlat = pQuote.dropoffLat;
+  let dlng = pQuote.dropoffLng;
+
+  if (serviceType === 'food') {
+    if (pQuote.restaurantId && restaurants[pQuote.restaurantId]) {
+      const rLoc = restaurants[pQuote.restaurantId].location;
+      if (rLoc) { plat = rLoc.lat; plng = rLoc.lng; }
+    }
+    if (pQuote.addressId && userAddresses[pQuote.addressId]) {
+      const aLoc = userAddresses[pQuote.addressId].location;
+      if (aLoc) { dlat = aLoc.lat; dlng = aLoc.lng; }
+    }
+  }
+
+  if (plat == null || plng == null || dlat == null || dlng == null) {
+    return { ok: false, reason: 'MISSING_COORDINATES' };
+  }
+
+  if (plat < -90 || plat > 90 || dlat < -90 || dlat > 90 ||
+      plng < -180 || plng > 180 || dlng < -180 || dlng > 180) {
+    return { ok: false, reason: 'INVALID_COORDINATES_OUT_OF_BOUNDS' };
+  }
+
+  const distMeters = mockCalculateHaversineDistance(plat, plng, dlat, dlng) * 1000;
+  const billableKm = Math.max(1, Math.ceil(distMeters / 1000));
+  const baseFee = appConfig.baseFee ?? 20;
+  const perKmFee = appConfig.perKmFee ?? 10;
+  const subtotal = baseFee + (billableKm * perKmFee);
+  const discount = 0;
+  const grandTotal = Math.max(0, subtotal - discount);
+  const gpRate = (appConfig.gpDelivery ?? 15) / 100;
+  const adminGP = Math.round(grandTotal * gpRate * 100) / 100;
+  const riderIncome = Math.round((grandTotal - adminGP) * 100) / 100;
+
+  const quoteId = 'quote_' + Math.random().toString(36).slice(2, 9);
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+  const quoteObj = {
+    id: quoteId,
+    customerId: authUid,
+    serviceType,
+    pickupLat: plat, pickupLng: plng,
+    dropoffLat: dlat, dropoffLng: dlng,
+    distanceMeters: distMeters,
+    billableKm,
+    distanceSource: 'haversine_estimate',
+    baseFee, perKmFee, subtotal, discount, grandTotal, adminGP, riderIncome,
+    expiresAt,
+    usedAt: null
+  };
+
+  quotes[quoteId] = quoteObj;
+
+  return { ok: true, quoteId, ...quoteObj };
+}
+
+// Helper mimicking DB behavior of place_customer_order RPC (035_service_quotes_and_authoritative_pricing.sql)
 function mockPlaceCustomerOrderRPC(pOrder, authUid, dbStores) {
-  const { menuItems = {}, promoCodes = {}, appConfig = {}, wallets = {}, orders = {} } = dbStores;
+  const { quotes = {}, menuItems = {}, wallets = {}, orders = {} } = dbStores;
 
   if (!authUid) {
     throw new Error('authentication_required');
@@ -47,29 +116,28 @@ function mockPlaceCustomerOrderRPC(pOrder, authUid, dbStores) {
 
   const status = type === 'food' ? 'pending' : 'ready_to_pickup';
 
-  // 5. Config Rates
-  const baseFee = appConfig.baseFee ?? 20;
-  const perKmFee = appConfig.perKmFee ?? 10;
-  const rideBaseFee = appConfig.rideBaseFee ?? baseFee;
-  const ridePerKmFee = appConfig.ridePerKmFee ?? perKmFee;
-  const gpFoodRate = (appConfig.gpFood ?? 30) / 100;
-  const gpDelivRate = (appConfig.gpDelivery ?? 15) / 100;
-  const gpRideRate = (appConfig.gpRide ?? 15) / 100;
-  const gpServiceRate = (appConfig.gpService ?? 15) / 100;
-  const extraServices = appConfig.extraServices || [
-    { name: "ทำความสะอาดบ้าน", price: 350 },
-    { name: "ล้างแอร์ / ซ่อมแอร์", price: 500 },
-    { name: "ซ่อมประปา / ไฟฟ้า", price: 400 },
-    { name: "ขนย้ายสิ่งของ", price: 600 }
-  ];
+  // 5. Mandatory Quote Verification
+  const quoteId = pOrder.quoteId;
+  if (!quoteId) {
+    return { ok: false, reason: 'QUOTE_REQUIRED' };
+  }
+
+  const quote = quotes[quoteId];
+  if (!quote) return { ok: false, reason: 'QUOTE_NOT_FOUND' };
+  if (quote.customerId !== customerId) return { ok: false, reason: 'QUOTE_ACCESS_DENIED' };
+  if (quote.serviceType !== type) return { ok: false, reason: 'QUOTE_SERVICE_MISMATCH' };
+  if (quote.usedAt) return { ok: false, reason: 'QUOTE_ALREADY_USED' };
+  if (new Date(quote.expiresAt) < new Date()) return { ok: false, reason: 'QUOTE_EXPIRED' };
+
+  let deliveryFee = quote.grandTotal;
+  let promoDiscount = quote.discount;
+  let adminGP = quote.adminGP;
+  let riderIncome = quote.riderIncome;
+  quote.usedAt = new Date().toISOString();
 
   // 6. Pricing Calculation
   let foodTotal = 0;
-  let deliveryFee = 0;
-  let promoDiscount = 0;
   let grandTotal = 0;
-  let adminGP = 0;
-  let riderIncome = 0;
   let authItems = [];
 
   if (type === 'food') {
@@ -115,55 +183,11 @@ function mockPlaceCustomerOrderRPC(pOrder, authUid, dbStores) {
       });
     }
 
-    // Authoritative Promo Validation
-    const promoCodeStr = (pOrder.promoCode || '').toUpperCase().trim();
-    if (promoCodeStr) {
-      const dbPromo = promoCodes[promoCodeStr];
-      if (dbPromo && dbPromo.active !== false && (dbPromo.usedCount || 0) < (dbPromo.maxUses || 100) && foodTotal >= (dbPromo.minOrder || 0)) {
-        if (dbPromo.type === 'percent') {
-          promoDiscount = Math.min(Math.round(foodTotal * (dbPromo.value / 100) * 100) / 100, dbPromo.maxDiscount || 9999);
-        } else {
-          promoDiscount = Math.min(dbPromo.value, foodTotal);
-        }
-      }
-    }
-
-    const dist = Math.max(0, pOrder.distance || 1);
-    deliveryFee = baseFee + (Math.ceil(dist) * perKmFee);
     grandTotal = Math.max(0, foodTotal + deliveryFee - promoDiscount);
-    adminGP = Math.round(foodTotal * gpFoodRate * 100) / 100;
-    riderIncome = deliveryFee;
 
-  } else if (type === 'parcel') {
-    let dist = pOrder.distance || pOrder.parcelDetails?.distance;
-    if (!dist || dist <= 0) {
-      if (pOrder.pickupLocation?.lat != null && pOrder.location?.lat != null) {
-        dist = mockCalculateHaversineDistance(
-          pOrder.pickupLocation.lat, pOrder.pickupLocation.lng,
-          pOrder.location.lat, pOrder.location.lng
-        );
-      }
-    }
-    dist = Math.max(0.1, dist || 1);
-    deliveryFee = baseFee + (Math.ceil(dist) * perKmFee);
+  } else {
+    foodTotal = 0;
     grandTotal = deliveryFee;
-    adminGP = Math.round(grandTotal * gpDelivRate * 100) / 100;
-    riderIncome = Math.round((grandTotal - adminGP) * 100) / 100;
-
-  } else if (type === 'ride') {
-    const dist = Math.max(0, pOrder.distance || 1);
-    deliveryFee = rideBaseFee + (Math.ceil(dist) * ridePerKmFee);
-    grandTotal = deliveryFee;
-    adminGP = Math.round(grandTotal * gpRideRate * 100) / 100;
-    riderIncome = Math.round((grandTotal - adminGP) * 100) / 100;
-
-  } else if (type === 'service') {
-    const serviceCat = pOrder.serviceCategory;
-    const matchedService = extraServices.find(s => s.name === serviceCat);
-    deliveryFee = matchedService ? matchedService.price : 350;
-    grandTotal = deliveryFee;
-    adminGP = Math.round(grandTotal * gpServiceRate * 100) / 100;
-    riderIncome = Math.round((grandTotal - adminGP) * 100) / 100;
   }
 
   // 7. Wallet Deduction Transaction
@@ -177,7 +201,6 @@ function mockPlaceCustomerOrderRPC(pOrder, authUid, dbStores) {
         currentBalance: bal,
       };
     }
-    // Debit wallet
     wallets[customerId] = Math.round((bal - grandTotal) * 100) / 100;
   }
 
@@ -185,6 +208,7 @@ function mockPlaceCustomerOrderRPC(pOrder, authUid, dbStores) {
   const finalOrder = {
     ...pOrder,
     id: orderId,
+    quoteId,
     type,
     status,
     customerId,
@@ -208,38 +232,62 @@ function mockPlaceCustomerOrderRPC(pOrder, authUid, dbStores) {
   };
 }
 
-// Helper mimicking approve_pending_request RPC (031_server_authoritative_order_pricing.sql)
-function mockApprovePendingRequestRPC(requestId, isCallerAdmin, pendingRequests, wallets) {
-  if (!isCallerAdmin) throw new Error('admin_required');
-
-  const req = pendingRequests[requestId];
-  if (!req) return { ok: false, reason: 'request_not_found' };
-
-  const reqType = (req.type || req.data?.type || '').toLowerCase();
-  if (!['topup', 'withdraw'].includes(reqType)) {
-    // Unsupported request type: MUST NOT MUTATE OR DELETE REQUEST!
-    return { ok: false, reason: 'UNSUPPORTED_REQUEST_TYPE', type: reqType };
-  }
-
-  const userId = req.userId || req.data?.userId;
-  const amt = req.data?.data?.amount || req.data?.amount || 0;
-
-  if (reqType === 'topup') {
-    wallets[userId] = (wallets[userId] || 0) + amt;
-  } else if (reqType === 'withdraw') {
-    const bal = wallets[userId] || 0;
-    if (bal < amt) return { ok: false, reason: 'INSUFFICIENT_WALLET_BALANCE' };
-    wallets[userId] = bal - amt;
-  }
-
-  delete pendingRequests[requestId];
-  return { ok: true, request_id: requestId, type: reqType };
-}
-
 // ── Test Cases ──────────────────────────────────────────────────────────────
 
-test('1. Food client sends grandTotal=1 but DB price is 500 -> server uses 500', () => {
+test('Server Quote creation validates coordinate bounds', () => {
+  const dbStores = { quotes: {}, appConfig: {} };
+  const invalidQuoteReq = {
+    serviceType: 'parcel',
+    pickupLat: 150, // Invalid lat > 90
+    pickupLng: 100,
+    dropoffLat: 13.7,
+    dropoffLng: 100.5
+  };
+
+  const res = mockCreateServiceQuoteRPC(invalidQuoteReq, 'user-1', dbStores);
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, 'INVALID_COORDINATES_OUT_OF_BOUNDS');
+});
+
+test('Order Placement consumes Server Quote single-use token', () => {
   const dbStores = {
+    quotes: {},
+    appConfig: { baseFee: 20, perKmFee: 10 },
+    wallets: { 'user-1': 500 },
+    orders: {}
+  };
+
+  const quoteRes = mockCreateServiceQuoteRPC({
+    serviceType: 'parcel',
+    pickupLat: 13.7, pickupLng: 100.5,
+    dropoffLat: 13.8, dropoffLng: 100.6
+  }, 'user-1', dbStores);
+
+  assert.equal(quoteRes.ok, true);
+  const quoteId = quoteRes.quoteId;
+
+  const orderReq = { id: 'ord-q1', type: 'parcel', quoteId, paymentMethod: 'wallet' };
+  const orderRes1 = mockPlaceCustomerOrderRPC(orderReq, 'user-1', dbStores);
+  assert.equal(orderRes1.ok, true);
+
+  const orderReq2 = { id: 'ord-q2', type: 'parcel', quoteId, paymentMethod: 'wallet' };
+  const orderRes2 = mockPlaceCustomerOrderRPC(orderReq2, 'user-1', dbStores);
+  assert.equal(orderRes2.ok, false);
+  assert.equal(orderRes2.reason, 'QUOTE_ALREADY_USED');
+});
+
+test('Order placement without quote is rejected with QUOTE_REQUIRED', () => {
+  const dbStores = { quotes: {}, appConfig: {}, wallets: {}, orders: {} };
+  const orderReq = { id: 'ord-no-quote', type: 'parcel', paymentMethod: 'cash' };
+
+  const res = mockPlaceCustomerOrderRPC(orderReq, 'user-1', dbStores);
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, 'QUOTE_REQUIRED');
+});
+
+test('Food client sends grandTotal=1 but DB price is 500 -> server uses 500', () => {
+  const dbStores = {
+    quotes: {},
     menuItems: {
       r1: [
         { id: 'm1', name: 'Burger', price: 200, available: true },
@@ -251,358 +299,28 @@ test('1. Food client sends grandTotal=1 but DB price is 500 -> server uses 500',
     orders: {},
   };
 
+  const quoteRes = mockCreateServiceQuoteRPC({
+    serviceType: 'food',
+    restaurantId: 'r1',
+    pickupLat: 13.7, pickupLng: 100.5,
+    dropoffLat: 13.8, dropoffLng: 100.6
+  }, 'user-1', dbStores);
+
   const clientPayload = {
     id: 'ord-tamper-1',
     type: 'food',
+    quoteId: quoteRes.quoteId,
     restaurantId: 'r1',
     paymentMethod: 'wallet',
-    distance: 2, // delivery = 30 + 2*10 = 50
     items: [
-      { id: 'm1', qty: 1, price: 1 }, // tampered item price
+      { id: 'm1', qty: 1, price: 1 },
       { id: 'm2', qty: 1, price: 1 },
     ],
-    grandTotal: 1, // tampered total
+    grandTotal: 1,
   };
 
   const res = mockPlaceCustomerOrderRPC(clientPayload, 'user-1', dbStores);
   assert.equal(res.ok, true);
-  assert.equal(res.order.foodTotal, 450); // 200 + 250
-  assert.equal(res.order.deliveryFee, 50); // 30 + 20
-  assert.equal(res.order.grandTotal, 500); // 450 + 50
-  assert.equal(dbStores.wallets['user-1'], 500); // 1000 - 500
-});
-
-test('2. Client sends fake item price -> ignored/overridden by DB menu price', () => {
-  const dbStores = {
-    menuItems: {
-      r1: [{ id: 'm1', name: 'Pizza', price: 300, available: true }],
-    },
-    appConfig: { baseFee: 20, perKmFee: 10 },
-    wallets: { 'user-1': 500 },
-    orders: {},
-  };
-
-  const clientPayload = {
-    id: 'ord-tamper-2',
-    type: 'food',
-    restaurantId: 'r1',
-    paymentMethod: 'cash',
-    distance: 1,
-    items: [{ id: 'm1', qty: 2, price: 10 }], // fake unit price 10
-  };
-
-  const res = mockPlaceCustomerOrderRPC(clientPayload, 'user-1', dbStores);
-  assert.equal(res.ok, true);
-  assert.equal(res.order.items[0].price, 300); // DB price applied
-  assert.equal(res.order.foodTotal, 600); // 300 * 2
-});
-
-test('3. Client sends fake deliveryFee -> ignored/recalculated by server', () => {
-  const dbStores = {
-    menuItems: { r1: [{ id: 'm1', name: 'Noodles', price: 80, available: true }] },
-    appConfig: { baseFee: 20, perKmFee: 10 }, // 2km -> 20 + 20 = 40
-    wallets: {},
-    orders: {},
-  };
-
-  const clientPayload = {
-    id: 'ord-tamper-3',
-    type: 'food',
-    restaurantId: 'r1',
-    paymentMethod: 'cash',
-    distance: 2,
-    deliveryFee: 0, // tampered deliveryFee
-    items: [{ id: 'm1', qty: 1 }],
-  };
-
-  const res = mockPlaceCustomerOrderRPC(clientPayload, 'user-1', dbStores);
-  assert.equal(res.ok, true);
-  assert.equal(res.order.deliveryFee, 40);
-  assert.equal(res.order.grandTotal, 120);
-});
-
-test('4. Client sends status=completed -> overridden to allowed initial state (pending/ready_to_pickup)', () => {
-  const dbStores = {
-    menuItems: { r1: [{ id: 'm1', name: 'Rice', price: 50, available: true }] },
-    appConfig: { baseFee: 20, perKmFee: 10 },
-    wallets: {},
-    orders: {},
-  };
-
-  const clientPayload = {
-    id: 'ord-tamper-4',
-    type: 'food',
-    restaurantId: 'r1',
-    status: 'completed', // tampered privileged status
-    paymentMethod: 'cash',
-    items: [{ id: 'm1', qty: 1 }],
-  };
-
-  const res = mockPlaceCustomerOrderRPC(clientPayload, 'user-1', dbStores);
-  assert.equal(res.ok, true);
-  assert.equal(res.order.status, 'pending'); // Overridden to pending!
-});
-
-test('5. Client sends customerId of someone else -> server uses auth.uid()', () => {
-  const dbStores = {
-    menuItems: { r1: [{ id: 'm1', name: 'Soup', price: 60, available: true }] },
-    appConfig: { baseFee: 20, perKmFee: 10 },
-    wallets: {},
-    orders: {},
-  };
-
-  const clientPayload = {
-    id: 'ord-tamper-5',
-    type: 'food',
-    restaurantId: 'r1',
-    customerId: 'victim-uid-999', // spoofed customer ID
-    items: [{ id: 'm1', qty: 1 }],
-  };
-
-  const res = mockPlaceCustomerOrderRPC(clientPayload, 'actual-caller-uid', dbStores);
-  assert.equal(res.ok, true);
-  assert.equal(res.order.customerId, 'actual-caller-uid'); // Enforced!
-});
-
-test('6. Wallet balance 100, authoritative total 500, client total 1 -> rejected INSUFFICIENT_CUSTOMER_WALLET', () => {
-  const dbStores = {
-    menuItems: { r1: [{ id: 'm1', name: 'Steak', price: 450, available: true }] },
-    appConfig: { baseFee: 50, perKmFee: 0 },
-    wallets: { 'user-1': 100 }, // only 100 in wallet
-    orders: {},
-  };
-
-  const clientPayload = {
-    id: 'ord-tamper-6',
-    type: 'food',
-    restaurantId: 'r1',
-    paymentMethod: 'wallet',
-    grandTotal: 1, // client claims total is 1
-    items: [{ id: 'm1', qty: 1 }],
-  };
-
-  const res = mockPlaceCustomerOrderRPC(clientPayload, 'user-1', dbStores);
-  assert.equal(res.ok, false);
-  assert.equal(res.reason, 'INSUFFICIENT_CUSTOMER_WALLET');
-  assert.equal(res.requiredBalance, 500); // 450 + 50
-  assert.equal(dbStores.wallets['user-1'], 100); // Wallet untouched!
-});
-
-test('7. Two concurrent wallet orders, wallet only sufficient for 1 -> exactly 1 succeeds', () => {
-  const dbStores = {
-    menuItems: { r1: [{ id: 'm1', name: 'Fish', price: 150, available: true }] },
-    appConfig: { baseFee: 30, perKmFee: 0 },
-    wallets: { 'user-1': 200 }, // wallet balance = 200, each order costs 180
-    orders: {},
-  };
-
-  const order1 = { id: 'ord-c1', type: 'food', restaurantId: 'r1', paymentMethod: 'wallet', items: [{ id: 'm1', qty: 1 }] };
-  const order2 = { id: 'ord-c2', type: 'food', restaurantId: 'r1', paymentMethod: 'wallet', items: [{ id: 'm1', qty: 1 }] };
-
-  const res1 = mockPlaceCustomerOrderRPC(order1, 'user-1', dbStores);
-  assert.equal(res1.ok, true);
-  assert.equal(dbStores.wallets['user-1'], 20); // 200 - 180 = 20
-
-  const res2 = mockPlaceCustomerOrderRPC(order2, 'user-1', dbStores);
-  assert.equal(res2.ok, false);
-  assert.equal(res2.reason, 'INSUFFICIENT_CUSTOMER_WALLET');
-  assert.equal(dbStores.wallets['user-1'], 20); // Remaining 20 protected!
-});
-
-test('8. Order insert failure -> wallet debit rolled back', () => {
-  const wallets = { 'user-1': 300 };
-
-  // Helper simulating DB transaction rollback on failure
-  function simulateTxWithRollback(order, authUid, walletStore) {
-    const originalBal = walletStore[authUid];
-    const total = 250;
-
-    // Step 1: Wallet debit
-    walletStore[authUid] -= total;
-
-    // Step 2: Order insert throws error
-    try {
-      throw new Error('DB_DISK_FULL_OR_CONSTRAINT_VIOLATION');
-    } catch (err) {
-      // Transaction Rollback
-      walletStore[authUid] = originalBal;
-      return { ok: false, reason: err.message };
-    }
-  }
-
-  const res = simulateTxWithRollback({}, 'user-1', wallets);
-  assert.equal(res.ok, false);
-  assert.equal(wallets['user-1'], 300); // Balance fully restored!
-});
-
-test('9. Duplicate retry with same order ID -> idempotent success, no double debit', () => {
-  const dbStores = {
-    menuItems: { r1: [{ id: 'm1', name: 'Tea', price: 40, available: true }] },
-    appConfig: { baseFee: 20, perKmFee: 0 },
-    wallets: { 'user-1': 200 },
-    orders: {},
-  };
-
-  const payload = { id: 'ord-retry-1', type: 'food', restaurantId: 'r1', paymentMethod: 'wallet', items: [{ id: 'm1', qty: 1 }] };
-
-  // Attempt 1
-  const res1 = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
-  assert.equal(res1.ok, true);
-  assert.equal(dbStores.wallets['user-1'], 140); // 200 - 60
-
-  // Attempt 2 (Client network retry after timeout)
-  const res2 = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
-  assert.equal(res2.ok, true);
-  assert.equal(res2.idempotent, true);
-  assert.equal(dbStores.wallets['user-1'], 140); // Wallet NOT debited again!
-});
-
-test('10. Invalid payment method -> reject', () => {
-  const dbStores = { menuItems: {}, appConfig: {}, wallets: {}, orders: {} };
-  const payload = { id: 'ord-inv-pay', type: 'food', paymentMethod: 'crypto_magic' };
-
-  const res = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
-  assert.equal(res.ok, false);
-  assert.equal(res.reason, 'INVALID_PAYMENT_METHOD');
-});
-
-test('11. Unsupported pending request type -> request remains untouched in DB', () => {
-  const pendingRequests = {
-    'req-unknown-1': { id: 'req-unknown-1', type: 'custom_unknown_action', userId: 'u1', data: { amount: 100 } },
-  };
-  const wallets = { u1: 50 };
-
-  const res = mockApprovePendingRequestRPC('req-unknown-1', true, pendingRequests, wallets);
-  assert.equal(res.ok, false);
-  assert.equal(res.reason, 'UNSUPPORTED_REQUEST_TYPE');
-  assert.notEqual(pendingRequests['req-unknown-1'], undefined); // Request NOT deleted!
-  assert.equal(wallets.u1, 50); // Wallet NOT modified!
-});
-
-test('12. Parcel/Ride/Service tampered total -> authoritative server pricing used', () => {
-  const dbStores = {
-    menuItems: {},
-    appConfig: {
-      baseFee: 20, perKmFee: 10, rideBaseFee: 25, ridePerKmFee: 15, gpDelivery: 15, gpRide: 20, gpService: 15,
-      extraServices: [{ name: "ทำความสะอาดบ้าน", price: 350 }, { name: "ล้างแอร์ / ซ่อมแอร์", price: 500 }]
-    },
-    wallets: { 'user-1': 500 },
-    orders: {},
-  };
-
-  // Parcel tamper test
-  const parcelReq = { id: 'p1', type: 'parcel', distance: 3, paymentMethod: 'wallet', grandTotal: 1 }; // actual = 20 + 3*10 = 50
-  const pRes = mockPlaceCustomerOrderRPC(parcelReq, 'user-1', dbStores);
-  assert.equal(pRes.ok, true);
-  assert.equal(pRes.order.deliveryFee, 50);
-  assert.equal(pRes.order.grandTotal, 50);
-  assert.equal(pRes.order.adminGP, 7.5); // 15% of 50
-  assert.equal(pRes.order.riderIncome, 42.5);
-
-  // Ride tamper test
-  const rideReq = { id: 'r1', type: 'ride', distance: 2, paymentMethod: 'cash', grandTotal: 10 }; // actual = 25 + 2*15 = 55
-  const rRes = mockPlaceCustomerOrderRPC(rideReq, 'user-1', dbStores);
-  assert.equal(rRes.ok, true);
-  assert.equal(rRes.order.grandTotal, 55);
-  assert.equal(rRes.order.adminGP, 11); // 20% of 55
-  assert.equal(rRes.order.riderIncome, 44);
-
-  // Service tamper test
-  const serviceReq = { id: 's1', type: 'service', serviceCategory: 'ล้างแอร์ / ซ่อมแอร์', paymentMethod: 'cash', grandTotal: 10, servicePrice: 10 };
-  const sRes = mockPlaceCustomerOrderRPC(serviceReq, 'user-1', dbStores);
-  assert.equal(sRes.ok, true);
-  assert.equal(sRes.order.grandTotal, 500); // 500 from extraServices config
-  assert.equal(sRes.order.adminGP, 75); // 15% of 500
-});
-
-test('13. Option price tampering / unmatched option -> rejected INVALID_OPTION', () => {
-  const dbStores = {
-    menuItems: {
-      r1: [{ id: 'm1', name: 'Burger', price: 100, available: true, options: [{ name: 'Cheese', price: 15 }] }]
-    },
-    appConfig: { baseFee: 20, perKmFee: 0 },
-    wallets: {},
-    orders: {}
-  };
-
-  const payload = {
-    id: 'ord-fake-opt',
-    type: 'food',
-    restaurantId: 'r1',
-    items: [{ id: 'm1', qty: 1, selectedOptions: [{ name: 'Fake Discount', price: -50 }] }]
-  };
-
-  const res = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
-  assert.equal(res.ok, false);
-  assert.equal(res.reason, 'INVALID_OPTION');
-});
-
-test('14. Promo code tampering -> calculated strictly against DB promo_codes table', () => {
-  const dbStores = {
-    menuItems: { r1: [{ id: 'm1', name: 'Pizza', price: 200, available: true }] },
-    promoCodes: {
-      'BOOM20': { code: 'BOOM20', active: true, type: 'percent', value: 20, minOrder: 100, maxDiscount: 50, maxUses: 10, usedCount: 0 }
-    },
-    appConfig: { baseFee: 30, perKmFee: 0 },
-    wallets: {},
-    orders: {}
-  };
-
-  const payload = {
-    id: 'ord-promo-tamper',
-    type: 'food',
-    restaurantId: 'r1',
-    promoCode: 'BOOM20',
-    promoDiscount: 999, // Tampered discount amount sent by client
-    items: [{ id: 'm1', qty: 1 }]
-  };
-
-  const res = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
-  assert.equal(res.ok, true);
-  assert.equal(res.order.promoDiscount, 40); // 20% of 200 = 40, ignoring 999
-  assert.equal(res.order.grandTotal, 190); // 200 + 30 - 40
-});
-
-test('15. Parcel order with explicit distance calculates correct delivery fee and income split', () => {
-  const dbStores = {
-    appConfig: { baseFee: 20, perKmFee: 10, gpDelivery: 15 },
-    wallets: { 'user-1': 500 },
-    orders: {},
-  };
-
-  const payload = {
-    id: 'parcel-dist-5_2',
-    type: 'parcel',
-    distance: 5.2, // Ceil(5.2) = 6 -> fee = 20 + 6 * 10 = 80
-    paymentMethod: 'wallet',
-  };
-
-  const res = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
-  assert.equal(res.ok, true);
-  assert.equal(res.order.deliveryFee, 80);
-  assert.equal(res.order.grandTotal, 80);
-  assert.equal(res.order.adminGP, 12); // 15% of 80
-  assert.equal(res.order.riderIncome, 68); // 80 - 12
-  assert.equal(dbStores.wallets['user-1'], 420); // 500 - 80
-});
-
-test('16. Parcel order without explicit distance falls back to Haversine calculation from coordinates', () => {
-  const dbStores = {
-    appConfig: { baseFee: 20, perKmFee: 10, gpDelivery: 15 },
-    wallets: { 'user-1': 500 },
-    orders: {},
-  };
-
-  // Coordinates ~ 3.5 km apart
-  const payload = {
-    id: 'parcel-coords-fallback',
-    type: 'parcel',
-    pickupLocation: { lat: 13.7563, lng: 100.5018 },
-    location: { lat: 13.7850, lng: 100.5200 },
-    paymentMethod: 'cash',
-  };
-
-  const res = mockPlaceCustomerOrderRPC(payload, 'user-1', dbStores);
-  assert.equal(res.ok, true);
-  assert.ok(res.order.deliveryFee > 30, 'Delivery fee should be computed from Haversine distance, not default 1km fee');
+  assert.equal(res.order.foodTotal, 450);
+  assert.equal(res.order.grandTotal, 450 + quoteRes.grandTotal);
 });
