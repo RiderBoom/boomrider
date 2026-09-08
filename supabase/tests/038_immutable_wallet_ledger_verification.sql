@@ -1,3 +1,23 @@
+BEGIN;
+
+SELECT plan(4);
+
+SELECT has_table('public', 'wallet_ledger_entries',
+  'immutable wallet ledger table exists');
+SELECT has_function('public', 'get_financial_reconciliation_report', ARRAY[]::TEXT[],
+  'admin reconciliation RPC exists');
+SELECT ok(EXISTS (
+  SELECT 1 FROM pg_trigger
+  WHERE tgname = 'capture_wallet_ledger_entry' AND NOT tgisinternal
+), 'wallet balance mutations are captured');
+SELECT ok(EXISTS (
+  SELECT 1 FROM pg_trigger
+  WHERE tgname = 'protect_wallet_ledger_entries' AND NOT tgisinternal
+), 'wallet ledger update/delete protection exists');
+
+SELECT * FROM finish();
+
+ROLLBACK;
 -- Run after migrations in an isolated Supabase environment.
 BEGIN;
 
