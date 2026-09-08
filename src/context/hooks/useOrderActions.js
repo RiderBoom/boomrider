@@ -30,6 +30,19 @@ export function useOrderActions(deps) {
   const hasPendingCancelRequest = (orderId) =>
     pendingRequests.some(r => r.type === 'cancel_order' && r.data?.orderId === orderId);
 
+  // Helper to fetch server quote prior to order placement
+  const _fetchServiceQuote = async (payload) => {
+    const { data: quoteRes, error: quoteErr } = await supabase.rpc('create_service_quote', payload);
+    if (quoteErr) {
+      console.error('[quoteEngine] Error fetching server quote:', quoteErr);
+      return { ok: false, reason: quoteErr.message || 'ไม่สามารถขอใบเสนอราคาจากเซิร์ฟเวอร์ได้' };
+    }
+    if (!quoteRes || !quoteRes.ok) {
+      return { ok: false, reason: quoteRes?.reason || 'ไม่สามารถสร้างใบเสนอราคาได้' };
+    }
+    return { ok: true, quote: quoteRes };
+  };
+
   // Returns correct settlement split for food, parcel, ride, and service orders
   const _settlementAmounts = (order) => {
     const gpFoodRate    = (appConfig.gpFood ?? 30) / 100;
@@ -73,29 +86,6 @@ export function useOrderActions(deps) {
 
     if (!rpcErr && rpcRes && rpcRes.ok) {
       return { ok: true, order: rpcRes.order || newOrder };
-    }
-
-    const isMissingRpcError = rpcErr && (
-      rpcErr.code === 'PGRST202' ||
-      rpcErr.message?.includes('place_customer_order') ||
-      rpcErr.message?.includes('Could not find the function') ||
-      rpcErr.message?.includes('schema cache')
-    );
-
-    if (isMissingRpcError) {
-      console.warn('[orderPlacement] RPC place_customer_order missing or schema cache stale. Falling back to direct orders insert.');
-      const { error: insertErr } = await supabase
-        .from('orders')
-        .insert({ id: orderId, status: newOrder.status, data: newOrder });
-
-      if (!insertErr) {
-        return { ok: true, order: newOrder, fallbackUsed: true };
-      }
-      console.error('[orderPlacement] Direct insert fallback failed:', insertErr);
-      return {
-        ok: false,
-        reason: insertErr.message || 'ไม่สามารถสั่งซื้อได้ กรุณาลองใหม่อีกครั้ง'
-      };
     }
 
     if (rpcRes && !rpcRes.ok) {
@@ -166,8 +156,32 @@ export function useOrderActions(deps) {
     const addr = userAddresses?.[0] || { address: 'ที่อยู่ลูกค้า', location: USER_LOCATION };
     const orderId = generateId();
 
+    if (!restaurant?.location?.lat || !addr.location?.lat) {
+      placingOrderRef.current = false;
+      return notifySystem('ผิดพลาด', 'กรุณาระบุตำแหน่งร้านและที่อยู่จัดส่งให้ถูกต้อง', 'error');
+    }
+
+    // Fetch server quote prior to order placement
+    const quoteRes = await _fetchServiceQuote({
+      p_service_type: 'food',
+      p_restaurant_id: cart[0].restaurantId,
+      p_address_id: addr.id || null,
+      p_pickup_lat: restaurant.location.lat,
+      p_pickup_lng: restaurant.location.lng,
+      p_dropoff_lat: addr.location.lat,
+      p_dropoff_lng: addr.location.lng,
+    });
+
+    if (!quoteRes.ok) {
+      placingOrderRef.current = false;
+      return notifySystem('ผิดพลาด', quoteRes.reason, 'error');
+    }
+
+    const quoteId = quoteRes.quote.quoteId;
+
     const newOrder = {
       id: orderId,
+      quoteId,
       type: 'food',
       status: 'pending',
       customerId: uid,
@@ -175,10 +189,10 @@ export function useOrderActions(deps) {
       customerPhone: userProfile.phone || null,
       restaurantId: cart[0].restaurantId,
       restaurantName: cart[0].restaurantName,
-      restaurantOwnerId: restaurant?.ownerId || null,   // ← for settlement RPC
-      restaurantLocation: restaurant?.location || USER_LOCATION,
-      pickupLocation: restaurant?.location || USER_LOCATION,
-      location: addr.location || USER_LOCATION,
+      restaurantOwnerId: restaurant?.ownerId || null,
+      restaurantLocation: restaurant.location,
+      pickupLocation: restaurant.location,
+      location: addr.location,
       address: addr.address,
       distance,
       items: cart.map(({ id, originalId, name, price, qty, selectedOptions }) => ({
@@ -230,22 +244,43 @@ export function useOrderActions(deps) {
     if (!parcelDetails.pickup || !parcelDetails.dropoff) {
       return notifySystem('ผิดพลาด', 'กรุณาระบุจุดรับและจุดส่ง', 'error');
     }
+
+    if (!parcelDetails.pickupLocation?.lat || !parcelDetails.dropoffLocation?.lat) {
+      return notifySystem('ผิดพลาด', 'กรุณาปักหมุดจุดรับและจุดส่งบนแผนที่ก่อนสั่งพัสดุ', 'error');
+    }
+
     const dist = parcelDistance > 0 ? parcelDistance : (
-      parcelDetails.pickupLocation && parcelDetails.dropoffLocation
-        ? getDistanceFromLatLonInKm(
-            parcelDetails.pickupLocation.lat, parcelDetails.pickupLocation.lng,
-            parcelDetails.dropoffLocation.lat, parcelDetails.dropoffLocation.lng
-          )
-        : 1
+      getDistanceFromLatLonInKm(
+        parcelDetails.pickupLocation.lat, parcelDetails.pickupLocation.lng,
+        parcelDetails.dropoffLocation.lat, parcelDetails.dropoffLocation.lng
+      ) || 1
     );
+
     const grandTotal  = calculateDeliveryFee(dist);
     const uid = currentUser?.id || userProfile?.id || '';
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
       return notifySystem('ผิดพลาด', `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${userWallet} ต้องการ ฿${grandTotal})`, 'error');
     }
+
+    // Fetch server quote
+    const quoteRes = await _fetchServiceQuote({
+      p_service_type: 'parcel',
+      p_pickup_lat: parcelDetails.pickupLocation.lat,
+      p_pickup_lng: parcelDetails.pickupLocation.lng,
+      p_dropoff_lat: parcelDetails.dropoffLocation.lat,
+      p_dropoff_lng: parcelDetails.dropoffLocation.lng,
+    });
+
+    if (!quoteRes.ok) {
+      return notifySystem('ผิดพลาด', quoteRes.reason, 'error');
+    }
+
+    const quoteId = quoteRes.quote.quoteId;
+
     const orderId = generateId();
     const newOrder = {
       id: orderId,
+      quoteId,
       type: 'parcel',
       status: 'ready_to_pickup',
       customerId: uid,
@@ -253,8 +288,8 @@ export function useOrderActions(deps) {
       customerPhone: userProfile.phone || null,
       pickup: parcelDetails.pickup,
       dropoff: parcelDetails.dropoff,
-      pickupLocation: parcelDetails.pickupLocation || USER_LOCATION,
-      location: parcelDetails.dropoffLocation || USER_LOCATION,
+      pickupLocation: parcelDetails.pickupLocation,
+      location: parcelDetails.dropoffLocation,
       distance: dist,
       parcelDetails: { ...parcelDetails, distance: dist },
       weight: parcelDetails.weight,
@@ -301,9 +336,14 @@ export function useOrderActions(deps) {
     if (!rideDetails?.pickup || !rideDetails?.dropoff) {
       return notifySystem('ผิดพลาด', 'กรุณาระบุจุดรับและจุดส่งผู้โดยสาร', 'error');
     }
+
+    if (!rideDetails.pickupLocation?.lat || !rideDetails.dropoffLocation?.lat) {
+      return notifySystem('ผิดพลาด', 'กรุณาปักหมุดจุดรับและจุดส่งผู้โดยสารบนแผนที่', 'error');
+    }
+
     const dist = getDistanceFromLatLonInKm(
-      rideDetails.pickupLocation?.lat || USER_LOCATION.lat, rideDetails.pickupLocation?.lng || USER_LOCATION.lng,
-      rideDetails.dropoffLocation?.lat || USER_LOCATION.lat, rideDetails.dropoffLocation?.lng || USER_LOCATION.lng
+      rideDetails.pickupLocation.lat, rideDetails.pickupLocation.lng,
+      rideDetails.dropoffLocation.lat, rideDetails.dropoffLocation.lng
     ) || 3;
     const grandTotal = calculateRideFee(dist);
     const uid = currentUser?.id || userProfile?.id || '';
@@ -312,6 +352,21 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${userWallet} ต้องการ ฿${grandTotal})`, 'error');
     }
 
+    // Fetch server quote
+    const quoteRes = await _fetchServiceQuote({
+      p_service_type: 'ride',
+      p_pickup_lat: rideDetails.pickupLocation.lat,
+      p_pickup_lng: rideDetails.pickupLocation.lng,
+      p_dropoff_lat: rideDetails.dropoffLocation.lat,
+      p_dropoff_lng: rideDetails.dropoffLocation.lng,
+    });
+
+    if (!quoteRes.ok) {
+      return notifySystem('ผิดพลาด', quoteRes.reason, 'error');
+    }
+
+    const quoteId = quoteRes.quote.quoteId;
+
     const orderId = generateId();
     const gpRideRate = (appConfig.gpRide ?? 15) / 100;
     const adminGP = r2(grandTotal * gpRideRate);
@@ -319,6 +374,7 @@ export function useOrderActions(deps) {
 
     const newOrder = {
       id: orderId,
+      quoteId,
       type: 'ride',
       status: 'ready_to_pickup',
       customerId: uid,
@@ -326,8 +382,8 @@ export function useOrderActions(deps) {
       customerPhone: userProfile.phone || null,
       pickup: rideDetails.pickup,
       dropoff: rideDetails.dropoff,
-      pickupLocation: rideDetails.pickupLocation || USER_LOCATION,
-      location: rideDetails.dropoffLocation || USER_LOCATION,
+      pickupLocation: rideDetails.pickupLocation,
+      location: rideDetails.dropoffLocation,
       distance: dist,
       vehicleType: rideDetails.vehicleType || 'Motorcycle',
       notes: rideDetails.note || '',
@@ -370,12 +426,34 @@ export function useOrderActions(deps) {
     if (!serviceDetails?.serviceCategory) {
       return notifySystem('ผิดพลาด', 'กรุณาเลือกประเภทบริการ', 'error');
     }
+
+    const userLoc = userProfile?.location || USER_LOCATION;
+    if (!userLoc?.lat || !userLoc?.lng) {
+      return notifySystem('ผิดพลาด', 'กรุณาระบุพิกัดที่อยู่สำหรับรับบริการ', 'error');
+    }
+
     const grandTotal = serviceDetails.price || 350;
     const uid = currentUser?.id || userProfile?.id || '';
 
     if (paymentMethod === 'wallet' && userWallet < grandTotal) {
       return notifySystem('ผิดพลาด', `ยอดเงินในกระเป๋าไม่เพียงพอ (มี ฿${userWallet} ต้องการ ฿${grandTotal})`, 'error');
     }
+
+    // Fetch server quote
+    const quoteRes = await _fetchServiceQuote({
+      p_service_type: 'service',
+      p_service_category: serviceDetails.serviceCategory,
+      p_pickup_lat: userLoc.lat,
+      p_pickup_lng: userLoc.lng,
+      p_dropoff_lat: userLoc.lat,
+      p_dropoff_lng: userLoc.lng,
+    });
+
+    if (!quoteRes.ok) {
+      return notifySystem('ผิดพลาด', quoteRes.reason, 'error');
+    }
+
+    const quoteId = quoteRes.quote.quoteId;
 
     const orderId = generateId();
     const gpServiceRate = (appConfig.gpService ?? 15) / 100;
@@ -384,6 +462,7 @@ export function useOrderActions(deps) {
 
     const newOrder = {
       id: orderId,
+      quoteId,
       type: 'service',
       status: 'ready_to_pickup',
       customerId: uid,
@@ -393,7 +472,7 @@ export function useOrderActions(deps) {
       preferredDate: serviceDetails.preferredDate,
       preferredTime: serviceDetails.preferredTime,
       notes: serviceDetails.note || '',
-      location: userProfile.location || USER_LOCATION,
+      location: userLoc,
       deliveryFee: grandTotal,
       grandTotal,
       riderIncome,
@@ -480,62 +559,26 @@ export function useOrderActions(deps) {
 
     let updatedOrderData = null;
 
-    const isMissingRpcError = rpcError && (
-      rpcError.code === 'PGRST202' ||
-      rpcError.message?.includes('accept_order_direct') ||
-      rpcError.message?.includes('Could not find the function') ||
-      rpcError.message?.includes('schema cache')
-    );
-
-    if (isMissingRpcError) {
-      console.warn('[acceptOrder] RPC accept_order_direct missing or schema cache stale. Falling back to direct table updates.');
-      const { gpAmount, merchantIncome, riderIncome: calcRider } = _settlementAmounts(order);
-      updatedOrderData = {
-        ...order,
-        status: 'rider_accepted',
-        riderId: rider.id,
-        riderUserId: uid,
-        riderName: rider.name || rider.data?.name || userProfile?.name || 'ไรเดอร์',
-        riderPhone: rider.phone || rider.data?.phone || userProfile?.phone || '',
-        riderAcceptedAt: formatDateTime(),
-        riderIncome: order.riderIncome ?? calcRider,
-        merchantIncome: order.merchantIncome ?? merchantIncome,
-        adminGP: order.adminGP ?? gpAmount,
-      };
-
-      const { error: updateErr } = await supabase
-        .from('orders')
-        .update({ status: 'rider_accepted', data: updatedOrderData })
-        .eq('id', orderId);
-
-      if (updateErr) {
-        console.error('[acceptOrder] Direct order update fallback failed:', updateErr);
-        return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + updateErr.message, 'error');
-      }
-
-      await supabase.from('riders').update({ is_available: false }).eq('id', rider.id);
-    } else {
-      if (rpcError) {
-        console.error('[acceptOrder] RPC error:', rpcError);
-        return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + rpcError.message, 'error');
-      }
-
-      if (!rpcResult?.ok) {
-        if (rpcResult?.reason === 'INSUFFICIENT_RIDER_WALLET') {
-          return notifySystem(
-            'ยอดเงินในกระเป๋าไม่เพียงพอ',
-            'ยอดเงินในกระเป๋าไม่เพียงพอสำหรับรับงานนี้ กรุณาเติมเงินก่อนรับงาน',
-            'error'
-          );
-        }
-        if (rpcResult?.reason === 'order_already_taken') {
-          return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
-        }
-        return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้ (' + (rpcResult?.reason || 'unknown error') + ')', 'error');
-      }
-
-      updatedOrderData = rpcResult.order_data || order;
+    if (rpcError) {
+      console.error('[acceptOrder] RPC error:', rpcError);
+      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้: ' + rpcError.message, 'error');
     }
+
+    if (!rpcResult?.ok) {
+      if (rpcResult?.reason === 'INSUFFICIENT_RIDER_WALLET') {
+        return notifySystem(
+          'ยอดเงินในกระเป๋าไม่เพียงพอ',
+          'ยอดเงินในกระเป๋าไม่เพียงพอสำหรับรับงานนี้ กรุณาเติมเงินก่อนรับงาน',
+          'error'
+        );
+      }
+      if (rpcResult?.reason === 'order_already_taken') {
+        return notifySystem('เสียใจด้วย', 'มีไรเดอร์ท่านอื่นรับงานนี้ไปแล้ว', 'error');
+      }
+      return notifySystem('เสียใจด้วย', 'ไม่สามารถรับงานได้ (' + (rpcResult?.reason || 'unknown error') + ')', 'error');
+    }
+
+    updatedOrderData = rpcResult.order_data || order;
 
     // Since DB update succeeded, update local state
     setOrders(prev => {
@@ -587,86 +630,6 @@ export function useOrderActions(deps) {
           p_gp_ride_rate: gpRideRate,
           p_gp_service_rate: gpServiceRate
         });
-
-      const isMissingRpcError = rpcError && (
-        rpcError.code === 'PGRST202' ||
-        rpcError.message?.includes('process_order_settlement') ||
-        rpcError.message?.includes('Could not find the function') ||
-        rpcError.message?.includes('schema cache')
-      );
-
-      if (isMissingRpcError) {
-        console.warn('[updateOrderStatus] RPC process_order_settlement missing or schema cache stale. Falling back to direct order update.');
-        const nowStr = new Date().toISOString();
-        const nowMs = Date.now();
-        const patch = {
-          ...incomePatch,
-          ...extraData,
-          status: 'completed',
-          completedAt: order.completedAt || nowStr,
-          completedAtMs: order.completedAtMs || nowMs,
-          settlementStatus: 'settled',
-        };
-
-        const { error: directUpdateErr } = await supabase
-          .from('orders')
-          .update({ status: 'completed', data: { ...order, ...patch } })
-          .eq('id', orderId);
-
-        if (directUpdateErr) {
-          console.error('[updateOrderStatus] Direct order completion fallback failed:', directUpdateErr);
-          notifySystem('ผิดพลาด', 'ไม่สามารถทำรายการ settlement ได้ ออเดอร์ยังไม่ถูกปิด: ' + directUpdateErr.message, 'error');
-          return false;
-        }
-
-        setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, ...patch } : o)));
-
-        // Perform wallet credits/debits in fallback mode
-        const riderEarned    = r2(incomePatch.riderIncome    ?? calcRiderIncome);
-        const merchantEarned = r2(incomePatch.merchantIncome ?? merchantIncome);
-        const gpEarned       = r2(incomePatch.adminGP        ?? gpAmount);
-        const getFeeLabel = (type) => {
-          if (type === 'ride') return 'ค่าโดยสาร';
-          if (type === 'service') return 'ค่าบริการ';
-          if (type === 'parcel') return 'ค่าส่งพัสดุ';
-          return 'ค่าส่ง';
-        };
-        const getGpLabel = (type) => {
-          if (type === 'ride') return 'เรียกรถ(สด)';
-          if (type === 'service') return 'บริการ(สด)';
-          if (type === 'parcel') return 'พัสดุ(สด)';
-          return 'GP(สด)';
-        };
-
-        const adminKey = ADMIN_EMAIL || 'boomzalnw2@gmail.com';
-        if (order.paymentMethod === 'cash') {
-          if (['parcel', 'ride', 'service'].includes(order.type)) {
-            if (riderUid && gpEarned > 0) creditWallet(riderUid, -gpEarned, `หัก GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
-            if (gpEarned > 0)             creditWallet(adminKey, gpEarned,  `GP ${getGpLabel(order.type)} #${orderId.slice(-6)}`);
-          } else {
-            if (riderUid && foodTotal > 0)          creditWallet(riderUid,     -foodTotal,     `หักค่าอาหาร(สด) ออเดอร์ #${orderId.slice(-6)}`);
-            if (shopOwnerUid && merchantEarned > 0) creditWallet(shopOwnerUid, merchantEarned, `รายได้ร้าน(สด) ออเดอร์ #${orderId.slice(-6)}`);
-            if (gpEarned > 0)                       creditWallet(adminKey,     gpEarned,       `GP(สด) ออเดอร์ #${orderId.slice(-6)}`);
-          }
-        } else {
-          if (shopOwnerUid && merchantEarned > 0) creditWallet(shopOwnerUid, merchantEarned, `รายได้ร้านค้า ออเดอร์ #${orderId.slice(-6)}`);
-          if (gpEarned > 0)                       creditWallet(adminKey,     gpEarned,       `GP ออเดอร์ #${orderId.slice(-6)}`);
-          if (riderUid && riderEarned > 0)        creditWallet(riderUid,     riderEarned,    `${getFeeLabel(order.type)} ออเดอร์ #${orderId.slice(-6)}`);
-        }
-
-        // Mark rider as available again
-        if (riderUid) {
-          const riderRow = riders.find(r => r.userId === riderUid || r.id === order.riderId);
-          if (riderRow) {
-            supabase.from('riders').update({ is_available: true }).eq('id', riderRow.id).then(() => {});
-          }
-        }
-
-        if (fetchUserWallet) fetchUserWallet();
-
-        notifySystem('✅ ส่งของสำเร็จ!', `ออเดอร์ #${orderId.slice(-6)} เสร็จสมบูรณ์`, 'success');
-        return true;
-      }
 
       if (rpcError || (rpcResult && !rpcResult.ok)) {
         console.error('[updateOrderStatus] Settlement error:', rpcError || rpcResult?.error);

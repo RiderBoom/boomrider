@@ -214,118 +214,17 @@ test('requestRegisterMerchant rolls back local state and returns false on Supaba
   assert.equal(adminNotified, false, 'notifyAdmin must not be called when DB insert fails');
 });
 
-test('updateOrderStatus falls back to direct order completion when process_order_settlement RPC returns schema cache error', async () => {
-  let updatedOrders = [];
-  let walletCredits = [];
-  let notifiedSystem = null;
-  let ordersState = [{
-    id: 'ord-settle-fallback',
-    type: 'food',
-    status: 'delivered',
-    foodTotal: 100,
-    deliveryFee: 30,
-    grandTotal: 130,
-    paymentMethod: 'cash',
-    riderUserId: 'rider-user-1',
-    riderId: 'r-100',
-    restaurantOwnerId: 'owner-1',
-  }];
-
-  const mockSupabase = {
-    rpc: async (fnName) => {
-      if (fnName === 'process_order_settlement') {
-        return {
-          data: null,
-          error: {
-            code: 'PGRST202',
-            message: 'Could not find the function public.process_order_settlement in the schema cache'
-          }
-        };
-      }
-      return { data: null, error: null };
-    },
-    from: (table) => {
-      if (table === 'orders') {
-        return {
-          update: (payload) => ({
-            eq: async (col, val) => {
-              updatedOrders.push({ col, val, payload });
-              return { error: null };
-            }
-          })
-        };
-      }
-      if (table === 'riders') {
-        return {
-          update: () => ({ eq: async () => ({ error: null }) })
-        };
-      }
-      return {};
-    }
-  };
-
-  const deps = {
-    orders: ordersState,
-    setOrders: (updater) => {
-      ordersState = typeof updater === 'function' ? updater(ordersState) : updater;
-    },
-    restaurants: [{ id: 'rest-1', ownerId: 'owner-1' }],
-    riders: [{ id: 'r-100', userId: 'rider-user-1' }],
-    appConfig: { gpFood: 30, gpDelivery: 15 },
-    currentUser: { id: 'cust-1' },
-    userProfile: { id: 'cust-1', name: 'Customer 1' },
-    creditWallet: (userId, amount, desc) => {
-      walletCredits.push({ userId, amount, desc });
-    },
-    notifySystem: (title, message, type) => {
-      notifiedSystem = { title, message, type };
-    },
-    supabase: mockSupabase,
-  };
-
-  const orderActions = useOrderActions(deps);
-  const result = await orderActions.updateOrderStatus('ord-settle-fallback', 'completed');
-
-  assert.equal(result, true, 'updateOrderStatus should return true after fallback');
-  assert.equal(updatedOrders.length, 1, 'Direct order update fallback should be executed');
-  assert.equal(updatedOrders[0].payload.status, 'completed');
-  assert.equal(updatedOrders[0].payload.data.settlementStatus, 'settled');
-  assert.equal(walletCredits.length, 3, 'Wallet credits/debits should be executed in fallback mode for rider, merchant, and admin');
-  assert.equal(walletCredits.find(c => c.userId === 'rider-user-1')?.amount, -100, 'Rider should be debited food total on cash order');
-  assert.equal(walletCredits.find(c => c.userId === 'owner-1')?.amount, 70, 'Merchant should be credited merchant income');
-  assert.equal(notifiedSystem?.type, 'success', 'Success notification should be shown');
-  assert.equal(ordersState[0].status, 'completed', 'Local state order status should be completed');
-});
-
-test('placeOrder falls back to direct insert when place_customer_order RPC returns schema cache error', async () => {
-  let insertedOrders = [];
+test('placeOrder rejects order when server quote RPC fails', async () => {
   let notifiedSystem = null;
   let ordersState = [];
 
   const mockSupabase = {
     rpc: async (fnName) => {
-      if (fnName === 'place_customer_order') {
-        return {
-          data: null,
-          error: {
-            code: 'PGRST202',
-            message: 'Could not find the function public.place_customer_order(p_order) in the schema cache'
-          }
-        };
+      if (fnName === 'create_service_quote') {
+        return { data: { ok: false, reason: 'INVALID_COORDINATES' }, error: null };
       }
       return { data: null, error: null };
     },
-    from: (table) => {
-      if (table === 'orders') {
-        return {
-          insert: async (payload) => {
-            insertedOrders.push(payload);
-            return { error: null };
-          }
-        };
-      }
-      return {};
-    }
   };
 
   const deps = {
@@ -373,97 +272,8 @@ test('placeOrder falls back to direct insert when place_customer_order RPC retur
   const orderActions = useOrderActions(deps);
   await orderActions.placeOrder(0, 'Extra spicy');
 
-  assert.equal(insertedOrders.length, 1, 'Direct insert should have been called as fallback');
-  assert.equal(insertedOrders[0].data.type, 'food');
-  assert.equal(notifiedSystem?.type, 'success', 'Success notification should be displayed despite RPC error');
-  assert.equal(ordersState.length, 1, 'Order should remain in local state');
-});
-
-test('acceptOrder falls back to direct table updates when accept_order_direct RPC returns schema cache error', async () => {
-  let updatedOrders = [];
-  let updatedRiders = [];
-  let notifiedSystem = null;
-  let ordersState = [{
-    id: 'ord-999',
-    type: 'food',
-    status: 'ready_to_pickup',
-    foodTotal: 100,
-    deliveryFee: 30,
-    grandTotal: 130,
-    paymentMethod: 'cash'
-  }];
-
-  const mockRiders = [{
-    id: 'r-100',
-    userId: 'rider-user-1',
-    name: 'พี่สมชาย ไรเดอร์',
-    phone: '0899999999',
-  }];
-
-  const mockSupabase = {
-    rpc: async (fnName) => {
-      if (fnName === 'accept_order_direct') {
-        return {
-          data: null,
-          error: {
-            code: 'PGRST202',
-            message: 'Could not find the function public.accept_order_direct(p_order_id, p_rider_id) in the schema cache'
-          }
-        };
-      }
-      return { data: null, error: null };
-    },
-    from: (table) => {
-      if (table === 'orders') {
-        return {
-          update: (payload) => ({
-            eq: async (col, val) => {
-              updatedOrders.push({ col, val, payload });
-              return { error: null };
-            }
-          })
-        };
-      }
-      if (table === 'riders') {
-        return {
-          update: (payload) => ({
-            eq: async (col, val) => {
-              updatedRiders.push({ col, val, payload });
-              return { error: null };
-            }
-          })
-        };
-      }
-      return {};
-    }
-  };
-
-  const deps = {
-    orders: ordersState,
-    setOrders: (updater) => {
-      ordersState = typeof updater === 'function' ? updater(ordersState) : updater;
-    },
-    riders: mockRiders,
-    appConfig: { gpFood: 30, gpDelivery: 15 },
-    currentUser: { id: 'rider-user-1' },
-    userProfile: { id: 'rider-user-1', name: 'พี่สมชาย ไรเดอร์', phone: '0899999999' },
-    notifySystem: (title, message, type) => {
-      notifiedSystem = { title, message, type };
-    },
-    supabase: mockSupabase,
-  };
-
-  const orderActions = useOrderActions(deps);
-  const result = await orderActions.acceptOrder('ord-999');
-
-  assert.equal(result, true, 'acceptOrder should return true after successful fallback');
-  assert.equal(updatedOrders.length, 1, 'Direct order update should be executed');
-  assert.equal(updatedOrders[0].payload.status, 'rider_accepted');
-  assert.equal(updatedOrders[0].payload.data.riderId, 'r-100');
-  assert.equal(updatedRiders.length, 1, 'Direct rider availability update should be executed');
-  assert.equal(updatedRiders[0].payload.is_available, false);
-  assert.equal(notifiedSystem?.type, 'success', 'Success notification should be shown to rider');
-  assert.equal(ordersState[0].status, 'rider_accepted', 'Local state should be updated to rider_accepted');
+  assert.equal(ordersState.length, 0, 'Order must not be created when quote RPC fails');
+  assert.equal(notifiedSystem?.type, 'error', 'Error notification should be displayed on quote failure');
 });
 
 test('requestRegisterRider rolls back local state and returns false on Supabase insert failure', async () => {
