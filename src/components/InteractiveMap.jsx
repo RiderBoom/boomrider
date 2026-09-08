@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
 
-// CARTO Voyager — ฟรี, สวย, ไม่ต้อง API key
-const TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+// OpenStreetMap Standard — ฟรี 100%, ไม่มี Watermark, ไม่ต้องใช้ API Key
+const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 function makeIcon(L, color, emoji) {
   return L.divIcon({
