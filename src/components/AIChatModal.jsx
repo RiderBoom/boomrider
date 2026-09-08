@@ -3,8 +3,7 @@ import { generateAiReply } from '../lib/aiGateway.js';
 import ReactDOM from 'react-dom';
 import { X, Bot, Send, Loader2, Sparkles, User, ShoppingBag, Star, Store, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { generateId, formatDateTime, r2, playOrderNotificationSound, getDistanceFromLatLonInKm } from '../utils';
-import { autoDispatch } from '../context/hooks/useAutoDispatch';
+import { generateId, formatDateTime, playOrderNotificationSound, getDistanceFromLatLonInKm } from '../utils';
 
 const STATUS_MAP = {
   pending: 'รอร้านค้ารับออเดอร์',
@@ -127,7 +126,7 @@ export default function AIChatModal({ isOpen, onClose }) {
     setOrders,
     userAddresses,
     userWallet,
-    creditWallet,
+    creditWalletLocal,
     restaurants,
     menuItems,
     appConfig,
@@ -433,8 +432,22 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     const addr = userAddresses?.[0] || { address: 'ที่อยู่ปัจจุบันของลูกค้า', location: custLoc };
     const orderId = generateId();
 
+    const { data: quote, error: quoteError } = await supabase.rpc('create_service_quote', {
+      p_service_type: 'food',
+      p_restaurant_id: matchedShop.id,
+      p_address_id: addr.id ? String(addr.id) : null,
+      p_pickup_lat: shopLoc.lat,
+      p_pickup_lng: shopLoc.lng,
+      p_dropoff_lat: custLoc.lat,
+      p_dropoff_lng: custLoc.lng,
+    });
+    if (quoteError || !quote?.ok) {
+      return `ไม่สามารถยืนยันราคาออเดอร์ได้: ${quoteError?.message || quote?.reason || 'กรุณาลองใหม่'}`;
+    }
+
     const newOrder = {
       id: orderId,
+      quoteId: quote.quoteId,
       type: 'food',
       status: 'pending',
       customerId: currentUserId,
@@ -457,11 +470,14 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       createdAt: formatDateTime(),
     };
 
-    setOrders((prev) => [newOrder, ...prev]);
-    await supabase.from('orders').insert({ id: orderId, status: 'pending', data: newOrder });
-
+    const { data: placed, error: placeError } = await supabase.rpc('place_customer_order', { p_order: newOrder });
+    if (placeError || !placed?.ok) {
+      return `สั่งอาหารไม่สำเร็จ: ${placeError?.message || placed?.reason || 'กรุณาลองใหม่'}`;
+    }
+    const authoritativeOrder = placed.order || newOrder;
+    setOrders((prev) => [authoritativeOrder, ...prev.filter(o => o.id !== orderId)]);
     if (paymentMethod === 'wallet') {
-      creditWallet(currentUserId, -grandTotal, `ชำระค่าอาหาร ออเดอร์ #${orderId.slice(-6)} (สั่งผ่าน AI)`);
+      creditWalletLocal(currentUserId, -(authoritativeOrder.grandTotal || grandTotal), `ชำระค่าอาหาร ออเดอร์ #${orderId.slice(-6)} (สั่งผ่าน AI)`);
     }
 
     notifyAdmin('🛎️ ออเดอร์ใหม่ (ผ่าน AI)', `${userProfile?.name || 'ลูกค้า'} สั่ง ${matchedShop.name} ฿${grandTotal}`, 'info');
@@ -478,54 +494,8 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
   };
 
   const executePlaceParcelOrder = async (args) => {
-    const pickup = args.pickup || 'จุดรับของลูกค้า';
-    const dropoff = args.dropoff || 'จุดส่งของปลายทาง';
-    const distance = 2;
-    const baseFee = appConfig?.baseFee || 30;
-    const perKmFee = appConfig?.perKmFee || 10;
-    const grandTotal = baseFee + Math.ceil(distance) * perKmFee;
-    const paymentMethod = args.paymentMethod === 'cash' ? 'cash' : 'wallet';
-
-    if (paymentMethod === 'wallet' && balanceNum < grandTotal) {
-      return `ขออภัยครับ ยอดเงินใน Wallet ไม่เพียงพอ (มียอด ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} แต่ค่าส่งพัสดุคือ ฿${grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) กรุณาเติมเงินก่อนครับ 💳`;
-    }
-
-    const orderId = generateId();
-    const newOrder = {
-      id: orderId,
-      type: 'parcel',
-      status: 'ready_to_pickup',
-      customerId: currentUserId,
-      customerName: userProfile?.name || currentUser?.name || 'ลูกค้า',
-      customerPhone: userProfile?.phone || null,
-      pickup,
-      dropoff,
-      pickupLocation: userProfile?.location,
-      location: userProfile?.location,
-      weight: String(args.weight || '1'),
-      receiverName: args.receiverName || 'ผู้รับ',
-      receiverPhone: args.receiverPhone || '',
-      deliveryFee: grandTotal,
-      riderIncome: r2(grandTotal * (1 - (appConfig?.gpDelivery ?? 15) / 100)),
-      grandTotal,
-      paymentMethod,
-      notes: 'สั่งเรียกไรเดอร์ผ่านน้องบูม AI',
-      createdAt: formatDateTime(),
-    };
-
-    setOrders((prev) => [newOrder, ...prev]);
-    await supabase.from('orders').insert({ id: orderId, status: 'ready_to_pickup', data: newOrder });
-
-    if (paymentMethod === 'wallet') {
-      creditWallet(currentUserId, -grandTotal, `ค่าส่งพัสดุ ออเดอร์ #${orderId.slice(-6)} (สั่งผ่าน AI)`);
-    }
-
-    notifyAdmin('📦 พัสดุใหม่ (ผ่าน AI)', `${userProfile?.name || 'ลูกค้า'} ส่ง ${pickup} → ${dropoff}`, 'info');
-    notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
-
-    autoDispatch(supabase, newOrder);
-
-    return `✅ เรียกส่งพัสดุเรียบร้อยแล้วครับ! 📦🛵\n\nจุดรับ: ${pickup}\nจุดส่ง: ${dropoff}\nผู้รับ: ${args.receiverName || 'ไม่ระบุ'} (${args.receiverPhone || 'ไม่ระบุเบอร์'})\nค่าบริการจัดส่ง: ฿${grandTotal} (${paymentMethod === 'wallet' ? 'ตัดผ่าน Wallet' : 'เงินสด'})\nเลขที่ออเดอร์: #${orderId.slice(-6)}\n\nระบบกำลังกระจายงานแจ้งเตือนไปยังไรเดอร์บริเวณใกล้เคียงให้อัตโนมัติครับ! 🔔`;
+    void args;
+    return 'เพื่อคำนวณค่าส่งให้ถูกต้อง กรุณาเปิดหน้าส่งพัสดุและปักหมุดจุดรับกับจุดส่งบนแผนที่ก่อนยืนยันครับ';
   };
 
   const executeSendOrderChatMessage = async (args) => {
