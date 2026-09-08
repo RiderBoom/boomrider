@@ -36,6 +36,25 @@ alter table public.user_roles enable row level security;
 create policy "user_roles_select" on public.user_roles for select using (true);
 create policy "user_roles_all" on public.user_roles for all using (auth.role() = 'authenticated');
 
+CREATE OR REPLACE FUNCTION public.is_admin(p_user_id uuid DEFAULT auth.uid())
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT p_user_id IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM public.user_roles
+    WHERE user_id = p_user_id
+      AND role = 'admin'
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.is_admin(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_admin(uuid) TO authenticated, service_role;
+
+
 -- ── Wallets (user_id TEXT to support admin email keying) ─────────────────────
 create table if not exists public.wallets (
   user_id text primary key,
@@ -600,7 +619,7 @@ BEGIN
   END IF;
 
   -- Extract delivery fee, promo discount, grand total, admin GP, rider income from quote
-  v_calc_deliv_fee := v_quote_rec.grand_total;
+  v_calc_deliv_fee := v_quote_rec.subtotal;
   v_promo_discount := v_quote_rec.discount;
   v_distance       := v_quote_rec.billable_km;
   v_admin_gp       := v_quote_rec.admin_gp;
@@ -715,7 +734,7 @@ BEGIN
 
   ELSE
     v_calc_food_total := 0;
-    v_calc_grand_total := v_calc_deliv_fee;
+    v_calc_grand_total := GREATEST(0, v_calc_deliv_fee - v_promo_discount);
   END IF;
 
   -- 8. Wallet Deduction (Atomic Row Lock)
