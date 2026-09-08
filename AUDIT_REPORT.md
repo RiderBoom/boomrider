@@ -1,8 +1,15 @@
 # BoomRider End-to-End Audit & System Architecture Report
 
-**Document Status:** Final Audit
-**Date:** Current Main Branch Audit
+**Document Status:** Superseded findings retained for audit history
+**Date:** Updated after migrations 036-038
 **Scope:** BoomRider Platform (Food Delivery, Parcel Delivery, Ride-Hailing, Service Platform) across Customer, Merchant, Rider/Driver, and Admin roles.
+
+> Status update: findings 1-7 below describe the system before the
+> server-authoritative pricing rollout. They were resolved by migrations 036
+> and 037 and the corresponding client changes in PR #130. Migration 038 adds
+> an immutable wallet ledger and an admin-only reconciliation report. Findings
+> 8 and 9 are partially resolved; production alerting and historical manual
+> reconciliation remain operational follow-up work.
 
 ---
 
