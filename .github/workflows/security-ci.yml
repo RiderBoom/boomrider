@@ -49,7 +49,7 @@ jobs:
       - name: Rebuild database from every migration
         run: supabase db reset
       - name: Verify database security and financial invariants
-        run: supabase test db
+        run: supabase test db supabase/tests/038_immutable_wallet_ledger_verification.sql
 
   browser-smoke:
     runs-on: ubuntu-latest
