@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 function mockCalculateHaversineDistance(lat1, lon1, lat2, lon2) {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return 1;
@@ -12,6 +13,18 @@ function mockCalculateHaversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 // Helper mimicking create_service_quote RPC (035_service_quotes_and_authoritative_pricing.sql)
+
+test('quote migration reads coordinates from the deployed JSON schema', () => {
+  const migration = readFileSync(
+    new URL('../supabase/migrations/036_service_quotes_and_authoritative_pricing.sql', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(migration, /SELECT data INTO v_rest_data FROM public\.restaurants/);
+  assert.match(migration, /FROM public\.profiles p/);
+  assert.doesNotMatch(migration, /public\.user_addresses/);
+  assert.doesNotMatch(migration, /v_rest_data\.location/);
+});
 function mockCreateServiceQuoteRPC(pQuote, authUid, dbStores) {
   const { quotes = {}, appConfig = {}, restaurants = {}, userAddresses = {} } = dbStores;
 
