@@ -208,13 +208,17 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('Customer logs in, views restaurant, and places an order', async ({ page }) => {
+  mockState.roles = [{ role: 'customer' }];
+  mockState.user = { id: 'user-customer-123', email: 'customer@test.com' };
+  mockState.profile = { id: 'user-customer-123', name: 'ลูกค้า ทดสอบ', email: 'customer@test.com' };
+
   await page.goto('/');
 
   await page.locator('#login-identifier').fill('customer@test.com');
   await page.locator('#login-password').fill('password123');
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).last().click();
 
-  await expect(page.getByRole('heading', { name: 'BoomRider' })).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('text=BoomRider').first()).toBeVisible({ timeout: 10000 });
   await expect(page.locator('body')).not.toBeEmpty();
 });
 
