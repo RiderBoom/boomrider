@@ -287,7 +287,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.create_service_quote(TEXT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.create_service_quote(TEXT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_service_quote(TEXT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, TEXT, TEXT, TEXT) TO authenticated, anon;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. Update `place_customer_order` RPC to require & lock `quoteId`
@@ -651,3 +651,6 @@ $$;
 
 REVOKE ALL ON FUNCTION public.place_customer_order(JSONB) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.place_customer_order(JSONB) TO authenticated;
+
+
+NOTIFY pgrst, 'reload schema';

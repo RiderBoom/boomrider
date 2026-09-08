@@ -462,7 +462,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.create_service_quote(TEXT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.create_service_quote(TEXT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_service_quote(TEXT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, TEXT, TEXT, TEXT) TO authenticated, anon;
 
 -- ── Server-Authoritative Order Placement RPC ──────────────────────────────────
 CREATE OR REPLACE FUNCTION public.place_customer_order(p_order JSONB)
@@ -1081,3 +1081,6 @@ $$;
 
 REVOKE ALL ON FUNCTION public.accept_order_direct(TEXT, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.accept_order_direct(TEXT, TEXT) TO authenticated;
+
+
+NOTIFY pgrst, 'reload schema';
