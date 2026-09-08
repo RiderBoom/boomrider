@@ -32,6 +32,7 @@ DECLARE
   v_merch_uid  TEXT;
   v_admin_uid  TEXT;
   v_now_ms     BIGINT;
+  v_config     JSONB;
 BEGIN
   -- Resolve admin UUID: first check user_roles, then profiles, then email string
   SELECT user_id::TEXT INTO v_admin_uid
@@ -55,10 +56,22 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'order_not_found');
   END IF;
 
-  -- Early idempotency check if already completed or settled
-  IF COALESCE(v_order->>'status', '') = 'completed' OR COALESCE(v_order->>'settlementStatus', '') = 'settled' THEN
+  -- Settlement state, not a client-editable order status, is the idempotency key.
+  IF COALESCE(v_order->>'settlementStatus', '') = 'settled' THEN
     RETURN jsonb_build_object('ok', true, 'skipped', 'already_settled');
   END IF;
+
+  IF COALESCE(v_order->>'status', '') <> 'delivered' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'order_not_delivered');
+  END IF;
+
+  -- Pricing configuration is server-authoritative. RPC rate parameters are kept
+  -- only for backwards-compatible PostgREST signatures and are ignored.
+  SELECT data INTO v_config FROM public.app_config WHERE id = 1;
+  p_gp_food_rate := COALESCE((v_config->>'gpFood')::NUMERIC, 30) / 100;
+  p_gp_delivery_rate := COALESCE((v_config->>'gpDelivery')::NUMERIC, 15) / 100;
+  p_gp_ride_rate := COALESCE((v_config->>'gpRide')::NUMERIC, 15) / 100;
+  p_gp_service_rate := COALESCE((v_config->>'gpService')::NUMERIC, 15) / 100;
 
   v_type      := COALESCE(v_order->>'type', 'food');
   v_method    := v_order->>'paymentMethod';
@@ -198,8 +211,7 @@ BEGIN
   SELECT data INTO v_order FROM public.orders WHERE id = p_order_id;
   IF v_order IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'order_not_found'); END IF;
 
-  -- Early idempotency check before authorization or internal execution
-  IF COALESCE(v_order->>'status', '') = 'completed' OR COALESCE(v_order->>'settlementStatus', '') = 'settled' THEN
+  IF COALESCE(v_order->>'settlementStatus', '') = 'settled' THEN
     RETURN jsonb_build_object('ok', true, 'skipped', 'already_settled');
   END IF;
 
