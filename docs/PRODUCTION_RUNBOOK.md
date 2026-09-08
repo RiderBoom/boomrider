@@ -37,6 +37,18 @@ and sanitized error identifier. Do not delete logs or edit applied migrations.
    to review any corrective database operation.
 5. Verify the final balance and add a regression test before re-enabling the flow.
 
+## Daily financial reconciliation
+
+1. Call the admin-only `get_financial_reconciliation_report()` RPC using a
+   dedicated admin account; never expose a service-role key in the browser.
+2. Treat any non-zero result as an incident requiring order-level review.
+3. Compare the order, immutable `wallet_ledger_entries`, and provider payment
+   evidence. Do not use wallet JSON history as the sole accounting record.
+4. Never update or delete a ledger row. Record a reviewed compensating wallet
+   transaction when a correction is approved.
+5. Preserve the report timestamp, affected order IDs, reviewer, and approval in
+   the restricted incident record.
+
 ## Authentication or credential incident
 
 1. Revoke or rotate the exposed credential at its provider.
