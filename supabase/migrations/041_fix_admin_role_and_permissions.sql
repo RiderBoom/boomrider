@@ -1,5 +1,5 @@
--- Migration 041: Ensure admin_set_user_role function permissions and RLS policies.
--- Fixes permission issues when admins approve merchant or rider registrations.
+-- Migration 041: Ensure admin_set_user_role function permissions and backfill roles for existing merchants and riders.
+-- Fixes permission issues when admins approve merchant or rider registrations, and repairs roles for previously approved users.
 
 BEGIN;
 
@@ -58,5 +58,21 @@ $$;
 
 REVOKE ALL ON FUNCTION public.admin_set_user_role(uuid, text, boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_set_user_role(uuid, text, boolean) TO authenticated;
+
+-- Backfill missing 'merchant' roles for existing users who already have a restaurant row
+INSERT INTO public.user_roles (user_id, role)
+SELECT DISTINCT (COALESCE(NULLIF(owner_id, ''), data->>'ownerId'))::uuid, 'merchant'
+FROM public.restaurants
+WHERE COALESCE(NULLIF(owner_id, ''), data->>'ownerId') IS NOT NULL
+  AND COALESCE(NULLIF(owner_id, ''), data->>'ownerId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+ON CONFLICT (user_id, role) DO NOTHING;
+
+-- Backfill missing 'rider' roles for existing users who already have a rider row
+INSERT INTO public.user_roles (user_id, role)
+SELECT DISTINCT (COALESCE(NULLIF(user_id, ''), data->>'userId'))::uuid, 'rider'
+FROM public.riders
+WHERE COALESCE(NULLIF(user_id, ''), data->>'userId') IS NOT NULL
+  AND COALESCE(NULLIF(user_id, ''), data->>'userId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+ON CONFLICT (user_id, role) DO NOTHING;
 
 COMMIT;
