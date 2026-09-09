@@ -117,6 +117,7 @@ export default function AdminView() {
   const [walletOverviewLoading, setWalletOverviewLoading] = useState(false);
 
   const loadAllUsers = async () => {
+    await supabase.rpc('admin_sync_auth_users').catch(() => {});
     const [profilesResult, walletsResult, rolesResult] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('wallets').select('user_id, balance'),
@@ -142,6 +143,7 @@ export default function AdminView() {
 
   const loadWalletOverview = async () => {
     setWalletOverviewLoading(true);
+    await supabase.rpc('admin_sync_auth_users').catch(() => {});
     const [walletsResult, profilesResult, rolesResult] = await Promise.all([
       supabase.from('wallets').select('user_id, balance, history'),
       supabase.from('profiles').select('id, name, email'),
