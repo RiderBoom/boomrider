@@ -85,6 +85,8 @@ export default function InteractiveMap({
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const searchDebounceRef = useRef(null);
+  const searchAbortControllerRef = useRef(null);
+  const reverseGeocodeAbortControllerRef = useRef(null);
 
   // Always-fresh refs — updated every render so stale closures see current values
   const onLocationSelectRef   = useRef(onLocationSelect);
@@ -94,6 +96,35 @@ export default function InteractiveMap({
 
   const [locating, setLocating] = useState(false);
   const [pinned,   setPinned]   = useState(null);
+
+  const performReverseGeocode = async (lat, lng) => {
+    if (reverseGeocodeAbortControllerRef.current) {
+      reverseGeocodeAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    reverseGeocodeAbortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=th`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeoutId);
+      if (!res.ok) throw new Error('Geocode failed');
+      const data = await res.json();
+      const addr = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      return addr;
+    } catch {
+      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+  };
+
+  const notifyLocationSelected = async (loc) => {
+    const address = await performReverseGeocode(loc.lat, loc.lng);
+    const fullLoc = { ...loc, address };
+    onLocationSelectRef.current?.(fullLoc, address);
+  };
 
   // ── height: extract from className (e.g. "h-64", "h-36") ─────────────────
   const heightClass = (() => {
@@ -135,14 +166,16 @@ export default function InteractiveMap({
 
       // ── SELECT MODE ────────────────────────────────────────────────────
       if (mode === 'select') {
-        const placePin = (latlng) => {
+        const placePin = (latlng, triggerNotify = true) => {
           const loc    = { lat: latlng.lat, lng: latlng.lng };
           const target = activeParcelTargetRef.current;
           const color  = target === 'dropoff' ? '#ef4444' : '#22c55e';
           const emoji  = target === 'dropoff' ? '🏁' : '📍';
 
           setPinned(loc);
-          onLocationSelectRef.current?.(loc);   // always calls the latest callback
+          if (triggerNotify) {
+            notifyLocationSelected(loc);
+          }
 
           if (markersRef.current.pin) {
             markersRef.current.pin.setLatLng(latlng);
@@ -156,17 +189,17 @@ export default function InteractiveMap({
               const p      = e.target.getLatLng();
               const newLoc = { lat: p.lat, lng: p.lng };
               setPinned(newLoc);
-              onLocationSelectRef.current?.(newLoc);
+              notifyLocationSelected(newLoc);
             });
             markersRef.current.pin = m;
           }
         };
 
-        map.on('click', (e) => placePin(e.latlng));
+        map.on('click', (e) => placePin(e.latlng, true));
 
         // แสดงตำแหน่งที่เลือกไว้แล้ว (ถ้ามี)
         const existing = isParcel ? shopLocation : userLocation;
-        if (existing) placePin({ lat: existing.lat, lng: existing.lng });
+        if (existing) placePin({ lat: existing.lat, lng: existing.lng }, false);
 
       // ── VIEW MODE ──────────────────────────────────────────────────────
       } else {
@@ -206,6 +239,9 @@ export default function InteractiveMap({
 
     return () => {
       destroyed = true;
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      if (searchAbortControllerRef.current) searchAbortControllerRef.current.abort();
+      if (reverseGeocodeAbortControllerRef.current) reverseGeocodeAbortControllerRef.current.abort();
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current     = null;
@@ -241,11 +277,17 @@ export default function InteractiveMap({
     const coordsStr = waypoints.map(w => `${w.lng},${w.lat}`).join(';');
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
 
-    let active = true;
-    fetch(osrmUrl)
-      .then((res) => res.json())
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    fetch(osrmUrl, { signal: controller.signal })
+      .then((res) => {
+        clearTimeout(timeoutId);
+        if (!res.ok) throw new Error('OSRM route failed');
+        return res.json();
+      })
       .then((data) => {
-        if (!active || !data.routes || !data.routes[0]) return;
+        if (!data.routes || !data.routes[0]) throw new Error('No OSRM route');
         const routeCoords = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
 
         if (polylineRef.current) {
@@ -261,12 +303,24 @@ export default function InteractiveMap({
           }).addTo(map);
         }
       })
-      .catch((err) => {
-        console.warn('OSRM Route fetch error:', err);
+      .catch(() => {
+        // Fallback: draw straight dashed line if routing fails or aborts
+        const fallbackCoords = waypoints.map(w => [w.lat, w.lng]);
+        if (polylineRef.current) {
+          polylineRef.current.setLatLngs(fallbackCoords);
+        } else {
+          polylineRef.current = L.polyline(fallbackCoords, {
+            color: '#9ca3af',
+            weight: 4,
+            opacity: 0.7,
+            dashArray: '4, 8',
+          }).addTo(map);
+        }
       });
 
     return () => {
-      active = false;
+      controller.abort();
+      clearTimeout(timeoutId);
     };
   }, [mode, showRoute, userLocation?.lat, userLocation?.lng, shopLocation?.lat, shopLocation?.lng, riderLocation?.lat, riderLocation?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -388,6 +442,8 @@ export default function InteractiveMap({
     setSearchQuery(val);
 
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (searchAbortControllerRef.current) searchAbortControllerRef.current.abort();
+
     if (!val.trim()) {
       setSearchResults([]);
       setShowSearchResults(false);
@@ -397,35 +453,51 @@ export default function InteractiveMap({
 
     setIsSearching(true);
     searchDebounceRef.current = setTimeout(() => {
+      const controller = new AbortController();
+      searchAbortControllerRef.current = controller;
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
       fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          val
-        )}&countrycodes=th&limit=5&accept-language=th`
+          val.trim()
+        )}&countrycodes=th&limit=5&accept-language=th`,
+        { signal: controller.signal }
       )
-        .then((res) => res.json())
+        .then((res) => {
+          clearTimeout(timeoutId);
+          if (!res.ok) throw new Error('Search failed');
+          return res.json();
+        })
         .then((data) => {
           setSearchResults(data || []);
           setShowSearchResults(true);
         })
-        .catch(() => setSearchResults([]))
+        .catch((err) => {
+          if (err.name !== 'AbortError') {
+            setSearchResults([]);
+          }
+        })
         .finally(() => setIsSearching(false));
-    }, 500);
+    }, 400);
   };
 
   const handleSelectSearchResult = (result) => {
     const loc = { lat: parseFloat(result.lat), lng: parseFloat(result.lon) };
-    const target = activeParcelTargetRef.current;
-    const color = target === 'dropoff' ? '#ef4444' : '#22c55e';
-    const emoji = target === 'dropoff' ? '🏁' : '📍';
+    const address = result.display_name.split(',')[0] || result.display_name;
+    const fullLoc = { ...loc, address };
 
     setPinned(loc);
-    onLocationSelectRef.current?.(loc);
+    onLocationSelectRef.current?.(fullLoc, address);
     setShowSearchResults(false);
-    setSearchQuery(result.display_name.split(',')[0] || result.display_name);
+    setSearchQuery(address);
 
     if (!mapRef.current || !leafletRef.current) return;
     const L = leafletRef.current;
     const map = mapRef.current;
+
+    const target = activeParcelTargetRef.current;
+    const color = target === 'dropoff' ? '#ef4444' : '#22c55e';
+    const emoji = target === 'dropoff' ? '🏁' : '📍';
 
     map.setView([loc.lat, loc.lng], 16, { animate: true });
 
@@ -441,7 +513,7 @@ export default function InteractiveMap({
         const p = e.target.getLatLng();
         const newLoc = { lat: p.lat, lng: p.lng };
         setPinned(newLoc);
-        onLocationSelectRef.current?.(newLoc);
+        notifyLocationSelected(newLoc);
       });
       markersRef.current.pin = m;
     }
@@ -459,8 +531,8 @@ export default function InteractiveMap({
         const color  = target === 'dropoff' ? '#ef4444' : '#22c55e';
         const emoji  = target === 'dropoff' ? '🏁' : '📍';
 
-        onLocationSelectRef.current?.(loc);
         setPinned(loc);
+        notifyLocationSelected(loc);
 
         if (!mapRef.current || !leafletRef.current) return;
         const L   = leafletRef.current;
@@ -479,7 +551,7 @@ export default function InteractiveMap({
             const p      = e.target.getLatLng();
             const newLoc = { lat: p.lat, lng: p.lng };
             setPinned(newLoc);
-            onLocationSelectRef.current?.(newLoc);
+            notifyLocationSelected(newLoc);
           });
           markersRef.current.pin = m;
         }

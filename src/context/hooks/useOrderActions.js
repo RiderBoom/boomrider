@@ -1,4 +1,4 @@
-import { generateId, formatDateTime, r2, getDistanceFromLatLonInKm } from '../../utils.js';
+import { generateId, formatDateTime, r2, getDistanceFromLatLonInKm, isValidCoordinate } from '../../utils.js';
 import { ADMIN_EMAIL, USER_LOCATION } from '../../constants.js';
 import { autoDispatch } from './useAutoDispatch.js';
 
@@ -153,12 +153,12 @@ export function useOrderActions(deps) {
     }
 
     const uid  = currentUser?.id || userProfile?.id || '';
-    const addr = userAddresses?.[0] || { address: 'ที่อยู่ลูกค้า', location: USER_LOCATION };
+    const addr = userAddresses?.[0] || { address: 'ที่อยู่ลูกค้า', location: null };
     const orderId = generateId();
 
-    if (!restaurant?.location?.lat || !addr.location?.lat) {
+    if (!isValidCoordinate(restaurant?.location) || !isValidCoordinate(addr?.location)) {
       placingOrderRef.current = false;
-      return notifySystem('ผิดพลาด', 'กรุณาระบุตำแหน่งร้านและที่อยู่จัดส่งให้ถูกต้อง', 'error');
+      return notifySystem('ผิดพลาด', 'กรุณาระบุและปักหมุดที่อยู่จัดส่งให้ถูกต้องก่อนสั่งอาหาร', 'error');
     }
 
     // Fetch server quote prior to order placement
@@ -177,7 +177,10 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', quoteRes.reason, 'error');
     }
 
-    const quoteId = quoteRes.quote.quoteId;
+    const quote = quoteRes.quote;
+    const quoteId = quote.quoteId;
+    const serverDeliveryFee = quote.deliveryFee ?? deliveryFee;
+    const serverGrandTotal = quote.grandTotal ?? grandTotal;
 
     const newOrder = {
       id: orderId,
@@ -194,7 +197,8 @@ export function useOrderActions(deps) {
       pickupLocation: restaurant.location,
       location: addr.location,
       address: addr.address,
-      distance,
+      distance: quote.billableKm ?? distance,
+      distanceSource: quote.distanceSource || 'osrm',
       items: cart.map(({ id, originalId, name, price, qty, selectedOptions }) => ({
         id,
         originalId: originalId || id,
@@ -204,9 +208,9 @@ export function useOrderActions(deps) {
         selectedOptions: selectedOptions || []
       })),
       foodTotal,
-      deliveryFee,
+      deliveryFee: serverDeliveryFee,
       promoDiscount,
-      grandTotal,
+      grandTotal: serverGrandTotal,
       paymentMethod,
       notes,
       createdAt: formatDateTime(),
@@ -245,8 +249,8 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', 'กรุณาระบุจุดรับและจุดส่ง', 'error');
     }
 
-    if (!parcelDetails.pickupLocation?.lat || !parcelDetails.dropoffLocation?.lat) {
-      return notifySystem('ผิดพลาด', 'กรุณาปักหมุดจุดรับและจุดส่งบนแผนที่ก่อนสั่งพัสดุ', 'error');
+    if (!isValidCoordinate(parcelDetails.pickupLocation) || !isValidCoordinate(parcelDetails.dropoffLocation)) {
+      return notifySystem('ผิดพลาด', 'กรุณาปักหมุดจุดรับและจุดส่งพัสดุให้ถูกต้องก่อนสั่ง', 'error');
     }
 
     const dist = parcelDistance > 0 ? parcelDistance : (
@@ -275,7 +279,10 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', quoteRes.reason, 'error');
     }
 
-    const quoteId = quoteRes.quote.quoteId;
+    const quote = quoteRes.quote;
+    const quoteId = quote.quoteId;
+    const serverGrandTotal = quote.grandTotal ?? grandTotal;
+    const serverBillableKm = quote.billableKm ?? dist;
 
     const orderId = generateId();
     const newOrder = {
@@ -290,14 +297,15 @@ export function useOrderActions(deps) {
       dropoff: parcelDetails.dropoff,
       pickupLocation: parcelDetails.pickupLocation,
       location: parcelDetails.dropoffLocation,
-      distance: dist,
-      parcelDetails: { ...parcelDetails, distance: dist },
+      distance: serverBillableKm,
+      distanceSource: quote.distanceSource || 'osrm',
+      parcelDetails: { ...parcelDetails, distance: serverBillableKm },
       weight: parcelDetails.weight,
       receiverName: parcelDetails.receiverName,
       receiverPhone: parcelDetails.receiverPhone,
-      deliveryFee: grandTotal,
-      riderIncome: r2(grandTotal * (1 - ((appConfig.gpDelivery ?? 15) / 100))),
-      grandTotal,
+      deliveryFee: serverGrandTotal,
+      riderIncome: r2(serverGrandTotal * (1 - ((appConfig.gpDelivery ?? 15) / 100))),
+      grandTotal: serverGrandTotal,
       paymentMethod,
       createdAt: formatDateTime(),
     };
@@ -337,8 +345,8 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', 'กรุณาระบุจุดรับและจุดส่งผู้โดยสาร', 'error');
     }
 
-    if (!rideDetails.pickupLocation?.lat || !rideDetails.dropoffLocation?.lat) {
-      return notifySystem('ผิดพลาด', 'กรุณาปักหมุดจุดรับและจุดส่งผู้โดยสารบนแผนที่', 'error');
+    if (!isValidCoordinate(rideDetails.pickupLocation) || !isValidCoordinate(rideDetails.dropoffLocation)) {
+      return notifySystem('ผิดพลาด', 'กรุณาปักหมุดจุดรับและจุดส่งผู้โดยสารให้ถูกต้องก่อนสั่ง', 'error');
     }
 
     const dist = getDistanceFromLatLonInKm(
@@ -365,12 +373,15 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', quoteRes.reason, 'error');
     }
 
-    const quoteId = quoteRes.quote.quoteId;
+    const quote = quoteRes.quote;
+    const quoteId = quote.quoteId;
+    const serverGrandTotal = quote.grandTotal ?? grandTotal;
+    const serverBillableKm = quote.billableKm ?? dist;
 
     const orderId = generateId();
     const gpRideRate = (appConfig.gpRide ?? 15) / 100;
-    const adminGP = r2(grandTotal * gpRideRate);
-    const riderIncome = r2(grandTotal - adminGP);
+    const adminGP = r2(serverGrandTotal * gpRideRate);
+    const riderIncome = r2(serverGrandTotal - adminGP);
 
     const newOrder = {
       id: orderId,
@@ -384,11 +395,12 @@ export function useOrderActions(deps) {
       dropoff: rideDetails.dropoff,
       pickupLocation: rideDetails.pickupLocation,
       location: rideDetails.dropoffLocation,
-      distance: dist,
+      distance: serverBillableKm,
+      distanceSource: quote.distanceSource || 'osrm',
       vehicleType: rideDetails.vehicleType || 'Motorcycle',
       notes: rideDetails.note || '',
-      deliveryFee: grandTotal,
-      grandTotal,
+      deliveryFee: serverGrandTotal,
+      grandTotal: serverGrandTotal,
       riderIncome,
       adminGP,
       paymentMethod,
@@ -427,9 +439,9 @@ export function useOrderActions(deps) {
       return notifySystem('ผิดพลาด', 'กรุณาเลือกประเภทบริการ', 'error');
     }
 
-    const userLoc = userProfile?.location || USER_LOCATION;
-    if (!userLoc?.lat || !userLoc?.lng) {
-      return notifySystem('ผิดพลาด', 'กรุณาระบุพิกัดที่อยู่สำหรับรับบริการ', 'error');
+    const serviceLoc = serviceDetails?.location;
+    if (!isValidCoordinate(serviceLoc)) {
+      return notifySystem('ผิดพลาด', 'กรุณาปักหมุดเลือกตำแหน่งรับบริการบนแผนที่ก่อนสั่ง', 'error');
     }
 
     const grandTotal = serviceDetails.price || 350;
@@ -443,10 +455,10 @@ export function useOrderActions(deps) {
     const quoteRes = await _fetchServiceQuote({
       p_service_type: 'service',
       p_service_category: serviceDetails.serviceCategory,
-      p_pickup_lat: userLoc.lat,
-      p_pickup_lng: userLoc.lng,
-      p_dropoff_lat: userLoc.lat,
-      p_dropoff_lng: userLoc.lng,
+      p_pickup_lat: serviceLoc.lat,
+      p_pickup_lng: serviceLoc.lng,
+      p_dropoff_lat: serviceLoc.lat,
+      p_dropoff_lng: serviceLoc.lng,
     });
 
     if (!quoteRes.ok) {
@@ -472,7 +484,9 @@ export function useOrderActions(deps) {
       preferredDate: serviceDetails.preferredDate,
       preferredTime: serviceDetails.preferredTime,
       notes: serviceDetails.note || '',
-      location: userLoc,
+      address: serviceDetails.address || '',
+      location: serviceLoc,
+      pickupLocation: serviceLoc,
       deliveryFee: grandTotal,
       grandTotal,
       riderIncome,

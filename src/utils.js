@@ -194,6 +194,26 @@ export const playOrderNotificationSound = () => {
   playNotificationSound('order');
 };
 
+export const isDefaultFallbackLocation = (loc) => {
+  if (!loc || typeof loc !== 'object') return false;
+  const lat = Number(loc.lat);
+  const lng = Number(loc.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return Math.abs(lat - 13.7563) < 0.0001 && Math.abs(lng - 100.5018) < 0.0001;
+};
+
+export const isValidCoordinate = (loc, options = {}) => {
+  if (!loc || typeof loc !== 'object') return false;
+  const lat = Number(loc.lat);
+  const lng = Number(loc.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+  if (!options.allowDefaultFallback && isDefaultFallbackLocation(loc)) {
+    return false;
+  }
+  return true;
+};
+
 export const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../../context/AppContext';
-import { getDistanceFromLatLonInKm } from '../../utils';
+import { getDistanceFromLatLonInKm, isValidCoordinate } from '../../utils';
 import { DEFAULT_CATEGORIES } from '../../constants';
 import RestaurantCard from '../RestaurantCard';
 import InteractiveMap from '../InteractiveMap';
@@ -16,7 +16,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   const {
     serviceType, setServiceType,
     restaurants, menuItems, appConfig,
-    userProfile,
+    userProfile, userAddresses,
     cart, setCart,
     parcelDetails, setParcelDetails,
     paymentMethod, setPaymentMethod,
@@ -50,34 +50,48 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   });
   const [rideMapTarget, setRideMapTarget] = useState('pickup');
   const [serviceDetails, setServiceDetails] = useState({
-    serviceCategory: 'ทำความสะอาดบ้าน', note: '', preferredDate: '', preferredTime: '10:00', price: 350
+    serviceCategory: 'ทำความสะอาดบ้าน', address: '', location: null, note: '', preferredDate: '', preferredTime: '10:00', price: 350
   });
 
-  const handleRideMapSelect = async (loc) => {
+  const handleRideMapSelect = async (loc, addressText) => {
     if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return;
-    const formattedCoords = `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+    const cleanLoc = { lat: loc.lat, lng: loc.lng };
+    const formattedCoords = `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+    const addr = addressText || loc.address || formattedCoords;
     const currentTarget = rideMapTarget;
     if (currentTarget === 'pickup') {
-      setRideDetails(prev => ({ ...prev, pickup: formattedCoords, pickupLocation: loc }));
+      setRideDetails(prev => ({ ...prev, pickup: addr, pickupLocation: cleanLoc }));
     } else {
-      setRideDetails(prev => ({ ...prev, dropoff: formattedCoords, dropoffLocation: loc }));
+      setRideDetails(prev => ({ ...prev, dropoff: addr, dropoffLocation: cleanLoc }));
     }
+  };
 
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json&accept-language=th`,
-        { headers: { 'Accept-Language': 'th' } },
-      );
-      const data = await res.json();
-      const addr = data.display_name?.split(',').slice(0, 3).join(',') || formattedCoords;
-      if (currentTarget === 'pickup') {
-        setRideDetails(prev => ({ ...prev, pickup: addr }));
-      } else {
-        setRideDetails(prev => ({ ...prev, dropoff: addr }));
+  const handleServiceMapSelect = async (loc, addressText) => {
+    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return;
+    const cleanLoc = { lat: loc.lat, lng: loc.lng };
+    const formattedCoords = `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+    const addr = addressText || loc.address || formattedCoords;
+    setServiceDetails(prev => ({ ...prev, address: addr, location: cleanLoc }));
+  };
+
+  const getCurrentLocationForService = () => {
+    if (!navigator.geolocation) return notifySystem('ผิดพลาด', 'Browser ไม่รองรับ GPS', 'error');
+    notifySystem('กำลังดึงพิกัด', 'กำลังหาตำแหน่งของคุณ...', 'info');
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const loc = { lat: position.coords.latitude, lng: position.coords.longitude };
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json&accept-language=th`,
+          { headers: { 'Accept-Language': 'th' } },
+        );
+        const data = await res.json();
+        const addr = data.display_name || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+        setServiceDetails(prev => ({ ...prev, address: addr, location: loc }));
+      } catch {
+        setServiceDetails(prev => ({ ...prev, address: `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`, location: loc }));
       }
-    } catch {
-      // Keep formattedCoords
-    }
+      notifySystem('สำเร็จ', 'ตั้งจุดรับบริการเป็นตำแหน่งปัจจุบันแล้ว', 'success');
+    }, () => notifySystem('ผิดพลาด', 'ไม่สามารถดึงพิกัดได้ กรุณาเปิดสิทธิ์ GPS', 'error'), { enableHighAccuracy: true, timeout: 10000 });
   };
 
   // Modal for selecting item options / toppings
@@ -321,9 +335,23 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               <button onClick={() => setPaymentMethod('wallet')} className={`flex-1 py-2 text-sm rounded-xl border font-bold transition-all ${paymentMethod === 'wallet' ? 'bg-orange-500 text-white border-orange-500 shadow-md' : 'bg-white text-gray-600 border-gray-200'}`}>Wallet</button>
               <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-2 text-sm rounded-xl border font-bold transition-all ${paymentMethod === 'cash' ? 'bg-blue-500 text-white border-blue-500 shadow-md' : 'bg-white text-gray-600 border-gray-200'}`}>เงินสด</button>
             </div>
+            {(!isValidCoordinate(userAddresses?.[0]?.location) && !isValidCoordinate(userProfile?.location)) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 mb-2 text-xs text-amber-800 font-medium text-center">
+                ⚠️ คุณยังไม่ได้ปักหมุดที่อยู่จัดส่งจริง กรุณาไปที่หน้าโปรไฟล์เพื่อปักหมุดตำแหน่งบนแผนที่ก่อนสั่งอาหาร
+              </div>
+            )}
             <button
-              onClick={() => { if (promoResult?.valid) applyPromoCode(promoInput); placeOrder(promoDiscount, orderNotes); setOrderNotes(''); }}
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-xl shadow-orange-200 active:scale-95 transition-transform"
+              onClick={() => {
+                if (!isValidCoordinate(userAddresses?.[0]?.location) && !isValidCoordinate(userProfile?.location)) {
+                  notifySystem('ผิดพลาด', 'กรุณาปักหมุดตำแหน่งที่อยู่จัดส่งของคุณบนแผนที่ก่อนสั่งอาหาร', 'error');
+                  return;
+                }
+                if (promoResult?.valid) applyPromoCode(promoInput);
+                placeOrder(promoDiscount, orderNotes);
+                setOrderNotes('');
+              }}
+              disabled={!isValidCoordinate(userAddresses?.[0]?.location) && !isValidCoordinate(userProfile?.location)}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3.5 rounded-2xl font-bold text-base shadow-xl shadow-orange-200 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
             >
               สั่งอาหาร ฿{Math.max(0, calculateFoodTotal() + calculateDeliveryFee(cart[0].distance) - promoDiscount).toLocaleString()}
             </button>
@@ -480,15 +508,29 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
           <div className="space-y-3">
             <p className="text-xs text-gray-500 text-center">ค่าบริการเริ่มต้น {appConfig.baseFee}บ. + {appConfig.perKmFee}บ./กม.</p>
             <div className="mb-4">
-              <div className="flex gap-2 mb-2">
+              <div className="flex items-center justify-between gap-2 mb-2">
                 <button
+                  type="button"
                   onClick={() => setParcelMapTarget('pickup')}
-                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${parcelMapTarget === 'pickup' ? 'bg-green-500 text-white shadow-md shadow-green-200' : 'bg-gray-100 text-gray-600'}`}
-                >📍 จุดรับของ{parcelDetails.pickupLocation ? ' ✓' : ''}</button>
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${parcelMapTarget === 'pickup' ? 'bg-green-500 text-white shadow-md shadow-green-200' : 'bg-gray-100 text-gray-600'}`}
+                >📍 จุดรับ{isValidCoordinate(parcelDetails.pickupLocation) ? ' ✓' : ' ⚠️'}</button>
                 <button
+                  type="button"
+                  onClick={() => setParcelDetails(prev => ({
+                    ...prev,
+                    pickup: prev.dropoff,
+                    dropoff: prev.pickup,
+                    pickupLocation: prev.dropoffLocation,
+                    dropoffLocation: prev.pickupLocation
+                  }))}
+                  className="px-2 py-1.5 text-xs bg-blue-50 text-blue-600 font-bold rounded-lg hover:bg-blue-100"
+                  title="สลับจุดรับ-ส่ง"
+                >⇅ สลับ</button>
+                <button
+                  type="button"
                   onClick={() => setParcelMapTarget('dropoff')}
-                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${parcelMapTarget === 'dropoff' ? 'bg-red-500 text-white shadow-md shadow-red-200' : 'bg-gray-100 text-gray-600'}`}
-                >🏁 จุดส่งของ{parcelDetails.dropoffLocation ? ' ✓' : ''}</button>
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${parcelMapTarget === 'dropoff' ? 'bg-red-500 text-white shadow-md shadow-red-200' : 'bg-gray-100 text-gray-600'}`}
+                >🏁 จุดส่ง{isValidCoordinate(parcelDetails.dropoffLocation) ? ' ✓' : ' ⚠️'}</button>
               </div>
               <InteractiveMap
                 mode="select"
@@ -498,17 +540,17 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
                 userLocation={parcelDetails.dropoffLocation}
                 centerOverride={
                   parcelMapTarget === 'pickup'
-                    ? (parcelDetails.pickupLocation || userProfile?.location)
-                    : parcelMapTarget === 'dropoff'
-                      ? (parcelDetails.dropoffLocation || userProfile?.location)
-                      : (userProfile?.location || undefined)
+                    ? (parcelDetails.pickupLocation || undefined)
+                    : (parcelDetails.dropoffLocation || undefined)
                 }
                 onLocationSelect={handleParcelMapSelect}
               />
             </div>
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label htmlFor="parcel-pickup-input" className="text-sm text-gray-500">จุดรับของ</label>
+                <label htmlFor="parcel-pickup-input" className="text-xs text-gray-500 flex items-center gap-1">
+                  จุดรับของ {isValidCoordinate(parcelDetails.pickupLocation) ? <span className="text-green-600 font-bold">✓ ยืนยันแล้ว</span> : <span className="text-amber-600 font-bold">⚠️ กรุณาปักหมุด</span>}
+                </label>
                 <button
                   onClick={() => getCurrentLocationForParcel('pickup')}
                   className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1 hover:bg-green-200 active:scale-95 transition-transform"
@@ -516,12 +558,14 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               </div>
               <div className="flex items-center border rounded-lg p-2 bg-gray-50">
                 <MapPin size={18} className="text-green-500 mr-2 flex-shrink-0" />
-                <input id="parcel-pickup-input" name="pickup" value={parcelDetails.pickup} onChange={e => setParcelDetails({ ...parcelDetails, pickup: e.target.value })} type="text" placeholder="ระบุจุดรับ..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
+                <input id="parcel-pickup-input" name="pickup" value={parcelDetails.pickup} onChange={e => setParcelDetails({ ...parcelDetails, pickup: e.target.value, pickupLocation: null })} type="text" placeholder="ระบุจุดรับ..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
               </div>
             </div>
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label htmlFor="parcel-dropoff-input" className="text-sm text-gray-500">จุดส่งของ</label>
+                <label htmlFor="parcel-dropoff-input" className="text-xs text-gray-500 flex items-center gap-1">
+                  จุดส่งของ {isValidCoordinate(parcelDetails.dropoffLocation) ? <span className="text-green-600 font-bold">✓ ยืนยันแล้ว</span> : <span className="text-amber-600 font-bold">⚠️ กรุณาปักหมุด</span>}
+                </label>
                 <button
                   onClick={() => getCurrentLocationForParcel('dropoff')}
                   className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex items-center gap-1 hover:bg-red-200 active:scale-95 transition-transform"
@@ -529,7 +573,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               </div>
               <div className="flex items-center border rounded-lg p-2 bg-gray-50">
                 <Navigation size={18} className="text-red-500 mr-2 flex-shrink-0" />
-                <input id="parcel-dropoff-input" name="dropoff" value={parcelDetails.dropoff} onChange={e => setParcelDetails({ ...parcelDetails, dropoff: e.target.value })} type="text" placeholder="ระบุจุดส่ง..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
+                <input id="parcel-dropoff-input" name="dropoff" value={parcelDetails.dropoff} onChange={e => setParcelDetails({ ...parcelDetails, dropoff: e.target.value, dropoffLocation: null })} type="text" placeholder="ระบุจุดส่ง..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
               </div>
             </div>
             <div>
@@ -560,7 +604,11 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               <button onClick={() => setPaymentMethod('wallet')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'wallet' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-white border-gray-300'}`}>Wallet</button>
               <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'cash' ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-white border-gray-300'}`}>เงินสด</button>
             </div>
-            <button onClick={placeParcelOrder} className="w-full bg-green-500 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-green-600 mt-4">
+            <button
+              onClick={placeParcelOrder}
+              disabled={!isValidCoordinate(parcelDetails.pickupLocation) || !isValidCoordinate(parcelDetails.dropoffLocation)}
+              className="w-full bg-green-500 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+            >
               คำนวณราคา & เรียกแมส
             </button>
           </div>
@@ -572,15 +620,29 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
           <div className="space-y-3">
             <p className="text-xs text-gray-500 text-center">ค่าบริการเดินทางเริ่มต้น {appConfig.rideBaseFee ?? appConfig.baseFee}บ. + {appConfig.ridePerKmFee ?? appConfig.perKmFee}บ./กม.</p>
             <div className="mb-4">
-              <div className="flex gap-2 mb-2">
+              <div className="flex items-center justify-between gap-2 mb-2">
                 <button
+                  type="button"
                   onClick={() => setRideMapTarget('pickup')}
-                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${rideMapTarget === 'pickup' ? 'bg-purple-600 text-white shadow-md shadow-purple-200' : 'bg-gray-100 text-gray-600'}`}
-                >📍 จุดรับผู้โดยสาร{rideDetails.pickupLocation ? ' ✓' : ''}</button>
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${rideMapTarget === 'pickup' ? 'bg-purple-600 text-white shadow-md shadow-purple-200' : 'bg-gray-100 text-gray-600'}`}
+                >📍 จุดรับ{isValidCoordinate(rideDetails.pickupLocation) ? ' ✓' : ' ⚠️'}</button>
                 <button
+                  type="button"
+                  onClick={() => setRideDetails(prev => ({
+                    ...prev,
+                    pickup: prev.dropoff,
+                    dropoff: prev.pickup,
+                    pickupLocation: prev.dropoffLocation,
+                    dropoffLocation: prev.pickupLocation
+                  }))}
+                  className="px-2 py-1.5 text-xs bg-purple-50 text-purple-600 font-bold rounded-lg hover:bg-purple-100"
+                  title="สลับจุดรับ-ส่ง"
+                >⇅ สลับ</button>
+                <button
+                  type="button"
                   onClick={() => setRideMapTarget('dropoff')}
-                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${rideMapTarget === 'dropoff' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-600'}`}
-                >🏁 จุดหมายปลายทาง{rideDetails.dropoffLocation ? ' ✓' : ''}</button>
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${rideMapTarget === 'dropoff' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-gray-100 text-gray-600'}`}
+                >🏁 จุดส่ง{isValidCoordinate(rideDetails.dropoffLocation) ? ' ✓' : ' ⚠️'}</button>
               </div>
               <InteractiveMap
                 mode="select"
@@ -590,24 +652,30 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
                 userLocation={rideDetails.dropoffLocation}
                 centerOverride={
                   rideMapTarget === 'pickup'
-                    ? (rideDetails.pickupLocation || userProfile?.location)
-                    : (rideDetails.dropoffLocation || userProfile?.location)
+                    ? (rideDetails.pickupLocation || undefined)
+                    : (rideDetails.dropoffLocation || undefined)
                 }
                 onLocationSelect={handleRideMapSelect}
               />
             </div>
             <div>
-              <label htmlFor="ride-pickup-input" className="text-xs text-gray-500 mb-1 block">จุดรับ</label>
+              <label htmlFor="ride-pickup-input" className="text-xs text-gray-500 mb-1 flex items-center justify-between">
+                <span>จุดรับผู้โดยสาร</span>
+                {isValidCoordinate(rideDetails.pickupLocation) ? <span className="text-purple-600 font-bold">✓ ยืนยันแล้ว</span> : <span className="text-amber-600 font-bold">⚠️ กรุณาปักหมุด</span>}
+              </label>
               <div className="flex items-center border rounded-lg p-2 bg-gray-50">
                 <MapPin size={18} className="text-purple-500 mr-2 flex-shrink-0" />
-                <input id="ride-pickup-input" name="ridePickup" value={rideDetails.pickup} onChange={e => setRideDetails({ ...rideDetails, pickup: e.target.value })} type="text" placeholder="ระบุจุดรับผู้โดยสาร..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
+                <input id="ride-pickup-input" name="ridePickup" value={rideDetails.pickup} onChange={e => setRideDetails({ ...rideDetails, pickup: e.target.value, pickupLocation: null })} type="text" placeholder="ระบุจุดรับผู้โดยสาร..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
               </div>
             </div>
             <div>
-              <label htmlFor="ride-dropoff-input" className="text-xs text-gray-500 mb-1 block">จุดส่ง (จุดหมาย)</label>
+              <label htmlFor="ride-dropoff-input" className="text-xs text-gray-500 mb-1 flex items-center justify-between">
+                <span>จุดส่ง (จุดหมาย)</span>
+                {isValidCoordinate(rideDetails.dropoffLocation) ? <span className="text-indigo-600 font-bold">✓ ยืนยันแล้ว</span> : <span className="text-amber-600 font-bold">⚠️ กรุณาปักหมุด</span>}
+              </label>
               <div className="flex items-center border rounded-lg p-2 bg-gray-50">
                 <Navigation size={18} className="text-indigo-500 mr-2 flex-shrink-0" />
-                <input id="ride-dropoff-input" name="rideDropoff" value={rideDetails.dropoff} onChange={e => setRideDetails({ ...rideDetails, dropoff: e.target.value })} type="text" placeholder="ระบุจุดหมาย..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
+                <input id="ride-dropoff-input" name="rideDropoff" value={rideDetails.dropoff} onChange={e => setRideDetails({ ...rideDetails, dropoff: e.target.value, dropoffLocation: null })} type="text" placeholder="ระบุจุดหมาย..." className="w-full outline-none bg-transparent text-sm" autoComplete="off" />
               </div>
             </div>
             <div>
@@ -627,7 +695,11 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               <button onClick={() => setPaymentMethod('wallet')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'wallet' ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : 'bg-white border-gray-300'}`}>Wallet</button>
               <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'cash' ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-300'}`}>เงินสด</button>
             </div>
-            <button onClick={() => placeRideOrder ? placeRideOrder(rideDetails) : notifySystem('แจ้งเตือน', 'อยู่ระหว่างประมวลผล', 'info')} className="w-full bg-purple-600 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-purple-700 mt-4">
+            <button
+              onClick={() => placeRideOrder ? placeRideOrder(rideDetails) : notifySystem('แจ้งเตือน', 'อยู่ระหว่างประมวลผล', 'info')}
+              disabled={!isValidCoordinate(rideDetails.pickupLocation) || !isValidCoordinate(rideDetails.dropoffLocation)}
+              className="w-full bg-purple-600 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+            >
               เรียกรถรับส่งทันที
             </button>
           </div>
@@ -668,6 +740,45 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
                 ))}
               </select>
             </div>
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-bold text-emerald-700">
+                  {isValidCoordinate(serviceDetails.location) ? '🔧 พิกัดรับบริการ: ยืนยันแล้ว ✓' : '⚠️ กรุณาปักหมุดตำแหน่งรับบริการ'}
+                </span>
+                <button
+                  type="button"
+                  onClick={getCurrentLocationForService}
+                  className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full flex items-center gap-1 hover:bg-emerald-200 active:scale-95 transition-transform"
+                >
+                  <Crosshair size={12} /> ตำแหน่งปัจจุบัน
+                </button>
+              </div>
+              <InteractiveMap
+                mode="select"
+                userLocation={serviceDetails.location}
+                centerOverride={serviceDetails.location || undefined}
+                onLocationSelect={handleServiceMapSelect}
+              />
+            </div>
+            <div>
+              <label htmlFor="service-address-input" className="text-xs text-gray-500 mb-1 flex items-center justify-between">
+                <span>สถานที่รับบริการ (ที่อยู่)</span>
+                {isValidCoordinate(serviceDetails.location) ? <span className="text-emerald-600 font-bold">✓ ยืนยันแล้ว</span> : <span className="text-amber-600 font-bold">⚠️ กรุณาปักหมุด</span>}
+              </label>
+              <div className="flex items-center border rounded-lg p-2 bg-gray-50">
+                <MapPin size={18} className="text-emerald-500 mr-2 flex-shrink-0" />
+                <input
+                  id="service-address-input"
+                  name="serviceAddress"
+                  value={serviceDetails.address}
+                  onChange={e => setServiceDetails({ ...serviceDetails, address: e.target.value, location: null })}
+                  type="text"
+                  placeholder="ระบุสถานที่/บ้านเลขที่/ซอย..."
+                  className="w-full outline-none bg-transparent text-sm"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label htmlFor="service-date-input" className="text-xs text-gray-500 mb-1 block">วันที่รับบริการ</label>
@@ -699,7 +810,11 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               <button onClick={() => setPaymentMethod('wallet')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'wallet' ? 'bg-emerald-100 border-emerald-500 text-emerald-700 font-bold' : 'bg-white border-gray-300'}`}>Wallet</button>
               <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'cash' ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-300'}`}>เงินสด</button>
             </div>
-            <button onClick={() => placeServiceOrder ? placeServiceOrder(serviceDetails) : notifySystem('แจ้งเตือน', 'อยู่ระหว่างประมวลผล', 'info')} className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-emerald-700 mt-4">
+            <button
+              onClick={() => placeServiceOrder ? placeServiceOrder(serviceDetails) : notifySystem('แจ้งเตือน', 'อยู่ระหว่างประมวลผล', 'info')}
+              disabled={!isValidCoordinate(serviceDetails.location)}
+              className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+            >
               ยืนยันการจองบริการ
             </button>
           </div>
