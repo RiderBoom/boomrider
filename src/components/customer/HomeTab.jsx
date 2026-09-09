@@ -23,7 +23,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
     parcelMapTarget, setParcelMapTarget,
     parcelDistance, parcelEstimate,
     placeOrder, placeParcelOrder, placeRideOrder, placeServiceOrder,
-    addToCart, calculateFoodTotal, calculateDeliveryFee,
+    addToCart, calculateFoodTotal, calculateDeliveryFee, calculateRideFee,
     handleParcelMapSelect,
     getCurrentLocationForParcel,
     notifySystem,
@@ -52,6 +52,17 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   const [serviceDetails, setServiceDetails] = useState({
     serviceCategory: 'ทำความสะอาดบ้าน', address: '', location: null, note: '', preferredDate: '', preferredTime: '10:00', price: 350
   });
+
+  const rideDistance = (isValidCoordinate(rideDetails.pickupLocation) && isValidCoordinate(rideDetails.dropoffLocation))
+    ? (getDistanceFromLatLonInKm(
+        rideDetails.pickupLocation.lat, rideDetails.pickupLocation.lng,
+        rideDetails.dropoffLocation.lat, rideDetails.dropoffLocation.lng
+      ) || 0)
+    : 0;
+
+  const rideEstimate = rideDistance > 0
+    ? (calculateRideFee ? calculateRideFee(rideDistance) : ((appConfig.rideBaseFee ?? appConfig.baseFee) + Math.ceil(rideDistance) * (appConfig.ridePerKmFee ?? appConfig.perKmFee)))
+    : 0;
 
   const handleRideMapSelect = async (loc, addressText) => {
     if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return;
@@ -690,6 +701,14 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               <label htmlFor="ride-note-input" className="text-xs text-gray-500 mb-1 block">หมายเหตุถึงคนขับ</label>
               <input id="ride-note-input" name="rideNote" value={rideDetails.note} onChange={e => setRideDetails({ ...rideDetails, note: e.target.value })} type="text" placeholder="เช่น รอหน้าประตู 1..." className="w-full border rounded-lg p-2 text-sm" autoComplete="off" />
             </div>
+            {rideDistance > 0 && (
+              <div className="bg-purple-50 p-3 rounded-xl text-center my-2 border border-purple-200">
+                <p className="text-sm font-bold text-purple-900">
+                  📏 ระยะทาง {rideDistance.toFixed(1)} กม. &nbsp;|&nbsp; ค่าโดยสาร ฿{rideEstimate}
+                </p>
+                <p className="text-xs text-purple-600 mt-0.5">คำนวณจากจุดรับถึงจุดส่ง</p>
+              </div>
+            )}
             <div className="flex items-center space-x-2 mt-2 p-2 bg-gray-50 rounded-lg">
               <span className="text-sm font-bold">ชำระเงิน:</span>
               <button onClick={() => setPaymentMethod('wallet')} className={`flex-1 py-1 text-xs rounded border ${paymentMethod === 'wallet' ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : 'bg-white border-gray-300'}`}>Wallet</button>
@@ -700,7 +719,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
               disabled={!isValidCoordinate(rideDetails.pickupLocation) || !isValidCoordinate(rideDetails.dropoffLocation)}
               className="w-full bg-purple-600 text-white py-3 rounded-lg font-bold shadow-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
             >
-              เรียกรถรับส่งทันที
+              {rideDistance > 0 ? `เรียกรถรับส่ง (฿${rideEstimate.toLocaleString()})` : 'เรียกรถรับส่งทันที'}
             </button>
           </div>
         </div>

@@ -153,7 +153,15 @@ export function useOrderActions(deps) {
     }
 
     const uid  = currentUser?.id || userProfile?.id || '';
-    const addr = userAddresses?.[0] || { address: 'ที่อยู่ลูกค้า', location: null };
+    const primaryAddr = userAddresses?.[0];
+    const validLocation = isValidCoordinate(primaryAddr?.location)
+      ? primaryAddr.location
+      : (isValidCoordinate(userProfile?.location) ? userProfile.location : null);
+    const addr = {
+      id: primaryAddr?.id || null,
+      address: primaryAddr?.address || userProfile?.address || 'ที่อยู่ลูกค้า',
+      location: validLocation
+    };
     const orderId = generateId();
 
     if (!isValidCoordinate(restaurant?.location) || !isValidCoordinate(addr?.location)) {

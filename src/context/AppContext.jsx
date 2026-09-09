@@ -285,7 +285,7 @@ export function AppProvider({ children }) {
 
   // ── Order hook ──────────────────────────────────────────────────────────────
   const {
-    calculateDeliveryFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
+    calculateDeliveryFee, calculateRideFee, calculateFoodTotal, isPending, hasPendingCancelRequest,
     addToCart, placeOrder, placeParcelOrder, placeRideOrder, placeServiceOrder, acceptOrder, updateOrderStatus,
     initiateCancelOrder, confirmCancelOrder, cancelOrderDirectly,
     requestCancelOrder, requestCancelByRole,
@@ -1186,6 +1186,12 @@ export function AppProvider({ children }) {
     if (!location) return;
     const uid = currentUser?.id || userProfile?.id;
     setUserProfile(prev => ({ ...prev, location }));
+    setUserAddresses(prev => {
+      if (!prev || prev.length === 0) {
+        return [{ id: 1, label: 'บ้าน', address: 'ที่อยู่ปัจจุบัน', location }];
+      }
+      return prev.map((a, idx) => idx === 0 ? { ...a, location } : a);
+    });
     if (uid) {
       await supabase.from('profiles').update({ location }).eq('id', uid);
     }
@@ -1453,6 +1459,7 @@ export function AppProvider({ children }) {
     addToCart,
     calculateFoodTotal,
     calculateDeliveryFee,
+    calculateRideFee,
     placeOrder,
     placeParcelOrder,
     placeRideOrder,

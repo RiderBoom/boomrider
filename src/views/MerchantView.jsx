@@ -74,9 +74,17 @@ export default function MerchantView() {
   const activeOrders  = myOrders.filter(o => ['preparing', 'ready_to_pickup', 'rider_accepted', 'picking_up'].includes(o.status));
   const doneOrders    = myOrders.filter(o => ['delivering', 'delivered', 'completed', 'cancelled'].includes(o.status));
 
+  const getMerchantIncome = (o) => {
+    if (typeof o.merchantIncome === 'number') return o.merchantIncome;
+    if (typeof o.settlement?.merchantIncome === 'number') return o.settlement.merchantIncome;
+    const foodTotal = o.foodTotal || 0;
+    const gpRate = (appConfig?.gpFood ?? 30) / 100;
+    return foodTotal * (1 - gpRate);
+  };
+
   const myRevenue = myOrders
     .filter(o => ['delivered', 'completed'].includes(o.status))
-    .reduce((sum, o) => sum + (o.merchantIncome || 0), 0);
+    .reduce((sum, o) => sum + getMerchantIncome(o), 0);
 
   const openEditMenu = (item) => {
     setIsEditingMenu(item ? item.id : 'new');
@@ -362,7 +370,7 @@ export default function MerchantView() {
                       </div>
                       <div className="text-right">
                         <span className={`text-xs font-bold ${isDone ? 'text-green-600' : inTransit ? 'text-blue-500' : 'text-red-400'}`}>
-                          {isDone ? `+฿${(order.merchantIncome||0).toFixed(0)}` : inTransit ? '🚚 กำลังส่ง' : 'ยกเลิก'}
+                          {isDone ? `+฿${getMerchantIncome(order).toFixed(0)}` : inTransit ? '🚚 กำลังส่ง' : 'ยกเลิก'}
                         </span>
                       </div>
                     </div>
@@ -657,8 +665,8 @@ export default function MerchantView() {
         const cancelled = myOrders.filter(o => o.status === 'cancelled');
         const todayStr = (() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`; })();
         const todayDone = done.filter(o => (o.createdAt || o.timestamp || '').startsWith(todayStr));
-        const todayRevenue = todayDone.reduce((s, o) => s + (o.merchantIncome || 0), 0);
-        const allRevenue = done.reduce((s, o) => s + (o.merchantIncome || 0), 0);
+        const todayRevenue = todayDone.reduce((s, o) => s + getMerchantIncome(o), 0);
+        const allRevenue = done.reduce((s, o) => s + getMerchantIncome(o), 0);
         const avgOrder = done.length > 0 ? allRevenue / done.length : 0;
 
         // Top เมนูขายดี
