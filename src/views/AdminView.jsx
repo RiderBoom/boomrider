@@ -147,21 +147,40 @@ export default function AdminView() {
       supabase.from('profiles').select('id, name, email'),
       supabase.from('user_roles').select('user_id, role'),
     ]);
-    const nameMap = {};
-    profilesResult.data?.forEach(p => { nameMap[p.id] = { name: p.name || p.email || p.id.slice(0,8), email: p.email }; });
+    const walletsMap = {};
+    walletsResult.data?.forEach(w => {
+      walletsMap[w.user_id] = w;
+    });
     const rolesMap = {};
     rolesResult.data?.forEach(r => {
       if (!rolesMap[r.user_id]) rolesMap[r.user_id] = [];
       rolesMap[r.user_id].push(r.role);
     });
-    const rows = (walletsResult.data || []).map(w => ({
-      uid:     w.user_id,
-      name:    nameMap[w.user_id]?.name  || w.user_id.slice(0, 8),
-      email:   nameMap[w.user_id]?.email || '',
-      roles:   rolesMap[w.user_id]       || ['customer'],
-      balance: w.balance || 0,
-      history: (w.history || []).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)),
-    }));
+    const profiles = profilesResult.data || [];
+    const rows = profiles.map(p => {
+      const w = walletsMap[p.id] || {};
+      return {
+        uid:     p.id,
+        name:    p.name || p.email || p.id.slice(0, 8),
+        email:   p.email || '',
+        roles:   rolesMap[p.id] || ['customer'],
+        balance: w.balance || 0,
+        history: ((w.history || [])).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)),
+      };
+    });
+    // Include any wallet entries not present in profiles table if applicable
+    walletsResult.data?.forEach(w => {
+      if (!profiles.some(p => p.id === w.user_id)) {
+        rows.push({
+          uid:     w.user_id,
+          name:    w.user_id.slice(0, 8),
+          email:   '',
+          roles:   rolesMap[w.user_id] || ['customer'],
+          balance: w.balance || 0,
+          history: ((w.history || [])).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)),
+        });
+      }
+    });
     rows.sort((a, b) => b.balance - a.balance);
     setWalletRows(rows);
     setWalletOverviewLoading(false);
