@@ -50,6 +50,8 @@ jobs:
         run: supabase db reset
       - name: Verify database security and financial invariants
         run: supabase test db supabase/tests/038_immutable_wallet_ledger_verification.sql
+      - name: Verify auth account initialization invariants
+        run: supabase test db supabase/tests/040_auth_profile_initialization_verification.sql
 
   browser-smoke:
     runs-on: ubuntu-latest
