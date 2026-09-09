@@ -714,10 +714,24 @@ export default function AdminView() {
                 const ride    = orders.filter(o => o.type === 'ride'    && doneStatus.includes(o.status));
                 const service = orders.filter(o => o.type === 'service' && doneStatus.includes(o.status));
 
-                const foodGP    = food.reduce((s, o) => s + (o.adminGP || 0), 0);
-                const parcelGP  = parcel.reduce((s, o) => s + (o.adminGP || 0), 0);
-                const rideGP    = ride.reduce((s, o) => s + (o.adminGP || 0), 0);
-                const serviceGP = service.reduce((s, o) => s + (o.adminGP || 0), 0);
+                const getAdminGP = (o) => {
+                  if (typeof o.adminGP === 'number') return o.adminGP;
+                  if (typeof o.settlement?.gpAmount === 'number') return o.settlement.gpAmount;
+                  const rates = {
+                    food: (appConfig?.gpFood ?? 30) / 100,
+                    parcel: (appConfig?.gpDelivery ?? 15) / 100,
+                    ride: (appConfig?.gpRide ?? 15) / 100,
+                    service: (appConfig?.gpService ?? 15) / 100,
+                  };
+                  const rate = rates[o.type] ?? 0.15;
+                  const base = o.type === 'food' ? (o.foodTotal || 0) : (o.grandTotal || o.deliveryFee || 0);
+                  return base * rate;
+                };
+
+                const foodGP    = food.reduce((s, o) => s + getAdminGP(o), 0);
+                const parcelGP  = parcel.reduce((s, o) => s + getAdminGP(o), 0);
+                const rideGP    = ride.reduce((s, o) => s + getAdminGP(o), 0);
+                const serviceGP = service.reduce((s, o) => s + getAdminGP(o), 0);
                 return (
                   <>
                     <div className="bg-orange-50 p-4 rounded-xl text-center"><p className="text-xs text-orange-600 font-medium">GP จากอาหาร</p><p className="text-xl font-bold text-orange-700">฿{foodGP.toLocaleString()}</p><p className="text-xs text-gray-400">{food.length} ออเดอร์</p></div>

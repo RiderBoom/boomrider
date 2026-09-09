@@ -2,6 +2,7 @@ import { parseDateMs } from '../utils.js';
 
 export const getRiderJobIncome = (job, appConfig) => {
   if (typeof job.riderIncome === 'number') return job.riderIncome;
+  if (typeof job.settlement?.riderIncome === 'number') return job.settlement.riderIncome;
 
   const gpByType = {
     parcel: appConfig.gpDelivery ?? 15,

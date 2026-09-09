@@ -642,9 +642,10 @@ export default function RiderView() {
 
             {/* ⚠️ คำเตือนกระเป๋าติดลบ (cash orders) */}
             {job.paymentMethod === 'cash' && (() => {
-              const netChange = job.type === 'parcel'
-                ? (job.riderIncome || 0)
-                : (job.riderIncome || 0) - (job.merchantIncome || 0) - (job.adminGP || 0);
+              const gpRate = (job.type === 'parcel' ? (appConfig.gpDelivery ?? 15) : job.type === 'ride' ? (appConfig.gpRide ?? 15) : job.type === 'service' ? (appConfig.gpService ?? 15) : (appConfig.gpFood ?? 30)) / 100;
+              const adminGP = typeof job.adminGP === 'number' ? job.adminGP : typeof job.settlement?.gpAmount === 'number' ? job.settlement.gpAmount : ((job.type === 'food' ? (job.foodTotal || 0) : (job.grandTotal || job.deliveryFee || 0)) * gpRate);
+              const foodTotal = job.foodTotal || (job.type === 'food' ? ((job.merchantIncome || 0) + adminGP) : 0);
+              const netChange = job.type === 'food' ? -foodTotal : -adminGP;
               if (netChange < 0 && (userWallet ?? 0) + netChange < 0) {
                 const shortfall = Math.ceil(Math.abs((userWallet ?? 0) + netChange));
                 return (
