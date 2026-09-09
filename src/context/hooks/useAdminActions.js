@@ -39,10 +39,15 @@ export function useAdminActions(deps) {
       notifySystem('Admin ✅', `อนุมัติ${actionLabel} ฿${amt.toLocaleString()} ให้ ${req.user}`, 'success');
 
     } else if (req.type === 'merchant_reg') {
+      // Grant merchant role first
+      const roleOk = await grantRole(req.userId, 'merchant');
+      if (!roleOk) {
+        return; // grantRole handles notification and error rollback
+      }
+
       // Guard: don't create a duplicate restaurant if one already exists for this user
       const existingShop = restaurants.find(r => r.ownerId === req.userId);
       if (existingShop) {
-        grantRole(req.userId, 'merchant');
         notifySystem('Admin', 'อนุมัติร้านค้าเรียบร้อย (พบร้านในระบบแล้ว)', 'success');
       } else {
         const newId = `rest_${Date.now()}`;
@@ -59,17 +64,28 @@ export function useAdminActions(deps) {
           status: 'open',
           location: req.data.location || USER_LOCATION,
         };
-        setRestaurants(prev => [newRest, ...prev]);
-        grantRole(req.userId, 'merchant');
-        setMenuItems(prev => ({ ...prev, [newId]: [] }));
-        await Promise.all([
+
+        const [{ error: restErr }, { error: menuErr }] = await Promise.all([
           supabase.from('restaurants').insert({ id: newId, owner_id: req.userId, data: newRest }),
           supabase.from('menu_items').insert({ restaurant_id: newId, items: [] }),
         ]);
+
+        if (restErr || menuErr) {
+          console.error('Merchant registration approval DB insert error:', restErr || menuErr);
+          return notifySystem('ผิดพลาด', restErr?.message || menuErr?.message || 'ไม่สามารถสร้างข้อมูลร้านค้าได้', 'error');
+        }
+
+        setRestaurants(prev => [newRest, ...prev]);
+        setMenuItems(prev => ({ ...prev, [newId]: [] }));
         notifySystem('Admin', 'อนุมัติร้านค้าเรียบร้อย', 'success');
       }
 
     } else if (req.type === 'rider_reg') {
+      const roleOk = await grantRole(req.userId, 'rider');
+      if (!roleOk) {
+        return;
+      }
+
       const newId = `rider_${Date.now()}`;
       const profileImageUrl = req.data.profileImage?.startsWith('http') ? req.data.profileImage : null;
       const newRider = {
@@ -83,9 +99,14 @@ export function useAdminActions(deps) {
         balance: 0,
         location: USER_LOCATION,
       };
+
+      const { error: riderErr } = await supabase.from('riders').insert({ id: newId, user_id: req.userId, data: newRider });
+      if (riderErr) {
+        console.error('Rider registration approval DB insert error:', riderErr);
+        return notifySystem('ผิดพลาด', riderErr.message || 'ไม่สามารถสร้างข้อมูลไรเดอร์ได้', 'error');
+      }
+
       setRiders(prev => [newRider, ...prev]);
-      grantRole(req.userId, 'rider');
-      await supabase.from('riders').insert({ id: newId, user_id: req.userId, data: newRider });
       notifySystem('Admin', 'อนุมัติไรเดอร์เรียบร้อย', 'success');
 
     } else if (req.type === 'cancel_order') {
