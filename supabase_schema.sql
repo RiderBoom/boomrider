@@ -346,6 +346,12 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'INVALID_COORDINATES_OUT_OF_BOUNDS');
   END IF;
 
+  -- Reject default Bangkok fallback coordinates for quote creation
+  IF (ABS(v_plat - 13.7563) < 0.0001 AND ABS(v_plng - 100.5018) < 0.0001) OR
+     (ABS(v_dlat - 13.7563) < 0.0001 AND ABS(v_dlng - 100.5018) < 0.0001) THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'DEFAULT_FALLBACK_COORDINATES_REJECTED');
+  END IF;
+
   -- 5. Calculate Distance Server-Side (Haversine calculation)
   v_dist_meters := public.calculate_haversine_distance(v_plat, v_plng, v_dlat, v_dlng) * 1000.0;
   v_dist_source := 'haversine_estimate';

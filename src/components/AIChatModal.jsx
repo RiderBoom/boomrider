@@ -3,7 +3,7 @@ import { generateAiReply } from '../lib/aiGateway.js';
 import ReactDOM from 'react-dom';
 import { X, Bot, Send, Loader2, Sparkles, User, ShoppingBag, Star, Store, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { generateId, formatDateTime, playOrderNotificationSound, getDistanceFromLatLonInKm } from '../utils';
+import { generateId, formatDateTime, playOrderNotificationSound, getDistanceFromLatLonInKm, isValidCoordinate } from '../utils';
 
 const STATUS_MAP = {
   pending: 'รอร้านค้ารับออเดอร์',
@@ -248,14 +248,14 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       filteredShops = allShops;
     }
 
-    const custLoc = userAddresses?.[0]?.location || userProfile?.location || { lat: 13.7563, lng: 100.5018 };
+    const custLoc = userAddresses?.[0]?.location || userProfile?.location;
     const baseFee = appConfig?.baseFee || 30;
     const perKmFee = appConfig?.perKmFee || 10;
 
     const shopsWithDetails = filteredShops.map((shop) => {
-      const shopLoc = shop.location || { lat: 13.7563, lng: 100.5018 };
+      const shopLoc = shop.location;
       let dist = 1;
-      if (custLoc?.lat && custLoc?.lng && shopLoc?.lat && shopLoc?.lng) {
+      if (isValidCoordinate(custLoc) && isValidCoordinate(shopLoc)) {
         dist = getDistanceFromLatLonInKm(custLoc.lat, custLoc.lng, shopLoc.lat, shopLoc.lng);
         if (dist <= 0) dist = 1;
       }
@@ -316,10 +316,10 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
 
     const shopMenuItems = (menuItems[matchedShop.id] || []).filter((m) => m.available !== false);
 
-    const custLoc = userAddresses?.[0]?.location || userProfile?.location || { lat: 13.7563, lng: 100.5018 };
-    const shopLoc = matchedShop.location || { lat: 13.7563, lng: 100.5018 };
+    const custLoc = userAddresses?.[0]?.location || userProfile?.location;
+    const shopLoc = matchedShop.location;
     let distance = 1;
-    if (custLoc?.lat && custLoc?.lng && shopLoc?.lat && shopLoc?.lng) {
+    if (isValidCoordinate(custLoc) && isValidCoordinate(shopLoc)) {
       distance = getDistanceFromLatLonInKm(custLoc.lat, custLoc.lng, shopLoc.lat, shopLoc.lng);
       if (distance <= 0) distance = 1;
     }
@@ -408,14 +408,16 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       return `ขออภัยครับ ไม่พบเมนูที่คุณระบุในร้าน "${matchedShop.name}"\n\nเมนูแนะนำของร้าน ${matchedShop.name}:\n${availableMenuNames}`;
     }
 
-    // Calculate real distance using coordinates
-    const custLoc = userAddresses?.[0]?.location || userProfile?.location || { lat: 13.7563, lng: 100.5018 };
-    const shopLoc = matchedShop.location || { lat: 13.7563, lng: 100.5018 };
-    let distance = 1;
-    if (custLoc?.lat && custLoc?.lng && shopLoc?.lat && shopLoc?.lng) {
-      distance = getDistanceFromLatLonInKm(custLoc.lat, custLoc.lng, shopLoc.lat, shopLoc.lng);
-      if (distance <= 0) distance = 1;
+    // Validate coordinates
+    const custLoc = userAddresses?.[0]?.location || userProfile?.location;
+    const shopLoc = matchedShop.location;
+
+    if (!isValidCoordinate(custLoc) || !isValidCoordinate(shopLoc)) {
+      return `ขออภัยครับ ไม่สามารถสร้างออเดอร์ได้เนื่องจากยังไม่มีพิกัดจัดส่งที่แน่นอน กรุณาเลือกเปิดหน้าแผนที่และปักหมุดตำแหน่งจัดส่งจริงก่อนสั่งซื้อครับ 📍`;
     }
+
+    let distance = getDistanceFromLatLonInKm(custLoc.lat, custLoc.lng, shopLoc.lat, shopLoc.lng);
+    if (distance <= 0) distance = 1;
 
     const foodTotal = orderedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
     const baseFee = appConfig?.baseFee || 30;

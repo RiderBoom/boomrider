@@ -6,6 +6,8 @@ import {
   isSameDay,
   parseDateMs,
   r2,
+  isValidCoordinate,
+  isDefaultFallbackLocation,
 } from '../src/utils.js';
 
 test('r2 rounds wallet values to two decimal places', () => {
@@ -31,4 +33,19 @@ test('isSameDay compares values in the local timezone', () => {
 test('distance calculation returns stable kilometer estimates', () => {
   assert.equal(getDistanceFromLatLonInKm(13.7563, 100.5018, 13.7563, 100.5018), 0);
   assert.equal(getDistanceFromLatLonInKm(13.7563, 100.5018, 13.7367, 100.5231), 3.17);
+});
+
+test('isValidCoordinate validates bounds, lat/lng = 0, and default Bangkok fallback', () => {
+  assert.equal(isValidCoordinate({ lat: 13.7367, lng: 100.5231 }), true);
+  assert.equal(isValidCoordinate({ lat: 0, lng: 0 }), true); // 0 is a valid coordinate!
+  assert.equal(isValidCoordinate({ lat: -90, lng: 180 }), true);
+  assert.equal(isValidCoordinate({ lat: 91, lng: 100 }), false);
+  assert.equal(isValidCoordinate({ lat: 13, lng: 181 }), false);
+  assert.equal(isValidCoordinate(null), false);
+  assert.equal(isValidCoordinate({ lat: 'abc', lng: 'def' }), false);
+
+  // Default Bangkok fallback location:
+  assert.equal(isDefaultFallbackLocation({ lat: 13.7563, lng: 100.5018 }), true);
+  assert.equal(isValidCoordinate({ lat: 13.7563, lng: 100.5018 }), false); // Rejected for order creation!
+  assert.equal(isValidCoordinate({ lat: 13.7563, lng: 100.5018 }, { allowDefaultFallback: true }), true);
 });
