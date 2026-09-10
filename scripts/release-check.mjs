@@ -14,6 +14,9 @@ const requiredFiles = [
   'supabase/functions/ai-chat/index.ts',
   'docs/FCM_SETUP.md',
   'docs/PRODUCTION_TEST_CHECKLIST.md',
+  'docs/PRODUCTION_RUNBOOK.md',
+  'scripts/production-health-check.sql',
+  'tests/schema-and-rpc-audit.test.js',
 ];
 
 for (const file of requiredFiles) {
