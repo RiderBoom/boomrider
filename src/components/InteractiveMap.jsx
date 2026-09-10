@@ -5,6 +5,9 @@ import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
 const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
+const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
+const geocodeCache = new Map(); // lat,lng -> address string cache
+
 function makeIcon(L, color, emoji) {
   return L.divIcon({
     className: '',
@@ -33,7 +36,23 @@ function ensureRiderTrackingStyles() {
   _riderStylesInjected = true;
 }
 
-function makeRiderTrackingIcon(L) {
+function calculateBearing(startLat, startLng, destLat, destLng) {
+  const startLatRad = (startLat * Math.PI) / 180;
+  const startLngRad = (startLng * Math.PI) / 180;
+  const destLatRad = (destLat * Math.PI) / 180;
+  const destLngRad = (destLng * Math.PI) / 180;
+
+  const dLng = destLngRad - startLngRad;
+  const y = Math.sin(dLng) * Math.cos(destLatRad);
+  const x =
+    Math.cos(startLatRad) * Math.sin(destLatRad) -
+    Math.sin(startLatRad) * Math.cos(destLatRad) * Math.cos(dLng);
+
+  let brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return (brng + 360) % 360;
+}
+
+function makeRiderTrackingIcon(L, rotationAngle = 0) {
   ensureRiderTrackingStyles();
   return L.divIcon({
     className: '',
@@ -50,6 +69,8 @@ function makeRiderTrackingIcon(L) {
           box-shadow:0 3px 12px rgba(59,130,246,.6);
           display:flex;align-items:center;justify-content:center;
           font-size:18px;line-height:1;
+          transform: rotate(${rotationAngle}deg);
+          transition: transform 0.3s ease;
           animation:br-bob 1.2s ease-in-out infinite;
         ">🛵</div>
       </div>`,
@@ -78,6 +99,7 @@ export default function InteractiveMap({
   const markersRef    = useRef({});     // { pin, secondary, user, shop, rider }
   const polylineRef   = useRef(null);   // OSRM route polyline
   const leafletRef    = useRef(null);
+  const riderAnimRef  = useRef({ animId: null, prevPos: null, currentPos: null, bearing: 0 });
 
   // Search state (Nominatim)
   const [searchQuery, setSearchQuery] = useState('');
@@ -96,8 +118,34 @@ export default function InteractiveMap({
 
   const [locating, setLocating] = useState(false);
   const [pinned,   setPinned]   = useState(null);
+  const [routeMeta, setRouteMeta] = useState(null); // { distanceKm: number, durationMin: number }
+
+  const [searchHistory, setSearchHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const saveSearchHistoryItem = (item) => {
+    try {
+      const updated = [
+        item,
+        ...searchHistory.filter((h) => h.place_id !== item.place_id && h.display_name !== item.display_name),
+      ].slice(0, 5);
+      setSearchHistory(updated);
+      localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
+    } catch { void 0; }
+  };
 
   const performReverseGeocode = async (lat, lng) => {
+    const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    if (geocodeCache.has(cacheKey)) {
+      return geocodeCache.get(cacheKey);
+    }
+
     if (reverseGeocodeAbortControllerRef.current) {
       reverseGeocodeAbortControllerRef.current.abort();
     }
@@ -114,6 +162,7 @@ export default function InteractiveMap({
       if (!res.ok) throw new Error('Geocode failed');
       const data = await res.json();
       const addr = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      geocodeCache.set(cacheKey, addr);
       return addr;
     } catch {
       return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
@@ -288,7 +337,15 @@ export default function InteractiveMap({
       })
       .then((data) => {
         if (!data.routes || !data.routes[0]) throw new Error('No OSRM route');
-        const routeCoords = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        const route = data.routes[0];
+        const routeCoords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+        if (route.distance && route.duration) {
+          setRouteMeta({
+            distanceKm: (route.distance / 1000).toFixed(1),
+            durationMin: Math.ceil(route.duration / 60),
+          });
+        }
 
         if (polylineRef.current) {
           polylineRef.current.setLatLngs(routeCoords);
@@ -304,6 +361,7 @@ export default function InteractiveMap({
         }
       })
       .catch(() => {
+        setRouteMeta(null);
         // Fallback: draw straight dashed line if routing fails or aborts
         const fallbackCoords = waypoints.map(w => [w.lat, w.lng]);
         if (polylineRef.current) {
@@ -324,28 +382,79 @@ export default function InteractiveMap({
     };
   }, [mode, showRoute, userLocation?.lat, userLocation?.lng, shopLocation?.lat, shopLocation?.lng, riderLocation?.lat, riderLocation?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── อัปเดต rider marker แบบ real-time (view mode) ────────────────────────
+  // ── อัปเดต rider marker แบบ real-time (view mode) พร้อม Smooth Interpolation & Bearing ──
   useEffect(() => {
     if (!mapRef.current || !leafletRef.current || mode !== 'view') return;
     const L = leafletRef.current;
     if (riderLocation) {
-      const icon = trackingMode
-        ? makeRiderTrackingIcon(L)
-        : makeIcon(L, '#3b82f6', '🛵');
-      if (markersRef.current.rider) {
-        markersRef.current.rider.setLatLng([riderLocation.lat, riderLocation.lng]);
-        if (trackingMode) markersRef.current.rider.setIcon(icon);
-      } else {
-        markersRef.current.rider = L.marker([riderLocation.lat, riderLocation.lng], { icon })
+      const targetLat = riderLocation.lat;
+      const targetLng = riderLocation.lng;
+
+      if (!markersRef.current.rider) {
+        const icon = trackingMode
+          ? makeRiderTrackingIcon(L, 0)
+          : makeIcon(L, '#3b82f6', '🛵');
+        markersRef.current.rider = L.marker([targetLat, targetLng], { icon })
           .addTo(mapRef.current).bindPopup('ไรเดอร์');
+        riderAnimRef.current.currentPos = { lat: targetLat, lng: targetLng };
+      } else {
+        const startPos = riderAnimRef.current.currentPos || { lat: targetLat, lng: targetLng };
+        const dLat = targetLat - startPos.lat;
+        const dLng = targetLng - startPos.lng;
+
+        if (Math.abs(dLat) > 0.00001 || Math.abs(dLng) > 0.00001) {
+          const newBearing = calculateBearing(startPos.lat, startPos.lng, targetLat, targetLng);
+          riderAnimRef.current.bearing = newBearing;
+
+          if (riderAnimRef.current.animId) {
+            cancelAnimationFrame(riderAnimRef.current.animId);
+          }
+
+          const duration = 800;
+          const startTime = performance.now();
+
+          if (trackingMode && markersRef.current.rider) {
+            markersRef.current.rider.setIcon(makeRiderTrackingIcon(L, newBearing));
+          }
+
+          const animateStep = (now) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Easing function (easeOutQuad)
+            const ease = 1 - (1 - progress) * (1 - progress);
+
+            const curLat = startPos.lat + dLat * ease;
+            const curLng = startPos.lng + dLng * ease;
+
+            if (markersRef.current.rider) {
+              markersRef.current.rider.setLatLng([curLat, curLng]);
+            }
+            riderAnimRef.current.currentPos = { lat: curLat, lng: curLng };
+
+            if (progress < 1) {
+              riderAnimRef.current.animId = requestAnimationFrame(animateStep);
+            }
+          };
+
+          riderAnimRef.current.animId = requestAnimationFrame(animateStep);
+        } else {
+          markersRef.current.rider.setLatLng([targetLat, targetLng]);
+        }
       }
+
       if (autoFollow) {
-        mapRef.current.panTo([riderLocation.lat, riderLocation.lng], { animate: true, duration: 0.8 });
+        mapRef.current.panTo([targetLat, targetLng], { animate: true, duration: 0.8 });
       }
     }
     if (centerOverride) {
       mapRef.current.panTo([centerOverride.lat, centerOverride.lng], { animate: true });
     }
+
+    return () => {
+      if (riderAnimRef.current.animId) {
+        cancelAnimationFrame(riderAnimRef.current.animId);
+      }
+    };
   }, [riderLocation, centerOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── pan เมื่อ centerOverride เปลี่ยน (select mode) ───────────────────────
@@ -486,6 +595,7 @@ export default function InteractiveMap({
     const address = result.display_name.split(',')[0] || result.display_name;
     const fullLoc = { ...loc, address };
 
+    saveSearchHistoryItem(result);
     setPinned(loc);
     onLocationSelectRef.current?.(fullLoc, address);
     setShowSearchResults(false);
@@ -582,6 +692,44 @@ export default function InteractiveMap({
       {/* Leaflet container */}
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
+      {/* View Mode ETA & Distance Badge */}
+      {mode === 'view' && routeMeta && (
+        <div className="absolute top-2 left-2 z-[1000] bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-xl shadow-md border border-gray-100 flex items-center gap-2 text-xs font-semibold text-gray-800">
+          <div className="flex items-center gap-1 text-blue-600">
+            <Navigation size={13} />
+            <span>{routeMeta.distanceKm} กม.</span>
+          </div>
+          <span className="text-gray-300">|</span>
+          <div className="flex items-center gap-1 text-emerald-600">
+            <span>⏱️ ประมาณ {routeMeta.durationMin} นาที</span>
+          </div>
+        </div>
+      )}
+
+      {/* View Mode Recenter Button */}
+      {mode === 'view' && (
+        <button
+          type="button"
+          onClick={() => {
+            if (!mapRef.current) return;
+            const latlngs = [];
+            if (userLocation) latlngs.push([userLocation.lat, userLocation.lng]);
+            if (shopLocation) latlngs.push([shopLocation.lat, shopLocation.lng]);
+            if (riderLocation) latlngs.push([riderLocation.lat, riderLocation.lng]);
+
+            if (latlngs.length > 1) {
+              mapRef.current.fitBounds(latlngs, { padding: [40, 40], maxZoom: 16 });
+            } else if (latlngs.length === 1) {
+              mapRef.current.setView(latlngs[0], 16, { animate: true });
+            }
+          }}
+          className="absolute bottom-3 right-3 z-[1000] bg-white/95 backdrop-blur-sm p-2 rounded-xl shadow-md border border-gray-200 text-gray-700 hover:text-green-600 active:scale-95 transition-all"
+          title="จัดตำแหน่งมุมมองแผนที่ใหม่"
+        >
+          <Crosshair size={18} />
+        </button>
+      )}
+
       {mode === 'select' && (
         <>
           {/* ช่องค้นหาที่อยู่ภาษาไทย (Nominatim) */}
@@ -592,6 +740,11 @@ export default function InteractiveMap({
                 type="text"
                 value={searchQuery}
                 onChange={handleSearchChange}
+                onFocus={() => {
+                  if (!searchQuery.trim() && searchHistory.length > 0) {
+                    setShowSearchResults(true);
+                  }
+                }}
                 placeholder="ค้นหาชื่อสถานที่, ถนน, ซอย..."
                 className="w-full py-2 px-2 text-xs text-gray-800 bg-transparent border-none focus:outline-none"
               />
@@ -612,12 +765,17 @@ export default function InteractiveMap({
               ) : null}
             </div>
 
-            {/* ผลการค้นหา Dropdown */}
-            {showSearchResults && searchResults.length > 0 && (
+            {/* ผลการค้นหา Dropdown + ประวัติการค้นหาร่าสุด */}
+            {showSearchResults && (
               <div className="mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-48 overflow-y-auto divide-y divide-gray-100">
-                {searchResults.map((res) => (
+                {!searchQuery.trim() && searchHistory.length > 0 && (
+                  <div className="px-3 py-1 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    🕒 ประวัติการค้นหาล่าสุด
+                  </div>
+                )}
+                {(!searchQuery.trim() ? searchHistory : searchResults).map((res) => (
                   <button
-                    key={res.place_id}
+                    key={res.place_id || res.display_name}
                     type="button"
                     onClick={() => handleSelectSearchResult(res)}
                     className="w-full text-left px-3 py-2 hover:bg-green-50 transition-colors text-xs text-gray-700 flex flex-col"
