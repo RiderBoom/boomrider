@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { generateAiReply } from '../lib/aiGateway.js';
 import ReactDOM from 'react-dom';
-import { X, Bot, Send, Loader2, Sparkles, User, ShoppingBag, Star, Store, Plus } from 'lucide-react';
+import { X, Bot, Send, Loader2, Sparkles, User, ShoppingBag, Star, Store, Plus, Activity, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { generateId, formatDateTime, playOrderNotificationSound, getDistanceFromLatLonInKm, isValidCoordinate } from '../utils';
 import { USER_LOCATION } from '../constants';
@@ -115,6 +115,14 @@ const GEMINI_TOOLS = [
           },
         },
       },
+      {
+        name: 'get_system_health_report',
+        description: 'ตรวจสอบและวิเคราะห์สถานะความสมบูรณ์ของระบบ BoomRider (สำหรับ Admin เท่านั้น)',
+        parameters: {
+          type: 'OBJECT',
+          properties: {},
+        },
+      },
     ],
   },
 ];
@@ -169,7 +177,10 @@ export default function AIChatModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
+  const isAdminUser = activeRole === 'admin' || userProfile?.roles?.includes('admin') || currentUser?.roles?.includes('admin');
+
   const quickPrompts = [
+    ...(isAdminUser ? ['🛡️ วิเคราะห์ระบบ'] : []),
     '📦 เช็คสถานะออเดอร์',
     '💳 ยอดเงิน Wallet',
     '🚚 เรียกส่งพัสดุ',
@@ -212,8 +223,11 @@ export default function AIChatModal({ isOpen, onClose }) {
 [ข้อมูลผู้ใช้ปัจจุบัน]
 - ชื่อ: ${userProfile?.name || currentUser?.name || 'ลูกค้า'}
 - เบอร์โทร: ${userProfile?.phone || 'ไม่ระบุ'}
-- บทบาท: ${activeRole || 'customer'}
+- บทบาทปัจจุบัน: ${activeRole || 'customer'} ${isAdminUser ? '(สิทธิ์ผู้ดูแลระบบ Admin)' : ''}
 - ยอดเงินคงเหลือใน Wallet: ฿${balanceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+${isAdminUser ? `[สิทธิ์พิเศษ Admin]
+- คุณได้รับสิทธิ์ในการสั่งการและเรียกใช้เครื่องมือ "get_system_health_report" เพื่อตรวจสอบวิเคราะห์ข้อผิดพลาดและสถานะความสมบูรณ์ของระบบแบบ Real-time ได้เมื่อ Admin ร้องขอ` : ''}
 
 [สถานะออเดอร์ปัจจุบันของคุณ (${activeOrders.length} รายการ)]
 ${activeOrderSummary || 'ไม่มีออเดอร์ที่กำลังดำเนินการในขณะนี้'}
@@ -577,6 +591,62 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     return `ขณะนี้ไม่มีออเดอร์ที่กำลังดำเนินการครับ\n\nออเดอร์ล่าสุดของคุณคือ #${latest.id.slice(-6)} (${latest.type === 'parcel' ? 'ส่งพัสดุ' : latest.restaurantName || 'อาหาร'})\nสถานะ: ${latestStatus}\nเวลาสั่ง: ${latest.createdAt || 'ไม่ระบุ'}\n\nคุณสามารถสั่งอาหารหรือเรียกส่งพัสดุรายการใหม่ได้เลยครับ! 🍔📦`;
   };
 
+  const executeGetSystemHealthReport = async () => {
+    if (!isAdminUser) {
+      return {
+        text: '🔒 ขออภัยครับ ฟังก์ชันตรวจสอบและวิเคราะห์ระบบอนุญาตให้เฉพาะผู้ดูแลระบบ (Admin) ใช้งานเท่านั้นครับ',
+      };
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('admin_get_system_health');
+
+      if (error || !data) {
+        console.error('admin_get_system_health RPC error:', error);
+        return {
+          text: `⚠️ ไม่สามารถดึงรายงานสถานะระบบได้: ${error?.message || 'ข้อผิดพลาดระบบ'}`,
+        };
+      }
+
+      const isHealthy = data.system_status === 'healthy';
+      const o = data.order_health || {};
+      const w = data.wallet_health || {};
+      const v = data.variance_health || {};
+      const e = data.entity_counts || {};
+
+      let statusMsg = isHealthy
+        ? '🟢 **สถานะระบบโดยรวม: ปกติและสมบูรณ์ดี (Healthy)**\nไม่พบข้อผิดพลาดหรือความผิดปกติของยอดเงินและออเดอร์ในระบบครับ!'
+        : '⚠️ **สถานะระบบโดยรวม: ตรวจพบข้อผิดพลาด/ความผิดปกติ (Action Required)**';
+
+      const detailsList = [
+        `📊 **สรุปภาพรวมออเดอร์**:`,
+        `  • ออเดอร์ทั้งหมด: ${o.total_orders || 0} รายการ (เสร็จสิ้น: ${o.completed_orders || 0}, ยกเลิก: ${o.cancelled_orders || 0})`,
+        `  • ออเดอร์เสร็จสิ้นที่ค้างเคลียร์เงิน: ${o.completed_unsettled_count > 0 ? `⚠️ ${o.completed_unsettled_count} รายการ` : '0 รายการ 🟢'}`,
+        `  • ออเดอร์ยกเลิกที่ยังไม่ได้คืนเงิน: ${o.cancelled_unrefunded_count > 0 ? `⚠️ ${o.cancelled_unrefunded_count} รายการ` : '0 รายการ 🟢'}`,
+        ``,
+        `💳 **สรุปบัญชี Wallet & บัญชีแยกประเภท (Ledger)**:`,
+        `  • กระเป๋าเงินทั้งหมด: ${w.total_wallets || 0} บัญชี (ยอดรวมคงเหลือ: ฿${(w.total_wallet_balance_sum || 0).toLocaleString('th-TH')})`,
+        `  • บัญชีที่มียอดติดลบ: ${w.negative_wallets_count > 0 ? `⚠️ ${w.negative_wallets_count} บัญชี` : '0 บัญชี 🟢'}`,
+        `  • ผลต่าง Wallet vs Ledger (Variance): ${v.wallet_ledger_variance_count > 0 ? `⚠️ พบผลต่างไม่ตรงกัน ${v.wallet_ledger_variance_count} รายการ` : 'ตรงกัน 100% 🟢'}`,
+        ``,
+        `🏢 **จำนวนผู้ใช้งานและร้านค้าในระบบ**:`,
+        `  • ผู้ใช้งานทั้งหมด: ${e.total_profiles || 0} ราย (ร้านค้า: ${e.total_restaurants || 0}, ไรเดอร์: ${e.total_riders || 0})`,
+        `  • คำขออนุมัติค้างดำเนินการ: ${e.total_pending_requests || 0} รายการ`,
+      ].join('\n');
+
+      return {
+        text: `🛡️ **รายงานวิเคราะห์สถานะระบบ BoomRider** (สำหรับ Admin)\n\n${statusMsg}\n\n${detailsList}`,
+        cardData: {
+          type: 'system_health',
+          healthData: data,
+        },
+      };
+    } catch (err) {
+      console.error('executeGetSystemHealthReport exception:', err);
+      return { text: 'เกิดข้อผิดพลาดในการตรวจสอบระบบ กรุณาลองใหม่อีกครั้งครับ' };
+    }
+  };
+
   const executeTool = async (functionName, args) => {
     try {
       if (functionName === 'list_all_restaurants') {
@@ -595,6 +665,8 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       } else if (functionName === 'check_order_status') {
         const res = await executeCheckOrderStatus(args);
         return typeof res === 'string' ? { text: res } : res;
+      } else if (functionName === 'get_system_health_report') {
+        return await executeGetSystemHealthReport();
       }
       return { text: 'ไม่พบฟังก์ชันที่ระบุครับ' };
     } catch (err) {
@@ -658,7 +730,20 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       const isPlaceParcelIntent =
         text.includes('สั่งส่งพัสดุ') || text.includes('เรียกไรเดอร์') || text.includes('ส่งพัสดุจาก');
 
-      if (isListRestaurantsIntent) {
+      const isSystemHealthIntent =
+        text.includes('วิเคราะห์ระบบ') ||
+        text.includes('ตรวจสอบระบบ') ||
+        text.includes('เช็คระบบ') ||
+        text.includes('สถานะระบบ') ||
+        text.includes('ข้อผิดพลาดระบบ') ||
+        text.includes('health check') ||
+        text.includes('system health');
+
+      if (isSystemHealthIntent) {
+        const res = await executeGetSystemHealthReport();
+        replyText = res.text;
+        replyCardData = res.cardData || null;
+      } else if (isListRestaurantsIntent) {
         const res = await executeListAllRestaurants({ keyword: text });
         replyText = res.text;
         replyCardData = res.cardData || null;
@@ -786,6 +871,65 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
                   }`}
                 >
                   {msg.text}
+
+                  {/* Render System Health Card if present */}
+                  {msg.cardData && msg.cardData.type === 'system_health' && (
+                    <div className="mt-2.5 pt-2.5 border-t border-purple-100 space-y-2">
+                      <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-md border border-slate-700 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-purple-300">
+                            <Activity size={16} className="text-purple-400 animate-pulse" />
+                            <span>BoomRider System Health</span>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                              msg.cardData.healthData?.system_status === 'healthy'
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            }`}
+                          >
+                            {msg.cardData.healthData?.system_status === 'healthy' ? 'Healthy 🟢' : 'Warning ⚠️'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
+                            <span className="text-slate-400 block text-[9px]">ออเดอร์ค้างเคลียร์</span>
+                            <span className={`font-mono text-xs font-bold ${msg.cardData.healthData?.order_health?.completed_unsettled_count > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                              {msg.cardData.healthData?.order_health?.completed_unsettled_count || 0} รายการ
+                            </span>
+                          </div>
+                          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
+                            <span className="text-slate-400 block text-[9px]">บัญชีเงินติดลบ</span>
+                            <span className={`font-mono text-xs font-bold ${msg.cardData.healthData?.wallet_health?.negative_wallets_count > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                              {msg.cardData.healthData?.wallet_health?.negative_wallets_count || 0} บัญชี
+                            </span>
+                          </div>
+                          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
+                            <span className="text-slate-400 block text-[9px]">ผลต่าง Wallet/Ledger</span>
+                            <span className={`font-mono text-xs font-bold ${msg.cardData.healthData?.variance_health?.wallet_ledger_variance_count > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                              {msg.cardData.healthData?.variance_health?.wallet_ledger_variance_count || 0} รายการ
+                            </span>
+                          </div>
+                          <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60">
+                            <span className="text-slate-400 block text-[9px]">คำขออนุมัติค้าง</span>
+                            <span className="font-mono text-xs font-bold text-indigo-300">
+                              {msg.cardData.healthData?.entity_counts?.total_pending_requests || 0} รายการ
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-[9px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-800">
+                          <span className="flex items-center gap-1">
+                            <ShieldCheck size={12} className="text-indigo-400" /> Authorized Admin Diagnostic
+                          </span>
+                          <span className="font-mono text-[8px]">
+                            {new Date(msg.cardData.healthData?.timestamp || Date.now()).toLocaleTimeString('th-TH')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Render All Restaurants Card if present */}
                   {msg.cardData && msg.cardData.type === 'all_restaurants' && (
