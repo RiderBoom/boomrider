@@ -33,7 +33,8 @@ create table if not exists public.user_roles (
   primary key (user_id, role)
 );
 alter table public.user_roles enable row level security;
-create policy "user_roles_select_own_or_admin" on public.user_roles for select to authenticated using (user_id = (select auth.uid()) or public.is_admin((select auth.uid())));
+create policy "user_roles_select" on public.user_roles for select using (true);
+create policy "user_roles_all" on public.user_roles for all using (auth.role() = 'authenticated');
 
 CREATE OR REPLACE FUNCTION public.is_admin(p_user_id uuid DEFAULT auth.uid())
 RETURNS boolean
