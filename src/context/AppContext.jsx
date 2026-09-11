@@ -769,40 +769,60 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     if (!dataLoadedRef.current || !restaurants.length) return;
+    const uid = currentUser?.id;
+    if (!uid) return;
     debouncedUpsert('restaurants', async () => {
-      const rows = restaurants.map(r => ({ id: r.id, owner_id: r.ownerId || null, data: r }));
-      const { error } = await supabase.from('restaurants').upsert(rows);
-      if (error) console.error('Auto-save restaurants error:', error);
+      // Only upsert restaurants owned by current user or if admin
+      const rows = restaurants
+        .filter(r => isAdmin || r.ownerId === uid)
+        .map(r => ({ id: r.id, owner_id: r.ownerId || null, data: r }));
+      if (rows.length) {
+        const { error } = await supabase.from('restaurants').upsert(rows);
+        if (error) console.error('Auto-save restaurants error:', error);
+      }
     });
-  }, [restaurants]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [restaurants, currentUser?.id, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!dataLoadedRef.current) return;
+    const uid = currentUser?.id;
+    if (!uid) return;
     debouncedUpsert('menu_items', async () => {
-      const rows = Object.entries(menuItems).map(([rid, items]) => ({ restaurant_id: rid, items }));
+      // Only upsert menu items for restaurants owned by current user or if admin
+      const ownedRestIds = new Set(restaurants.filter(r => isAdmin || r.ownerId === uid).map(r => r.id));
+      const rows = Object.entries(menuItems)
+        .filter(([rid]) => ownedRestIds.has(rid))
+        .map(([rid, items]) => ({ restaurant_id: rid, items }));
       if (rows.length) {
         const { error } = await supabase.from('menu_items').upsert(rows);
         if (error) console.error('Auto-save menu_items error:', error);
       }
     });
-  }, [menuItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [menuItems, restaurants, currentUser?.id, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!dataLoadedRef.current || !riders.length) return;
+    const uid = currentUser?.id;
+    if (!uid) return;
     debouncedUpsert('riders', async () => {
-      const rows = riders.map(r => ({ id: r.id, user_id: r.userId || null, data: r }));
-      const { error } = await supabase.from('riders').upsert(rows);
-      if (error) console.error('Auto-save riders error:', error);
+      // Only upsert rider records owned by current user or if admin
+      const rows = riders
+        .filter(r => isAdmin || r.userId === uid)
+        .map(r => ({ id: r.id, user_id: r.userId || null, data: r }));
+      if (rows.length) {
+        const { error } = await supabase.from('riders').upsert(rows);
+        if (error) console.error('Auto-save riders error:', error);
+      }
     });
-  }, [riders]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [riders, currentUser?.id, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!dataLoadedRef.current) return;
+    if (!dataLoadedRef.current || !isAdmin) return;
     debouncedUpsert('app_config', async () => {
       const { error } = await supabase.from('app_config').upsert({ id: 1, data: appConfig });
       if (error) console.error('Auto-save app_config error:', error);
     }, 2000);
-  }, [appConfig]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [appConfig, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-capture GPS location on login ──────────────────────────────────
   useEffect(() => {
