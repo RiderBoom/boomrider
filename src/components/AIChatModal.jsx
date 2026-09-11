@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom';
 import { X, Bot, Send, Loader2, Sparkles, User, ShoppingBag, Star, Store, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { generateId, formatDateTime, playOrderNotificationSound, getDistanceFromLatLonInKm, isValidCoordinate } from '../utils';
+import { USER_LOCATION } from '../constants';
 
 const STATUS_MAP = {
   pending: 'รอร้านค้ารับออเดอร์',
@@ -248,7 +249,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       filteredShops = allShops;
     }
 
-    const custLoc = userAddresses?.[0]?.location || userProfile?.location;
+    const custLoc = isValidCoordinate(userProfile?.location) ? userProfile.location : (userAddresses?.[0]?.location || USER_LOCATION);
     const baseFee = appConfig?.baseFee || 30;
     const perKmFee = appConfig?.perKmFee || 10;
 
@@ -316,7 +317,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
 
     const shopMenuItems = (menuItems[matchedShop.id] || []).filter((m) => m.available !== false);
 
-    const custLoc = userAddresses?.[0]?.location || userProfile?.location;
+    const custLoc = isValidCoordinate(userProfile?.location) ? userProfile.location : (userAddresses?.[0]?.location || USER_LOCATION);
     const shopLoc = matchedShop.location;
     let distance = 1;
     if (isValidCoordinate(custLoc) && isValidCoordinate(shopLoc)) {
@@ -409,7 +410,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     }
 
     // Validate coordinates
-    const custLoc = userAddresses?.[0]?.location || userProfile?.location;
+    const custLoc = isValidCoordinate(userProfile?.location) ? userProfile.location : (userAddresses?.[0]?.location || USER_LOCATION);
     const shopLoc = matchedShop.location;
 
     if (!isValidCoordinate(custLoc) || !isValidCoordinate(shopLoc)) {
