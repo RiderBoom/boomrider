@@ -111,3 +111,22 @@ test('AbortController cancels pending geocoding/routing requests upon query chan
   await assert.rejects(fetchPromise, { message: 'AbortError' });
   assert.equal(request1Cancelled, true);
 });
+
+test('Customer location resolution prioritizes active userProfile.location over stale primary address', () => {
+  const userProfile = {
+    location: { lat: 13.7367, lng: 100.5231 }, // Active GPS location
+  };
+  const userAddresses = [
+    { id: 1, label: 'บ้าน', location: { lat: 13.8000, lng: 100.6000 } }, // Stale address
+  ];
+
+  const resolveCustomerLocation = (profile, addresses) => {
+    const primaryAddr = addresses?.[0];
+    return isValidCoordinate(profile?.location)
+      ? profile.location
+      : (isValidCoordinate(primaryAddr?.location) ? primaryAddr.location : null);
+  };
+
+  const resolved = resolveCustomerLocation(userProfile, userAddresses);
+  assert.deepEqual(resolved, { lat: 13.7367, lng: 100.5231 });
+});

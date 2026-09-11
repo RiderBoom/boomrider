@@ -836,6 +836,12 @@ export function AppProvider({ children }) {
       async (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserProfile(prev => ({ ...prev, location: loc }));
+        setUserAddresses(prev => {
+          if (!prev || prev.length === 0) {
+            return [{ id: 1, label: 'บ้าน', address: 'ที่อยู่ปัจจุบัน', location: loc }];
+          }
+          return prev.map((a, idx) => idx === 0 ? { ...a, location: loc } : a);
+        });
         supabase.from('profiles').update({ location: loc }).eq('id', uid).then(() => {});
         try {
           const r = await fetch(

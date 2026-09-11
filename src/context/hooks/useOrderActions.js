@@ -154,9 +154,9 @@ export function useOrderActions(deps) {
 
     const uid  = currentUser?.id || userProfile?.id || '';
     const primaryAddr = userAddresses?.[0];
-    const validLocation = isValidCoordinate(primaryAddr?.location)
-      ? primaryAddr.location
-      : (isValidCoordinate(userProfile?.location) ? userProfile.location : null);
+    const validLocation = isValidCoordinate(userProfile?.location)
+      ? userProfile.location
+      : (isValidCoordinate(primaryAddr?.location) ? primaryAddr.location : null);
     const addr = {
       id: primaryAddr?.id || null,
       address: primaryAddr?.address || userProfile?.address || 'ที่อยู่ลูกค้า',
