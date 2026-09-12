@@ -123,6 +123,14 @@ const GEMINI_TOOLS = [
           properties: {},
         },
       },
+      {
+        name: 'run_ai_system_caretaker',
+        description: 'สั่งการ AI Caretaker ตรวจสอบ สรุปวิเคราะห์ และสั่งซ่อมแซมข้อผิดพลาดระบบอัตโนมัติ (สำหรับ Admin เท่านั้น)',
+        parameters: {
+          type: 'OBJECT',
+          properties: {},
+        },
+      },
     ],
   },
 ];
@@ -180,7 +188,7 @@ export default function AIChatModal({ isOpen, onClose }) {
   const isAdminUser = activeRole === 'admin' || userProfile?.roles?.includes('admin') || currentUser?.roles?.includes('admin');
 
   const quickPrompts = [
-    ...(isAdminUser ? ['🛡️ วิเคราะห์ระบบ'] : []),
+    ...(isAdminUser ? ['🛡️ วิเคราะห์ระบบ', '🤖 AI Caretaker ซ่อมแซม'] : []),
     '📦 เช็คสถานะออเดอร์',
     '💳 ยอดเงิน Wallet',
     '🚚 เรียกส่งพัสดุ',
@@ -647,6 +655,40 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     }
   };
 
+  const executeRunAiSystemCaretaker = async () => {
+    if (!isAdminUser) {
+      return {
+        text: '🔒 ขออภัยครับ การสั่งการ AI Caretaker อนุญาตให้เฉพาะผู้ดูแลระบบ (Admin) ใช้งานเท่านั้นครับ',
+      };
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-system-caretaker', {
+        headers: { 'x-trigger-source': 'boombot_ai_chat' },
+      });
+
+      if (error) {
+        return {
+          text: `⚠️ ไม่สามารถสั่งการ AI Caretaker ได้: ${error.message || 'การเรียกใช้ขัดข้อง'}`,
+        };
+      }
+
+      const actions = data?.actions_taken || [];
+      const actionText = actions.length > 0 ? `\n\n🛠️ **การซ่อมแซมอัตโนมัติ (Tier 1):**\n${actions.map(a => `• ${a}`).join('\n')}` : '\n\n🟢 ไม่พบรายการที่ต้องซ่อมแซมด่วนเพิ่มเติม';
+
+      return {
+        text: `🤖 **ผลการตรวจสอบ & ซ่อมแซมอัตโนมัติโดย BoomBot AI Caretaker**\n\n🧠 **บทวิเคราะห์:**\n${data?.reasoning_thought || 'ระบบทำงานได้สมบูรณ์'}${actionText}\n\nคุณสามารถดูรายละเอียดรายงานเพิ่มเติมได้ใน Admin Panel เมนู AI Caretaker ครับ! ✨`,
+        cardData: data?.execution_result?.healthData ? {
+          type: 'system_health',
+          healthData: data.execution_result.healthData,
+        } : null,
+      };
+    } catch (err) {
+      console.error('executeRunAiSystemCaretaker exception:', err);
+      return { text: 'เกิดข้อผิดพลาดในการสั่งการ AI Caretaker กรุณาลองใหม่อีกครั้งครับ' };
+    }
+  };
+
   const executeTool = async (functionName, args) => {
     try {
       if (functionName === 'list_all_restaurants') {
@@ -667,6 +709,8 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
         return typeof res === 'string' ? { text: res } : res;
       } else if (functionName === 'get_system_health_report') {
         return await executeGetSystemHealthReport();
+      } else if (functionName === 'run_ai_system_caretaker') {
+        return await executeRunAiSystemCaretaker();
       }
       return { text: 'ไม่พบฟังก์ชันที่ระบุครับ' };
     } catch (err) {
@@ -730,16 +774,27 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       const isPlaceParcelIntent =
         text.includes('สั่งส่งพัสดุ') || text.includes('เรียกไรเดอร์') || text.includes('ส่งพัสดุจาก');
 
+      const isCaretakerRunIntent =
+        text.includes('ซ่อมแซม') ||
+        text.includes('AI Caretaker') ||
+        text.includes('ดูแลระบบ') ||
+        text.includes('ซ่อมระบบ');
+
       const isSystemHealthIntent =
-        text.includes('วิเคราะห์ระบบ') ||
+        !isCaretakerRunIntent &&
+        (text.includes('วิเคราะห์ระบบ') ||
         text.includes('ตรวจสอบระบบ') ||
         text.includes('เช็คระบบ') ||
         text.includes('สถานะระบบ') ||
         text.includes('ข้อผิดพลาดระบบ') ||
         text.includes('health check') ||
-        text.includes('system health');
+        text.includes('system health'));
 
-      if (isSystemHealthIntent) {
+      if (isCaretakerRunIntent) {
+        const res = await executeRunAiSystemCaretaker();
+        replyText = res.text;
+        replyCardData = res.cardData || null;
+      } else if (isSystemHealthIntent) {
         const res = await executeGetSystemHealthReport();
         replyText = res.text;
         replyCardData = res.cardData || null;

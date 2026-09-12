@@ -8,6 +8,7 @@ import {
   TrendingUp, ShoppingBag, Star, PlusCircle, Trash2,
   ToggleLeft, ToggleRight, Wallet, AlertCircle, List,
   DatabaseZap, ShieldOff, CheckSquare, Square, Car,
+  Bot, ShieldCheck, Activity, RefreshCw, Sparkles,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, ADMIN_EMAIL } from '../constants';
@@ -116,6 +117,13 @@ export default function AdminView() {
   const [walletExpanded, setWalletExpanded] = useState(null); // uid of expanded row
   const [walletOverviewLoading, setWalletOverviewLoading] = useState(false);
 
+  // AI Caretaker Agent State
+  const [aiLogs, setAiLogs] = useState([]);
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [aiSystemHealth, setAiSystemHealth] = useState(null);
+  const [aiCaretakerLoading, setAiCaretakerLoading] = useState(false);
+  const [aiActionLoading, setAiActionLoading] = useState({});
+
   const loadAllUsers = async () => {
     const [profilesResult, walletsResult, rolesResult] = await Promise.all([
       supabase.from('profiles').select('*'),
@@ -138,6 +146,60 @@ export default function AdminView() {
       walletBalance: walletsMap[p.id] ?? globalWallets[p.id]?.balance ?? 0,
       roles: rolesMap[p.id] || ['customer'],
     })));
+  };
+
+  const loadAiCaretakerData = async () => {
+    setAiCaretakerLoading(true);
+    try {
+      const [healthRes, logsRes, suggRes] = await Promise.all([
+        supabase.rpc('admin_get_system_health'),
+        supabase.from('ai_agent_logs').select('*').order('created_at', { ascending: false }).limit(20),
+        supabase.from('ai_suggested_actions').select('*').order('created_at', { ascending: false }).limit(20),
+      ]);
+      if (healthRes.data) setAiSystemHealth(healthRes.data);
+      if (logsRes.data) setAiLogs(logsRes.data);
+      if (suggRes.data) setAiSuggestions(suggRes.data);
+    } catch (err) {
+      console.error('[AdminView] Failed to load AI caretaker data:', err);
+    } finally {
+      setAiCaretakerLoading(false);
+    }
+  };
+
+  const handleRunAiCaretaker = async () => {
+    setAiCaretakerLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-system-caretaker', {
+        headers: { 'x-trigger-source': 'admin_manual_trigger' },
+      });
+      if (error) {
+        notifySystem('AI Caretaker Error', error.message || 'Invocation failed', 'error');
+      } else {
+        notifySystem('AI Caretaker Executed', data?.reasoning_thought || 'ระบบดูแลรักษาและซ่อมแซมเรียบร้อยแล้ว', 'success');
+      }
+      await loadAiCaretakerData();
+    } catch (err) {
+      notifySystem('AI Caretaker Error', err.message, 'error');
+    } finally {
+      setAiCaretakerLoading(false);
+    }
+  };
+
+  const handleExecuteSuggestedAction = async (actionId) => {
+    setAiActionLoading(prev => ({ ...prev, [actionId]: true }));
+    try {
+      const { data, error } = await supabase.rpc('admin_execute_ai_suggested_action', { p_action_id: actionId });
+      if (error || !data?.ok) {
+        notifySystem('Action Failed', error?.message || data?.reason || 'Execution failed', 'error');
+      } else {
+        notifySystem('Action Executed', 'ดำเนินการแก้ไขข้อผิดพลาดตามคำแนะนำเรียบร้อยแล้ว', 'success');
+      }
+      await loadAiCaretakerData();
+    } catch (err) {
+      notifySystem('Action Error', err.message, 'error');
+    } finally {
+      setAiActionLoading(prev => ({ ...prev, [actionId]: false }));
+    }
   };
 
   const loadWalletOverview = async () => {
@@ -195,6 +257,7 @@ export default function AdminView() {
   useEffect(() => {
     if (adminTab === 'users') loadAllUsers();
     if (adminTab === 'dashboard') loadWalletOverview();
+    if (adminTab === 'ai_agent') loadAiCaretakerData();
     if (adminTab === 'approvals') {
       supabase.from('pending_requests').select('id, data').then(({ data }) => {
         if (data) setPendingRequests(data.map(r => r.data));
@@ -375,6 +438,7 @@ export default function AdminView() {
   // ── Tab config ───────────────────────────────────────────────────────────
   const TABS = [
     { id: 'dashboard',   label: 'ภาพรวม',     icon: BarChart2 },
+    { id: 'ai_agent',    label: 'AI Caretaker', icon: Bot, badge: aiSuggestions.filter(s => s.status === 'pending').length },
     { id: 'analytics',   label: 'วิเคราะห์',  icon: TrendingUp },
     { id: 'approvals',   label: 'อนุมัติ',    icon: Bell,    badge: pendingRequests.length },
     { id: 'users',       label: 'ผู้ใช้',     icon: Users },
@@ -682,6 +746,187 @@ export default function AdminView() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── AI CARETAKER AGENT TAB ────────────────────────────────────── */}
+      {adminTab === 'ai_agent' && (
+        <div className="space-y-6">
+          {/* Header & Controls */}
+          <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-lg">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Bot className="text-purple-400" size={28} />
+                  <h2 className="text-xl font-bold">BoomBot AI — System Caretaker Agent</h2>
+                  <span className="bg-purple-500/30 text-purple-200 border border-purple-400/30 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                    <Sparkles size={12} /> Autonomous Caretaker
+                  </span>
+                </div>
+                <p className="text-purple-200 text-sm">
+                  ผู้ช่วยเฝ้าระวัง ซ่อมแซมระบบอัตโนมัติ (Tier 1) และวิเคราะห์ข้อเสนอแนะเชิงลึก (Tier 2) สำหรับ BoomRider
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                <button
+                  onClick={loadAiCaretakerData}
+                  disabled={aiCaretakerLoading}
+                  className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold text-xs flex items-center gap-1.5 transition-all"
+                >
+                  <RefreshCw size={14} className={aiCaretakerLoading ? 'animate-spin' : ''} /> รีเฟรช
+                </button>
+                <button
+                  onClick={handleRunAiCaretaker}
+                  disabled={aiCaretakerLoading}
+                  className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all w-full md:w-auto"
+                >
+                  {aiCaretakerLoading ? (
+                    <><RefreshCw size={16} className="animate-spin" /> กำลังประมวลผล AI Caretaker...</>
+                  ) : (
+                    <><Bot size={18} /> สั่งการ AI ตรวจสอบ & ซ่อมแซมด่วน</>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Diagnostic Metrics Overview */}
+            {aiSystemHealth && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5 pt-4 border-t border-purple-800/50">
+                <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                  <div className="text-xs text-purple-300">สถานะระบบรวม</div>
+                  <div className={`text-base font-bold mt-1 ${aiSystemHealth.system_status === 'healthy' ? 'text-green-400' : 'text-yellow-400'}`}>
+                    {aiSystemHealth.system_status === 'healthy' ? '✅ สมบูรณ์แบบ (Healthy)' : '⚠️ ตรวจพบประเด็นต้องดูแล'}
+                  </div>
+                </div>
+                <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                  <div className="text-xs text-purple-300">ออเดอร์ค้างชำระ (Unsettled)</div>
+                  <div className="text-xl font-bold text-orange-400 mt-1">
+                    {aiSystemHealth.order_health?.completed_unsettled_count || 0} รายการ
+                  </div>
+                </div>
+                <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                  <div className="text-xs text-purple-300">กระเป๋าเงินติดลบ</div>
+                  <div className="text-xl font-bold text-red-400 mt-1">
+                    {aiSystemHealth.wallet_health?.negative_wallets_count || 0} บัญชี
+                  </div>
+                </div>
+                <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                  <div className="text-xs text-purple-300">Wallet/Ledger Variance</div>
+                  <div className="text-xl font-bold text-yellow-300 mt-1">
+                    {aiSystemHealth.variance_health?.wallet_ledger_variance_count || 0} บัญชี
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Tier 2 Pending Repair Suggestions */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-purple-100">
+            <div className="p-4 bg-purple-50/60 border-b border-purple-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="text-purple-600" size={20} />
+                <h3 className="font-bold text-gray-800 text-base">Tier 2: คำแนะนำซ่อมแซมรอผู้ดูแลระบบอนุมัติ</h3>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                {aiSuggestions.filter(s => s.status === 'pending').length} รายการค้าง
+              </span>
+            </div>
+
+            {aiSuggestions.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-sm">
+                <Check size={36} className="mx-auto mb-2 text-green-500 opacity-40" />
+                ไม่พบรายการซ่อมแซมรออนุมัติ ระบบทำงานราบรื่น
+              </div>
+            ) : (
+              <div className="divide-y">
+                {aiSuggestions.map(sugg => {
+                  const isPending = sugg.status === 'pending';
+                  return (
+                    <div key={sugg.id} className="p-4 hover:bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded font-bold ${isPending ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                            {isPending ? '⏳ รออนุมัติ' : '✅ ดำเนินการแล้ว'}
+                          </span>
+                          <h4 className="font-bold text-gray-800 text-sm">{sugg.title}</h4>
+                        </div>
+                        <p className="text-xs text-gray-600 mb-1">{sugg.reasoning}</p>
+                        <div className="text-[11px] text-gray-400 font-mono">
+                          สร้างเมื่อ: {new Date(sugg.created_at).toLocaleString('th-TH')}
+                        </div>
+                      </div>
+                      {isPending && (
+                        <button
+                          onClick={() => handleExecuteSuggestedAction(sugg.id)}
+                          disabled={aiActionLoading[sugg.id]}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all shrink-0"
+                        >
+                          {aiActionLoading[sugg.id] ? (
+                            <><RefreshCw size={14} className="animate-spin" /> กำลังดำเนินการ...</>
+                          ) : (
+                            <><Check size={14} /> อนุมัติ & ดำเนินการแก้ไข</>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* AI Caretaker Audit Log */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+            <div className="p-4 bg-gray-50 border-b flex items-center gap-2">
+              <Activity className="text-gray-600" size={20} />
+              <h3 className="font-bold text-gray-800 text-base">ประวัติการทำงาน AI System Caretaker (Audit Logs)</h3>
+            </div>
+
+            {aiLogs.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-sm">
+                ยังไม่มีประวัติการทำงาน กด "สั่งการ AI ตรวจสอบ & ซ่อมแซมด่วน" เพื่อเริ่มทำงาน
+              </div>
+            ) : (
+              <div className="divide-y max-h-[500px] overflow-y-auto">
+                {aiLogs.map(log => {
+                  const statusCls = log.health_status === 'healthy'
+                    ? 'bg-green-100 text-green-700 border-green-200'
+                    : log.health_status === 'auto_repaired'
+                    ? 'bg-blue-100 text-blue-700 border-blue-200'
+                    : 'bg-yellow-100 text-yellow-800 border-yellow-200';
+
+                  return (
+                    <div key={log.id} className="p-4 hover:bg-gray-50 space-y-2">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${statusCls}`}>
+                            {log.health_status === 'healthy' ? '● Healthy' : log.health_status === 'auto_repaired' ? '🔧 Auto Repaired' : '⚠️ Warning'}
+                          </span>
+                          <span className="text-xs text-gray-400">Trigger: {log.trigger_source}</span>
+                        </div>
+                        <span className="text-xs text-gray-400 font-mono">
+                          {new Date(log.created_at).toLocaleString('th-TH')}
+                        </span>
+                      </div>
+
+                      {log.reasoning_thought && (
+                        <div className="bg-purple-50/70 border border-purple-100 rounded-lg p-3 text-xs text-purple-900 leading-relaxed">
+                          <strong className="text-purple-700 block mb-1">🧠 บทวิเคราะห์ของ BoomBot AI:</strong>
+                          {log.reasoning_thought}
+                        </div>
+                      )}
+
+                      {log.action_taken && log.action_taken !== 'No automated action needed' && (
+                        <div className="text-xs text-gray-700 bg-gray-50 p-2 rounded border border-gray-200 font-medium">
+                          🛠️ <strong>การดำเนินการ:</strong> {log.action_taken}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── ANALYTICS ─────────────────────────────────────────────────── */}

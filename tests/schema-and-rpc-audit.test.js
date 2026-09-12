@@ -94,12 +94,12 @@ test('Frontend RPC parameters match SQL function parameter definitions', () => {
   assert.deepEqual(mismatches, [], `Found RPC parameter mismatches:\n${mismatches.join('\n')}`);
 });
 
-test('Essential migration files (001-043) exist and maintain sequential ordering', () => {
+test('Essential migration files (001-044) exist and maintain sequential ordering', () => {
   const files = readdirSync('supabase/migrations')
     .filter(f => f.endsWith('.sql'))
     .sort();
 
-  const essentialNumbers = ['036', '037', '038', '039', '040', '041', '042', '043'];
+  const essentialNumbers = ['036', '037', '038', '039', '040', '041', '042', '043', '044'];
   for (const num of essentialNumbers) {
     const exists = files.some(f => f.startsWith(`${num}_`));
     assert.ok(exists, `Missing essential migration ${num}`);
@@ -129,6 +129,9 @@ test('Required triggers, functions, and EXECUTE grants are declared in migration
     'admin_set_user_role',
     'get_financial_reconciliation_report',
     'admin_get_system_health',
+    'admin_reconcile_wallet_ledger',
+    'admin_retry_stuck_order_settlement',
+    'admin_execute_ai_suggested_action',
   ];
 
   for (const func of requiredFunctions) {
@@ -157,6 +160,9 @@ test('Required triggers, functions, and EXECUTE grants are declared in migration
     /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?process_order_settlement/i,
     /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?get_financial_reconciliation_report/i,
     /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?admin_get_system_health/i,
+    /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?admin_reconcile_wallet_ledger/i,
+    /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?admin_retry_stuck_order_settlement/i,
+    /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?admin_execute_ai_suggested_action/i,
   ];
 
   for (const grantPattern of requiredGrants) {
