@@ -48,11 +48,11 @@ serve(async (req: Request) => {
       }
     }
 
-    // Cron triggers without auth header check x-trigger-source
-    const triggerSource = req.headers.get('x-trigger-source') || 'cron_scheduled';
-    if (!isAuthorizedAdmin && triggerSource !== 'cron_scheduled') {
+    if (!isAuthorizedAdmin) {
       return json({ error: 'Unauthorized: Admin or Service Role required' }, 401);
     }
+
+    const triggerSource = req.headers.get('x-trigger-source') ?? (authHeader.includes(serviceRoleKey) ? 'cron_scheduled' : 'manual');
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
