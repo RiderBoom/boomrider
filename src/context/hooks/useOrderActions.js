@@ -538,21 +538,29 @@ export function useOrderActions(deps) {
         .select('data')
         .eq('id', orderId)
         .maybeSingle();
-      if (dbRow?.data) {
-        currentOrder = dbRow.data;
-      }
+      if (dbRow?.data) currentOrder = dbRow.data;
     }
-    if (!currentOrder) return;
+    if (!currentOrder || !patch.status) return false;
 
-    const updated = { ...currentOrder, ...patch };
+    const { data: result, error } = await supabase.rpc('transition_order_status', {
+      p_order_id: orderId,
+      p_new_status: patch.status,
+      p_extra_data: patch,
+    });
+    if (error || !result?.ok) {
+      console.error('[updateOrderStatus] transition error:', error || result?.reason);
+      notifySystem('ผิดพลาด', result?.reason || error?.message || 'ไม่สามารถเปลี่ยนสถานะออเดอร์ได้', 'error');
+      return false;
+    }
+
+    const updated = result.order_data || { ...currentOrder, ...patch };
     setOrders(prev => {
       const exists = prev.some(o => o.id === orderId);
-      if (exists) {
-        return prev.map(o => (o.id === orderId ? updated : o));
-      }
-      return [updated, ...prev];
+      return exists
+        ? prev.map(o => (o.id === orderId ? updated : o))
+        : [updated, ...prev];
     });
-    await supabase.from('orders').update({ status: updated.status, data: updated }).eq('id', orderId);
+    return true;
   };
 
   const acceptOrder = async (orderId) => {
@@ -723,7 +731,8 @@ export function useOrderActions(deps) {
     }
 
     const patch = { status: newStatus, ...incomePatch, ...extraData };
-    await _updateOrder(orderId, patch);
+    const transitionSucceeded = await _updateOrder(orderId, patch);
+    if (!transitionSucceeded) return false;
 
     // ── Grab Auto-Dispatch: trigger when merchant marks ready_to_pickup ──────
     if (newStatus === 'ready_to_pickup') {
