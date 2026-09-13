@@ -55,6 +55,7 @@ export function AppProvider({ children }) {
 
   // --- Data State ---
   const [orders, setOrders] = useState([]);
+  const [totalOrdersCount, setTotalOrdersCount] = useState(0);
   const [appConfig, setAppConfig] = useState(INITIAL_CONFIG);
   const [restaurants, setRestaurants] = useState(INITIAL_RESTAURANTS);
   const [riders, setRiders] = useState(INITIAL_RIDERS);
@@ -410,7 +411,7 @@ export function AppProvider({ children }) {
         supabase.from('restaurants').select('id, data'),
         supabase.from('menu_items').select('restaurant_id, items'),
         supabase.from('riders').select('id, data'),
-        supabase.from('orders').select('id, data').order('created_at', { ascending: false }).limit(200),
+        supabase.from('orders').select('id, data', { count: 'exact' }).order('created_at', { ascending: false }).limit(200),
         supabase.from('pending_requests').select('id, data'),
         supabase.from('app_config').select('data').eq('id', 1),
         supabase.from('promo_codes').select('id, data'),
@@ -423,7 +424,10 @@ export function AppProvider({ children }) {
         setMenuItems(obj);
       }
       if (!ridersResult.error) setRiders((ridersResult.data || []).map(r => r.data));
-      if (!ordersResult.error) setOrders((ordersResult.data || []).map(o => o.data));
+      if (!ordersResult.error) {
+        setOrders((ordersResult.data || []).map(o => o.data));
+        setTotalOrdersCount(ordersResult.count || 0);
+      }
       if (!pendingResult.error) setPendingRequests((pendingResult.data || []).map(r => r.data));
 
       if (!configResult.error) {
@@ -623,10 +627,18 @@ export function AppProvider({ children }) {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, async (payload) => {
         const o = payload.new?.data;
         if (o) {
-          setOrders(prev => prev.some(x => x.id === o.id) ? prev : [o, ...prev]);
+          setOrders(prev => {
+            if (prev.some(x => x.id === o.id)) return prev;
+            setTotalOrdersCount(count => count + 1);
+            return [o, ...prev];
+          });
         } else if (payload.new?.id) {
           const { data: row } = await supabase.from('orders').select('id, data').eq('id', payload.new.id).maybeSingle();
-          if (row?.data) setOrders(prev => prev.some(x => x.id === row.data.id) ? prev : [row.data, ...prev]);
+          if (row?.data) setOrders(prev => {
+            if (prev.some(x => x.id === row.data.id)) return prev;
+            setTotalOrdersCount(count => count + 1);
+            return [row.data, ...prev];
+          });
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, async (payload) => {
@@ -654,7 +666,11 @@ export function AppProvider({ children }) {
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'orders' }, (payload) => {
-        setOrders(prev => prev.filter(x => x.id !== payload.old?.id));
+        setOrders(prev => {
+          const exists = prev.some(x => x.id === payload.old?.id);
+          if (exists) setTotalOrdersCount(count => Math.max(0, count - 1));
+          return prev.filter(x => x.id !== payload.old?.id);
+        });
       })
       .subscribe();
     return () => {
@@ -1468,7 +1484,7 @@ export function AppProvider({ children }) {
     serviceType, setServiceType,
 
     // Data
-    orders, setOrders,
+    orders, setOrders, totalOrdersCount,
     appConfig, setAppConfig,
     restaurants, setRestaurants,
     riders, setRiders,
@@ -1630,4 +1646,3 @@ export function AppProvider({ children }) {
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
-
