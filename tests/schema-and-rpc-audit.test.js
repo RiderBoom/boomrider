@@ -129,6 +129,7 @@ test('Required triggers, functions, and EXECUTE grants are declared in migration
     'admin_set_user_role',
     'get_financial_reconciliation_report',
     'admin_get_system_health',
+    'approve_pending_request',
   ];
 
   for (const func of requiredFunctions) {
@@ -157,6 +158,7 @@ test('Required triggers, functions, and EXECUTE grants are declared in migration
     /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?process_order_settlement/i,
     /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?get_financial_reconciliation_report/i,
     /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?admin_get_system_health/i,
+    /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?:public\.)?approve_pending_request/i,
   ];
 
   for (const grantPattern of requiredGrants) {
