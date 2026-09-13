@@ -57,7 +57,7 @@ export default function AdminView() {
   const {
     setActiveRole,
     adminTab, setAdminTab,
-    orders, restaurants, riders, pendingRequests,
+    orders, totalOrdersCount, restaurants, riders, pendingRequests,
     appConfig, setAppConfig,
     editConfig, setEditConfig,
     chats,
@@ -529,7 +529,7 @@ export default function AdminView() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <StatCard label="กำไร GP สุทธิ (จบแล้ว)" value={`฿${totalGP.toLocaleString()}`}       color="green"  icon={DollarSign} />
             <StatCard label="GMV (ออเดอร์จบแล้ว)"  value={`฿${gmv.toLocaleString()}`}           color="blue"   icon={TrendingUp} />
-            <StatCard label="ออเดอร์ทั้งหมด"       value={orders.length}                        color="orange" icon={ShoppingBag} />
+            <StatCard label="ออเดอร์ทั้งหมด"       value={totalOrdersCount}                        color="orange" icon={ShoppingBag} />
             <StatCard label="ไรเดอร์ Active"        value={riders.filter(r => r.status === 'active').length} color="purple" icon={Bike} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -2059,4 +2059,3 @@ export default function AdminView() {
     </div>
   );
 }
-
