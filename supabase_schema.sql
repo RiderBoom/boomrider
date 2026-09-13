@@ -1205,3 +1205,142 @@ $$;
 
 REVOKE ALL ON FUNCTION public.admin_get_system_health() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_get_system_health() TO authenticated, service_role;
+
+-- ── Internal Wallet Credit Helper ──────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public._wallet_credit(
+  p_user_id  TEXT,
+  p_amount   NUMERIC,
+  p_order_id TEXT,
+  p_note     TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_entry JSONB;
+BEGIN
+  IF p_user_id IS NULL OR p_amount = 0 THEN RETURN; END IF;
+
+  v_entry := jsonb_build_object(
+    'id',          gen_random_uuid()::text,
+    'type',        CASE WHEN p_amount >= 0 THEN 'deposit' ELSE 'withdraw' END,
+    'amount',      p_amount,
+    'date',        to_char(now() AT TIME ZONE 'Asia/Bangkok', 'DD/MM/YYYY HH24:MI:SS'),
+    'desc',        p_note,
+    'refOrderId',  p_order_id,
+    'createdAtMs', (extract(epoch from now()) * 1000)::bigint
+  );
+
+  INSERT INTO public.wallets (user_id, balance, history)
+  VALUES (p_user_id, p_amount, jsonb_build_array(v_entry))
+  ON CONFLICT (user_id) DO UPDATE
+    SET
+      balance = wallets.balance + EXCLUDED.balance,
+      history = (jsonb_build_array(v_entry) || COALESCE(wallets.history, '[]'::jsonb));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public._wallet_credit(TEXT, NUMERIC, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+
+-- ── Hardened Admin Pending Request Approval RPC ────────────────────────────
+CREATE OR REPLACE FUNCTION public.approve_pending_request(p_request_id TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_req RECORD;
+  v_req_data JSONB;
+  v_req_type TEXT;
+  v_user_id TEXT;
+  v_amt NUMERIC;
+  v_wallet RECORD;
+  v_bal NUMERIC := 0;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'admin_required' USING ERRCODE = '42501';
+  END IF;
+
+  -- Lock request FOR UPDATE
+  SELECT * INTO v_req
+  FROM public.pending_requests
+  WHERE id = p_request_id
+  FOR UPDATE NOWAIT;
+
+  IF v_req IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'request_not_found');
+  END IF;
+
+  v_req_data := v_req.data;
+  v_req_type := LOWER(COALESCE(v_req.type, v_req_data->>'type', ''));
+  v_user_id  := COALESCE(v_req.user_id, v_req_data->>'userId');
+
+  -- Ensure request type is supported
+  IF v_req_type NOT IN ('topup', 'withdraw') THEN
+    -- Leave pending request untouched in database and return structured error
+    RETURN jsonb_build_object('ok', false, 'reason', 'UNSUPPORTED_REQUEST_TYPE', 'type', v_req_type);
+  END IF;
+
+  IF v_user_id IS NULL OR v_user_id = '' THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'MISSING_USER_ID');
+  END IF;
+
+  IF v_req_type = 'topup' THEN
+    v_amt := COALESCE((v_req_data->'data'->>'amount')::NUMERIC, (v_req_data->>'amount')::NUMERIC, 0);
+    IF v_amt <= 0 THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'invalid_topup_amount');
+    END IF;
+
+    PERFORM public._wallet_credit(
+      v_user_id, v_amt, NULL,
+      'เติมเงิน ฿' || trim(to_char(v_amt, '999,999,990.00')) || ' (Admin อนุมัติ)'
+    );
+
+  ELSIF v_req_type = 'withdraw' THEN
+    v_amt := COALESCE((v_req_data->'data'->>'amount')::NUMERIC, (v_req_data->>'amount')::NUMERIC, 0);
+    IF v_amt <= 0 THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'invalid_withdraw_amount');
+    END IF;
+
+    -- Ensure wallet exists
+    INSERT INTO public.wallets (user_id, balance, history)
+    VALUES (v_user_id, 0, '[]'::jsonb)
+    ON CONFLICT (user_id) DO NOTHING;
+
+    SELECT * INTO v_wallet
+    FROM public.wallets
+    WHERE user_id = v_user_id
+    FOR UPDATE;
+
+    v_bal := COALESCE(v_wallet.balance, 0);
+    IF v_bal < v_amt THEN
+      RETURN jsonb_build_object(
+        'ok', false,
+        'reason', 'INSUFFICIENT_WALLET_BALANCE',
+        'currentBalance', v_bal,
+        'requestedAmount', v_amt
+      );
+    END IF;
+
+    PERFORM public._wallet_credit(
+      v_user_id, -v_amt, NULL,
+      'ถอนเงิน ฿' || trim(to_char(v_amt, '999,999,990.00')) || ' (Admin อนุมัติ)'
+    );
+  END IF;
+
+  -- Remove processed request
+  DELETE FROM public.pending_requests WHERE id = p_request_id;
+
+  RETURN jsonb_build_object('ok', true, 'request_id', p_request_id, 'type', v_req_type);
+
+EXCEPTION
+  WHEN lock_not_available THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'concurrent_approval_in_progress');
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.approve_pending_request(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.approve_pending_request(TEXT) TO authenticated;
