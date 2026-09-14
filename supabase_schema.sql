@@ -361,6 +361,16 @@ BEGIN
   SELECT data INTO v_config_data FROM public.app_config WHERE id = 1;
 
   IF v_config_data IS NOT NULL THEN
+    -- Enforce appRadius limit
+    IF COALESCE((v_config_data->>'appRadius')::NUMERIC, 0) > 0 AND (v_dist_meters / 1000.0) > (v_config_data->>'appRadius')::NUMERIC THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'OUT_OF_APP_SERVICE_RADIUS');
+    END IF;
+
+    -- Enforce restaurantRadius limit for food service
+    IF v_service_type = 'food' AND COALESCE((v_config_data->>'restaurantRadius')::NUMERIC, 0) > 0 AND (v_dist_meters / 1000.0) > (v_config_data->>'restaurantRadius')::NUMERIC THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'OUT_OF_RESTAURANT_DELIVERY_RADIUS');
+    END IF;
+
     v_base_fee        := COALESCE((v_config_data->>'baseFee')::NUMERIC, 20);
     v_per_km_fee      := COALESCE((v_config_data->>'perKmFee')::NUMERIC, 10);
     v_ride_base_fee   := COALESCE((v_config_data->>'rideBaseFee')::NUMERIC, v_base_fee);

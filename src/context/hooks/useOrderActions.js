@@ -345,7 +345,7 @@ export function useOrderActions(deps) {
     notifySystem('สั่งส่งพัสดุสำเร็จ! 📦', `ออเดอร์ #${orderId.slice(-6)} กำลังหาไรเดอร์`, 'success');
 
     // Auto-dispatch parcel to nearest rider immediately
-    autoDispatch(supabase, newOrder);
+    autoDispatch(supabase, newOrder, appConfig);
   };
 
   const placeRideOrder = async (rideDetails) => {
@@ -439,7 +439,7 @@ export function useOrderActions(deps) {
     setActiveTab('activity');
     notifySystem('เรียกรถสำเร็จ! 🚗', `ออเดอร์ #${orderId.slice(-6)} กำลังค้นหาคนขับ`, 'success');
 
-    autoDispatch(supabase, newOrder);
+    autoDispatch(supabase, newOrder, appConfig);
   };
 
   const placeServiceOrder = async (serviceDetails) => {
@@ -527,7 +527,7 @@ export function useOrderActions(deps) {
     setActiveTab('activity');
     notifySystem('จองบริการสำเร็จ! 🛠️', `ออเดอร์ #${orderId.slice(-6)} กำลังค้นหาผู้ให้บริการ`, 'success');
 
-    autoDispatch(supabase, newOrder);
+    autoDispatch(supabase, newOrder, appConfig);
   };
 
   const _updateOrder = async (orderId, patch) => {
@@ -737,7 +737,7 @@ export function useOrderActions(deps) {
     // ── Grab Auto-Dispatch: trigger when merchant marks ready_to_pickup ──────
     if (newStatus === 'ready_to_pickup') {
       const updatedOrder = { ...order, ...patch };
-      autoDispatch(supabase, updatedOrder);
+      autoDispatch(supabase, updatedOrder, appConfig);
     }
 
     // ── Rider's job ends at 'delivered' — release availability immediately ────

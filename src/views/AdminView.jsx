@@ -290,21 +290,48 @@ export default function AdminView() {
     }
   };
 
-  const saveConfig = () => {
+  const saveConfig = async () => {
+    const appRadius = parseFloat(editConfig.appRadius);
+    const restaurantRadius = parseFloat(editConfig.restaurantRadius);
+    const riderRadius = parseFloat(editConfig.riderRadius);
+    const baseFee = parseFloat(editConfig.baseFee);
+    const perKmFee = parseFloat(editConfig.perKmFee);
+    const rideBaseFee = parseFloat(editConfig.rideBaseFee);
+    const ridePerKmFee = parseFloat(editConfig.ridePerKmFee);
+    const gpFood = parseFloat(editConfig.gpFood);
+    const gpDelivery = parseFloat(editConfig.gpDelivery);
+    const gpRide = parseFloat(editConfig.gpRide);
+    const gpService = parseFloat(editConfig.gpService);
+
+    // Validation
+    if ([appRadius, restaurantRadius, riderRadius, baseFee, perKmFee, rideBaseFee, ridePerKmFee].some(v => isNaN(v) || v < 0)) {
+      return notifySystem('ผิดพลาด', 'รัศมีให้บริการและค่าธรรมเนียมต้องเป็นตัวเลขที่ไม่ติดลบ', 'error');
+    }
+    if ([gpFood, gpDelivery, gpRide, gpService].some(v => isNaN(v) || v < 0 || v > 100)) {
+      return notifySystem('ผิดพลาด', 'อัตรา GP ต้องอยู่ระหว่าง 0% ถึง 100%', 'error');
+    }
+
     const cleanedConfig = {
       ...editConfig,
-      appRadius: isNaN(parseFloat(editConfig.appRadius)) ? 15 : parseFloat(editConfig.appRadius),
-      restaurantRadius: isNaN(parseFloat(editConfig.restaurantRadius)) ? 10 : parseFloat(editConfig.restaurantRadius),
-      riderRadius: isNaN(parseFloat(editConfig.riderRadius)) ? 5 : parseFloat(editConfig.riderRadius),
-      baseFee: isNaN(parseFloat(editConfig.baseFee)) ? 20 : parseFloat(editConfig.baseFee),
-      perKmFee: isNaN(parseFloat(editConfig.perKmFee)) ? 10 : parseFloat(editConfig.perKmFee),
-      rideBaseFee: isNaN(parseFloat(editConfig.rideBaseFee)) ? 20 : parseFloat(editConfig.rideBaseFee),
-      ridePerKmFee: isNaN(parseFloat(editConfig.ridePerKmFee)) ? 10 : parseFloat(editConfig.ridePerKmFee),
-      gpFood: isNaN(parseFloat(editConfig.gpFood)) ? 30 : parseFloat(editConfig.gpFood),
-      gpDelivery: isNaN(parseFloat(editConfig.gpDelivery)) ? 15 : parseFloat(editConfig.gpDelivery),
-      gpRide: isNaN(parseFloat(editConfig.gpRide)) ? 15 : parseFloat(editConfig.gpRide),
-      gpService: isNaN(parseFloat(editConfig.gpService)) ? 15 : parseFloat(editConfig.gpService),
+      appRadius,
+      restaurantRadius,
+      riderRadius,
+      baseFee,
+      perKmFee,
+      rideBaseFee,
+      ridePerKmFee,
+      gpFood,
+      gpDelivery,
+      gpRide,
+      gpService,
     };
+
+    const { error } = await supabase.from('app_config').upsert({ id: 1, data: cleanedConfig });
+    if (error) {
+      console.error('Failed to save app_config to Supabase:', error);
+      return notifySystem('ผิดพลาด', `บันทึกข้อมูลไม่สำเร็จ: ${error.message}`, 'error');
+    }
+
     setAppConfig(cleanedConfig);
     setEditConfig(cleanedConfig);
     notifySystem('สำเร็จ', 'บันทึกการตั้งค่าระบบเรียบร้อยแล้ว', 'success');

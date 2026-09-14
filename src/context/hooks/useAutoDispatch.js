@@ -4,7 +4,7 @@
 
 const _inFlight = new Set();
 
-export async function autoDispatch(supabase, order) {
+export async function autoDispatch(supabase, order, appConfig = {}) {
   const { id: orderId, pickupLocation } = order;
   if (!orderId || !pickupLocation?.lat || !pickupLocation?.lng) return null;
 
@@ -12,12 +12,14 @@ export async function autoDispatch(supabase, order) {
   if (_inFlight.has(orderId)) return null;
   _inFlight.add(orderId);
 
+  const radiusKm = parseFloat(appConfig.riderRadius) || 5;
+
   try {
     const { data, error } = await supabase.rpc('dispatch_order', {
       p_order_id:   orderId,
       p_pickup_lat: pickupLocation.lat,
       p_pickup_lng: pickupLocation.lng,
-      p_radius_km:  5,
+      p_radius_km:  radiusKm,
     });
 
     if (error) {

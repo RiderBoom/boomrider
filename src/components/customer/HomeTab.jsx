@@ -736,23 +736,13 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
                 value={serviceDetails.serviceCategory}
                 onChange={e => {
                   const cat = e.target.value;
-                  const serviceList = appConfig.extraServices || [
-                    { name: 'ทำความสะอาดบ้าน', price: 350 },
-                    { name: 'ล้างแอร์ / ซ่อมแอร์', price: 500 },
-                    { name: 'ซ่อมประปา / ไฟฟ้า', price: 400 },
-                    { name: 'ขนย้ายสิ่งของ', price: 600 }
-                  ];
+                  const serviceList = appConfig.extraServices || [];
                   const match = serviceList.find(s => s.name === cat);
-                  setServiceDetails(prev => ({ ...prev, serviceCategory: cat, price: match ? match.price : 400 }));
+                  setServiceDetails(prev => ({ ...prev, serviceCategory: cat, price: match ? match.price : 0 }));
                 }}
                 className="w-full border rounded-lg p-2 text-sm bg-gray-50"
               >
-                {(appConfig.extraServices || [
-                  { name: 'ทำความสะอาดบ้าน', price: 350 },
-                  { name: 'ล้างแอร์ / ซ่อมแอร์', price: 500 },
-                  { name: 'ซ่อมประปา / ไฟฟ้า', price: 400 },
-                  { name: 'ขนย้ายสิ่งของ', price: 600 }
-                ]).map((srv, idx) => (
+                {(appConfig.extraServices || []).map((srv, idx) => (
                   <option key={idx} value={srv.name}>
                     🔧 {srv.name} (฿{srv.price})
                   </option>

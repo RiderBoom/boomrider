@@ -403,6 +403,23 @@ export function AppProvider({ children }) {
     };
   }, [currentUser?.id]);
 
+  // ── Realtime listener for app_config synchronization across sessions ─────
+  useEffect(() => {
+    const channel = supabase
+      .channel('app_config-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_config' }, payload => {
+        if (payload.new && payload.new.data) {
+          setAppConfig(prev => ({ ...prev, ...payload.new.data }));
+          setEditConfig(prev => ({ ...prev, ...payload.new.data }));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // ── Centralized fetch app data from Supabase ──────────────────────────
   const fetchAppData = useCallback(async () => {
     setIsDataLoading(true);
@@ -433,9 +450,11 @@ export function AppProvider({ children }) {
       if (!configResult.error) {
         const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
         if (configRow?.data) {
-          setAppConfig(configRow.data);
-          setEditConfig(configRow.data);
+          setAppConfig(prev => ({ ...prev, ...configRow.data }));
+          setEditConfig(prev => ({ ...prev, ...configRow.data }));
         }
+      } else {
+        console.warn('Failed to load app_config from Supabase:', configResult.error);
       }
       if (!promosResult.error) setPromoCodes((promosResult.data || []).map(p => p.data));
     } catch (e) {

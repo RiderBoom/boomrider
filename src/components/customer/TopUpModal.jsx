@@ -28,12 +28,26 @@ export default function TopUpModal() {
         </div>
         <div className="bg-gray-100 p-3 rounded-xl mb-4 border border-gray-100">
           <div className="flex items-center justify-between mb-3">
-            <div className="bg-white p-1.5 rounded-lg shadow-sm border flex items-center justify-center">
-              <PromptPayQR
-                promptPayId={appConfig.adminPromptPayId}
-                amount={parseFloat(withdrawAmount) || 0}
-                size={96}
-              />
+            <div className="bg-white p-1.5 rounded-lg shadow-sm border flex items-center justify-center min-w-[96px] min-h-[96px]">
+              {appConfig.adminPromptPayId ? (
+                <PromptPayQR
+                  promptPayId={appConfig.adminPromptPayId}
+                  amount={parseFloat(withdrawAmount) || 0}
+                  size={96}
+                />
+              ) : appConfig.adminQrCode ? (
+                <img
+                  src={appConfig.adminQrCode}
+                  alt="QR Code"
+                  className="w-24 h-24 object-contain"
+                />
+              ) : (
+                <PromptPayQR
+                  promptPayId=""
+                  amount={parseFloat(withdrawAmount) || 0}
+                  size={96}
+                />
+              )}
             </div>
             <div className="text-right flex-1 pl-3">
               <p className="font-bold text-gray-800 text-sm">{appConfig.adminBankName}</p>
