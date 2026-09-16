@@ -17,26 +17,26 @@
   },
   "dependencies": {
     "@capacitor/push-notifications": "^8.1.2",
-    "@supabase/supabase-js": "^2.115.0",
+    "@supabase/supabase-js": "^2.116.0",
     "i18next": "^26.4.2",
     "leaflet": "^1.9.4",
-    "lucide-react": "^1.41.0",
+    "lucide-react": "^1.45.0",
     "promptpay-qr": "^0.5.0",
     "qrcode": "^1.5.4",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-i18next": "^17.0.13"
   },
   "devDependencies": {
-    "@capacitor/android": "^8.5.1",
-    "@capacitor/cli": "^8.4.3",
-    "@capacitor/core": "^8.5.1",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.63.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "autoprefixer": "^10.5.5",
+    "autoprefixer": "^10.5.6",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.6",
@@ -44,6 +44,6 @@
     "postcss": "^8.5.28",
     "sharp": "^0.35.4",
     "tailwindcss": "^3.4.19",
-    "vite": "^8.2.2"
+    "vite": "^8.3.0"
   }
 }
