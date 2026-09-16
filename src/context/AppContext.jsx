@@ -103,6 +103,13 @@ export function AppProvider({ children }) {
   const [withdrawName, setWithdrawName] = useState('');
   const [tempProfile, setTempProfile] = useState({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
   const [editConfig, setEditConfig] = useState(INITIAL_CONFIG);
+  const [isConfigDirty, setIsConfigDirtyState] = useState(false);
+  const isConfigDirtyRef = useRef(false);
+  const setIsConfigDirty = useCallback((val) => {
+    const nextVal = typeof val === 'function' ? val(isConfigDirtyRef.current) : val;
+    isConfigDirtyRef.current = nextVal;
+    setIsConfigDirtyState(nextVal);
+  }, []);
   const [isEditingMenu, setIsEditingMenu] = useState(null);
   const [editingShop, setEditingShop] = useState(null);
   const [shopEditForm, setShopEditForm] = useState({});
@@ -410,7 +417,9 @@ export function AppProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_config' }, payload => {
         if (payload.new && payload.new.data) {
           setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...payload.new.data }));
-          setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...payload.new.data }));
+          if (!isConfigDirtyRef.current) {
+            setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...payload.new.data }));
+          }
         }
       })
       .subscribe();
@@ -451,7 +460,9 @@ export function AppProvider({ children }) {
         const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
         if (configRow?.data) {
           setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
-          setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
+          if (!isConfigDirtyRef.current) {
+            setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
+          }
         }
       } else {
         console.warn('Failed to load app_config from Supabase:', configResult.error);
@@ -1505,6 +1516,7 @@ export function AppProvider({ children }) {
     // Data
     orders, setOrders, totalOrdersCount,
     appConfig, setAppConfig,
+    isConfigDirty, setIsConfigDirty,
     restaurants, setRestaurants,
     riders, setRiders,
     menuItems, setMenuItems,

@@ -60,6 +60,7 @@ export default function AdminView() {
     orders, totalOrdersCount, restaurants, riders, pendingRequests,
     appConfig, setAppConfig,
     editConfig, setEditConfig,
+    isConfigDirty, setIsConfigDirty,
     chats,
     globalWallets,
     userWallet,
@@ -104,7 +105,6 @@ export default function AdminView() {
   });
 
   const [searchLedger, setSearchLedger] = useState('');
-  const [isConfigDirty, setIsConfigDirty] = useState(false);
   const [approvingId, setApprovingId] = useState(null);
 
   // Transaction log state
