@@ -68,6 +68,7 @@ jobs:
       - name: 🤖 Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
+          # Avoid the action's retired default `tools` package.
           packages: 'platforms;android-36 build-tools;35.0.1 platform-tools'
 
       # ── 5. Configure local build ─────────────────────────────────────────────
