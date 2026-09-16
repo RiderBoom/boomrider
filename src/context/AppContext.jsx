@@ -410,7 +410,6 @@ export function AppProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_config' }, payload => {
         if (payload.new && payload.new.data) {
           setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...payload.new.data }));
-          setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...payload.new.data }));
         }
       })
       .subscribe();
