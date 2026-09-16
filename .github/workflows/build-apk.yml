@@ -67,10 +67,8 @@ jobs:
 
       - name: 🤖 Setup Android SDK
         uses: android-actions/setup-android@v4
-
-      - name: 📱 Install required SDK components
-        run: |
-          sdkmanager --install "platforms;android-36" "build-tools;35.0.1" 2>&1 | tail -5
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.1 platform-tools'
 
       # ── 5. Configure local build ─────────────────────────────────────────────
       - name: ⚙️ Create local.properties
