@@ -1,20 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { autoDispatch } from '../src/context/hooks/useAutoDispatch.js';
+import { INITIAL_CONFIG } from '../src/constants.js';
 
-test('Item 1 & 2: GP rate validation and async save error handling', () => {
-  const validateConfig = (editConfig) => {
-    const appRadius = parseFloat(editConfig.appRadius);
-    const restaurantRadius = parseFloat(editConfig.restaurantRadius);
-    const riderRadius = parseFloat(editConfig.riderRadius);
-    const baseFee = parseFloat(editConfig.baseFee);
-    const perKmFee = parseFloat(editConfig.perKmFee);
-    const rideBaseFee = parseFloat(editConfig.rideBaseFee);
-    const ridePerKmFee = parseFloat(editConfig.ridePerKmFee);
-    const gpFood = parseFloat(editConfig.gpFood);
-    const gpDelivery = parseFloat(editConfig.gpDelivery);
-    const gpRide = parseFloat(editConfig.gpRide);
-    const gpService = parseFloat(editConfig.gpService);
+test('Item 1 & 2: GP rate validation and config parsing with default fallbacks', () => {
+  const parseAndValidateConfig = (editConfig) => {
+    const parseConfigVal = (val, defaultVal) => {
+      if (val === '' || val === null || val === undefined) return defaultVal;
+      const num = parseFloat(val);
+      return Number.isNaN(num) ? defaultVal : num;
+    };
+
+    const baseFee = parseConfigVal(editConfig.baseFee, INITIAL_CONFIG.baseFee);
+    const perKmFee = parseConfigVal(editConfig.perKmFee, INITIAL_CONFIG.perKmFee);
+
+    const appRadius = parseConfigVal(editConfig.appRadius, INITIAL_CONFIG.appRadius);
+    const restaurantRadius = parseConfigVal(editConfig.restaurantRadius, INITIAL_CONFIG.restaurantRadius);
+    const riderRadius = parseConfigVal(editConfig.riderRadius, INITIAL_CONFIG.riderRadius);
+    const rideBaseFee = parseConfigVal(editConfig.rideBaseFee ?? editConfig.baseFee, baseFee);
+    const ridePerKmFee = parseConfigVal(editConfig.ridePerKmFee ?? editConfig.perKmFee, perKmFee);
+    const gpFood = parseConfigVal(editConfig.gpFood, INITIAL_CONFIG.gpFood);
+    const gpDelivery = parseConfigVal(editConfig.gpDelivery, INITIAL_CONFIG.gpDelivery);
+    const gpRide = parseConfigVal(editConfig.gpRide, INITIAL_CONFIG.gpRide);
+    const gpService = parseConfigVal(editConfig.gpService, INITIAL_CONFIG.gpService);
 
     if ([appRadius, restaurantRadius, riderRadius, baseFee, perKmFee, rideBaseFee, ridePerKmFee].some(v => isNaN(v) || v < 0)) {
       return { ok: false, error: 'รัศมีให้บริการและค่าธรรมเนียมต้องเป็นตัวเลขที่ไม่ติดลบ' };
@@ -22,13 +30,26 @@ test('Item 1 & 2: GP rate validation and async save error handling', () => {
     if ([gpFood, gpDelivery, gpRide, gpService].some(v => isNaN(v) || v < 0 || v > 100)) {
       return { ok: false, error: 'อัตรา GP ต้องอยู่ระหว่าง 0% ถึง 100%' };
     }
-    return { ok: true };
+    return {
+      ok: true,
+      cleanedConfig: {
+        appRadius, restaurantRadius, riderRadius, baseFee, perKmFee,
+        rideBaseFee, ridePerKmFee, gpFood, gpDelivery, gpRide, gpService,
+      },
+    };
   };
 
-  assert.equal(validateConfig({ appRadius: 15, restaurantRadius: 10, riderRadius: 5, baseFee: 20, perKmFee: 10, rideBaseFee: 20, ridePerKmFee: 10, gpFood: 150, gpDelivery: 15, gpRide: 15, gpService: 15 }).ok, false);
-  assert.equal(validateConfig({ appRadius: -5, restaurantRadius: 10, riderRadius: 5, baseFee: 20, perKmFee: 10, rideBaseFee: 20, ridePerKmFee: 10, gpFood: 30, gpDelivery: 15, gpRide: 15, gpService: 15 }).ok, false);
-  assert.equal(validateConfig({ appRadius: 15, restaurantRadius: 10, riderRadius: 5, baseFee: -20, perKmFee: 10, rideBaseFee: 20, ridePerKmFee: 10, gpFood: 30, gpDelivery: 15, gpRide: 15, gpService: 15 }).ok, false);
-  assert.equal(validateConfig({ appRadius: 15, restaurantRadius: 10, riderRadius: 5, baseFee: 20, perKmFee: 10, rideBaseFee: 20, ridePerKmFee: 10, gpFood: 30, gpDelivery: 15, gpRide: 15, gpService: 15 }).ok, true);
+  assert.equal(parseAndValidateConfig({ appRadius: 15, restaurantRadius: 10, riderRadius: 5, baseFee: 20, perKmFee: 10, rideBaseFee: 20, ridePerKmFee: 10, gpFood: 150, gpDelivery: 15, gpRide: 15, gpService: 15 }).ok, false);
+  assert.equal(parseAndValidateConfig({ appRadius: -5, restaurantRadius: 10, riderRadius: 5, baseFee: 20, perKmFee: 10, rideBaseFee: 20, ridePerKmFee: 10, gpFood: 30, gpDelivery: 15, gpRide: 15, gpService: 15 }).ok, false);
+  assert.equal(parseAndValidateConfig({ appRadius: 15, restaurantRadius: 10, riderRadius: 5, baseFee: -20, perKmFee: 10, rideBaseFee: 20, ridePerKmFee: 10, gpFood: 30, gpDelivery: 15, gpRide: 15, gpService: 15 }).ok, false);
+  assert.equal(parseAndValidateConfig({ appRadius: 15, restaurantRadius: 10, riderRadius: 5, baseFee: 20, perKmFee: 10, rideBaseFee: 20, ridePerKmFee: 10, gpFood: 30, gpDelivery: 15, gpRide: 15, gpService: 15 }).ok, true);
+
+  // Fallback tests for empty/undefined values
+  const emptyResult = parseAndValidateConfig({ rideBaseFee: '', ridePerKmFee: '', appRadius: undefined });
+  assert.equal(emptyResult.ok, true, 'Empty and undefined config fields should fall back to defaults without error');
+  assert.equal(emptyResult.cleanedConfig.rideBaseFee, INITIAL_CONFIG.baseFee);
+  assert.equal(emptyResult.cleanedConfig.ridePerKmFee, INITIAL_CONFIG.perKmFee);
+  assert.equal(emptyResult.cleanedConfig.appRadius, INITIAL_CONFIG.appRadius);
 });
 
 test('Item 3: App Config fetch error preserves existing state without overwrite', () => {

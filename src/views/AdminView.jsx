@@ -10,7 +10,7 @@ import {
   DatabaseZap, ShieldOff, CheckSquare, Square, Car,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { STATUS_LABELS, ADMIN_EMAIL } from '../constants';
+import { STATUS_LABELS, ADMIN_EMAIL, INITIAL_CONFIG } from '../constants';
 import { formatDateTimeFromMs } from '../utils';
 import { supabase } from '../lib/supabase';
 
@@ -188,7 +188,7 @@ export default function AdminView() {
 
   useEffect(() => {
     if (appConfig) {
-      setEditConfig(appConfig);
+      setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...appConfig }));
     }
   }, [appConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -291,17 +291,24 @@ export default function AdminView() {
   };
 
   const saveConfig = async () => {
-    const appRadius = parseFloat(editConfig.appRadius);
-    const restaurantRadius = parseFloat(editConfig.restaurantRadius);
-    const riderRadius = parseFloat(editConfig.riderRadius);
-    const baseFee = parseFloat(editConfig.baseFee);
-    const perKmFee = parseFloat(editConfig.perKmFee);
-    const rideBaseFee = parseFloat(editConfig.rideBaseFee);
-    const ridePerKmFee = parseFloat(editConfig.ridePerKmFee);
-    const gpFood = parseFloat(editConfig.gpFood);
-    const gpDelivery = parseFloat(editConfig.gpDelivery);
-    const gpRide = parseFloat(editConfig.gpRide);
-    const gpService = parseFloat(editConfig.gpService);
+    const parseConfigVal = (val, defaultVal) => {
+      if (val === '' || val === null || val === undefined) return defaultVal;
+      const num = parseFloat(val);
+      return Number.isNaN(num) ? defaultVal : num;
+    };
+
+    const baseFee = parseConfigVal(editConfig.baseFee, INITIAL_CONFIG.baseFee);
+    const perKmFee = parseConfigVal(editConfig.perKmFee, INITIAL_CONFIG.perKmFee);
+
+    const appRadius = parseConfigVal(editConfig.appRadius, INITIAL_CONFIG.appRadius);
+    const restaurantRadius = parseConfigVal(editConfig.restaurantRadius, INITIAL_CONFIG.restaurantRadius);
+    const riderRadius = parseConfigVal(editConfig.riderRadius, INITIAL_CONFIG.riderRadius);
+    const rideBaseFee = parseConfigVal(editConfig.rideBaseFee ?? editConfig.baseFee, baseFee);
+    const ridePerKmFee = parseConfigVal(editConfig.ridePerKmFee ?? editConfig.perKmFee, perKmFee);
+    const gpFood = parseConfigVal(editConfig.gpFood, INITIAL_CONFIG.gpFood);
+    const gpDelivery = parseConfigVal(editConfig.gpDelivery, INITIAL_CONFIG.gpDelivery);
+    const gpRide = parseConfigVal(editConfig.gpRide, INITIAL_CONFIG.gpRide);
+    const gpService = parseConfigVal(editConfig.gpService, INITIAL_CONFIG.gpService);
 
     // Validation
     if ([appRadius, restaurantRadius, riderRadius, baseFee, perKmFee, rideBaseFee, ridePerKmFee].some(v => isNaN(v) || v < 0)) {

@@ -409,8 +409,8 @@ export function AppProvider({ children }) {
       .channel('app_config-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_config' }, payload => {
         if (payload.new && payload.new.data) {
-          setAppConfig(prev => ({ ...prev, ...payload.new.data }));
-          setEditConfig(prev => ({ ...prev, ...payload.new.data }));
+          setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...payload.new.data }));
+          setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...payload.new.data }));
         }
       })
       .subscribe();
@@ -450,8 +450,8 @@ export function AppProvider({ children }) {
       if (!configResult.error) {
         const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
         if (configRow?.data) {
-          setAppConfig(prev => ({ ...prev, ...configRow.data }));
-          setEditConfig(prev => ({ ...prev, ...configRow.data }));
+          setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
+          setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
         }
       } else {
         console.warn('Failed to load app_config from Supabase:', configResult.error);
