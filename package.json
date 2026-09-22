@@ -20,12 +20,12 @@
     "@supabase/supabase-js": "^2.116.0",
     "i18next": "^26.4.2",
     "leaflet": "^1.9.4",
-    "lucide-react": "^1.45.0",
+    "lucide-react": "^1.47.0",
     "promptpay-qr": "^0.5.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-i18next": "^17.0.13"
+    "react-i18next": "^17.0.14"
   },
   "overrides": {
     "uuid": "^11.1.1"
