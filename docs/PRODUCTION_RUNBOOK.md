@@ -133,3 +133,14 @@ If a regression or anomaly is detected in Production:
 2. Restore the database to a clean timestamp using Supabase PITR (Point-In-Time Recovery) prior to the faulty deployment.
 3. Verify database integrity using `scripts/production-health-check.sql`.
 4. Re-enable application traffic.
+
+---
+
+## 8. Database Log Audit & Troubleshooting
+
+### Realtime Subscription Manager Logs (`sql_state_code: 57014`)
+- **Event Message**: `"canceling statement due to user request"`
+- **Application Name**: `realtime_subscription_manager_pub`
+- **User**: `supabase_admin`
+- **Root Cause**: SQLSTATE `57014` (`query_canceled`) is generated when Supabase Realtime recycles connection pool workers or terminates long-lived idle sessions that held subscription channels open across `BEGIN` blocks. PostgreSQL logs all canceled statements with severity `ERROR`.
+- **Impact & Action**: Non-critical operational log. Does not indicate transaction rollback or data corruption. If log frequency spikes, verify that Realtime RLS subqueries use cached `(SELECT auth.uid())` patterns (as implemented in Migration `042`).
