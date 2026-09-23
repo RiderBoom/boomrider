@@ -430,50 +430,62 @@ export function AppProvider({ children }) {
   }, []);
 
   // ── Centralized fetch app data from Supabase ──────────────────────────
+  const fetchAppDataPromiseRef = useRef(null);
+
   const fetchAppData = useCallback(async () => {
-    setIsDataLoading(true);
-    try {
-      const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
-        supabase.from('restaurants').select('id, data'),
-        supabase.from('menu_items').select('restaurant_id, items'),
-        supabase.from('riders').select('id, data'),
-        supabase.from('orders').select('id, data', { count: 'exact' }).order('created_at', { ascending: false }).limit(200),
-        supabase.from('pending_requests').select('id, data'),
-        supabase.from('app_config').select('data').eq('id', 1),
-        supabase.from('promo_codes').select('id, data'),
-      ]);
-
-      if (!restsResult.error) setRestaurants((restsResult.data || []).map(r => r.data));
-      if (!menusResult.error) {
-        const obj = {};
-        (menusResult.data || []).forEach(m => { obj[m.restaurant_id] = m.items; });
-        setMenuItems(obj);
-      }
-      if (!ridersResult.error) setRiders((ridersResult.data || []).map(r => r.data));
-      if (!ordersResult.error) {
-        setOrders((ordersResult.data || []).map(o => o.data));
-        setTotalOrdersCount(ordersResult.count || 0);
-      }
-      if (!pendingResult.error) setPendingRequests((pendingResult.data || []).map(r => r.data));
-
-      if (!configResult.error) {
-        const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
-        if (configRow?.data) {
-          setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
-          if (!isConfigDirtyRef.current) {
-            setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
-          }
-        }
-      } else {
-        console.warn('Failed to load app_config from Supabase:', configResult.error);
-      }
-      if (!promosResult.error) setPromoCodes((promosResult.data || []).map(p => p.data));
-    } catch (e) {
-      console.error('fetchAppData error', e);
-    } finally {
-      setIsDataLoading(false);
-      dataLoadedRef.current = true;
+    if (fetchAppDataPromiseRef.current) {
+      return fetchAppDataPromiseRef.current;
     }
+
+    const promise = (async () => {
+      setIsDataLoading(true);
+      try {
+        const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
+          supabase.from('restaurants').select('id, data'),
+          supabase.from('menu_items').select('restaurant_id, items'),
+          supabase.from('riders').select('id, data'),
+          supabase.from('orders').select('id, data', { count: 'exact' }).order('created_at', { ascending: false }).limit(50),
+          supabase.from('pending_requests').select('id, data'),
+          supabase.from('app_config').select('data').eq('id', 1),
+          supabase.from('promo_codes').select('id, data'),
+        ]);
+
+        if (!restsResult.error) setRestaurants((restsResult.data || []).map(r => r.data));
+        if (!menusResult.error) {
+          const obj = {};
+          (menusResult.data || []).forEach(m => { obj[m.restaurant_id] = m.items; });
+          setMenuItems(obj);
+        }
+        if (!ridersResult.error) setRiders((ridersResult.data || []).map(r => r.data));
+        if (!ordersResult.error) {
+          setOrders((ordersResult.data || []).map(o => o.data));
+          setTotalOrdersCount(ordersResult.count || 0);
+        }
+        if (!pendingResult.error) setPendingRequests((pendingResult.data || []).map(r => r.data));
+
+        if (!configResult.error) {
+          const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
+          if (configRow?.data) {
+            setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
+            if (!isConfigDirtyRef.current) {
+              setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
+            }
+          }
+        } else {
+          console.warn('Failed to load app_config from Supabase:', configResult.error);
+        }
+        if (!promosResult.error) setPromoCodes((promosResult.data || []).map(p => p.data));
+      } catch (e) {
+        console.error('fetchAppData error', e);
+      } finally {
+        setIsDataLoading(false);
+        dataLoadedRef.current = true;
+        fetchAppDataPromiseRef.current = null;
+      }
+    })();
+
+    fetchAppDataPromiseRef.current = promise;
+    return promise;
   }, [setPromoCodes]);
 
   // ── Load app data from Supabase on mount ────────────────────────────────

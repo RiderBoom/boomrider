@@ -72,6 +72,7 @@ create table if not exists public.orders (
   created_at timestamptz default now()
 );
 alter table public.orders enable row level security;
+alter table public.orders replica identity full;
 create policy "orders_all" on public.orders for all using (auth.role() = 'authenticated');
 
 -- ── Restaurants ───────────────────────────────────────────────────────────────

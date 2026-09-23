@@ -21,7 +21,9 @@ function resolveNotificationRouting(payload, extraData = {}) {
     channel = 'merchant_orders'; kind = 'new_order';
   } else if (payload.table === 'orders' && payload.type === 'UPDATE') {
     const oldData = (payload.old_record && payload.old_record.data) || payload.old_record || {};
-    if (!data.status || data.status === oldData.status) return null;
+    const newStatus = record?.status || data?.status;
+    const oldStatus = payload.old_record?.status || oldData?.status;
+    if (!newStatus || newStatus === oldStatus) return null;
     const merchantOwnerId = data.restaurantOwnerId || extraData.restaurantOwnerId;
     const riderUserId = data.riderUserId || extraData.riderUserId;
     [data.customerId, merchantOwnerId, riderUserId]
@@ -199,4 +201,28 @@ test('system monitor metrics correctly evaluate pending merchant orders and acti
   assert.equal(pendingMerchant.length, 1);
   assert.equal(waitingDispatch.length, 1);
   assert.equal(ridersOnline.length, 2); // r-1 (delivering) + r-2 (available)
+});
+
+test('orders UPDATE skips notification when status is unchanged (GPS coordinate updates)', () => {
+  const payload = {
+    table: 'orders',
+    type: 'UPDATE',
+    old_record: { id: 'ord-888', status: 'delivering', data: { id: 'ord-888', status: 'delivering', riderLocation: { lat: 13.7, lng: 100.5 } } },
+    record: { id: 'ord-888', status: 'delivering', data: { id: 'ord-888', status: 'delivering', riderLocation: { lat: 13.701, lng: 100.501 } } },
+  };
+  const res = resolveNotificationRouting(payload);
+  assert.equal(res, null, 'Notification routing must return null on GPS updates when status is unchanged');
+});
+
+test('orders UPDATE triggers notification when status transitions', () => {
+  const payload = {
+    table: 'orders',
+    type: 'UPDATE',
+    old_record: { id: 'ord-888', status: 'preparing', data: { id: 'ord-888', status: 'preparing' } },
+    record: { id: 'ord-888', status: 'ready_to_pickup', data: { id: 'ord-888', status: 'ready_to_pickup', customerId: 'c1' } },
+  };
+  const res = resolveNotificationRouting(payload, { restaurantOwnerId: 'm1' });
+  assert.notEqual(res, null);
+  assert.equal(res.status, 'ready_to_pickup');
+  assert.equal(res.body, 'อาหารพร้อมรับแล้ว');
 });

@@ -94,7 +94,10 @@ const buildNotification = async (payload: WebhookPayload) => {
     channel = 'merchant_orders'; kind = 'new_order';
   } else if (payload.table === 'orders' && payload.type === 'UPDATE') {
     const oldData = rowData(payload.old_record || {});
-    if (!data.status || data.status === oldData.status) return null;
+    const newStatus = record?.status || data?.status;
+    const oldStatus = payload.old_record?.status || oldData?.status;
+    // Skip notification if status is missing or status has not changed (e.g. location/GPS coordinate updates)
+    if (!newStatus || newStatus === oldStatus) return null;
     let merchantOwnerId = data.restaurantOwnerId;
     if (!merchantOwnerId && data.restaurantId) {
       const restData = await rest(`restaurants?select=owner_id&id=eq.${encodeURIComponent(data.restaurantId)}`);
