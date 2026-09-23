@@ -16,6 +16,15 @@ import { usePromoActions }   from './hooks/usePromoActions';
 
 const AppContext = createContext(null);
 
+const riderProfileSignature = (row) => {
+  const profile = { ...row.data };
+  delete profile.location;
+  delete profile.current_lat;
+  delete profile.current_lng;
+  delete profile.is_available;
+  return JSON.stringify({ id: row.id, user_id: row.user_id, data: profile });
+};
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
   return useContext(AppContext);
@@ -148,6 +157,16 @@ export function AppProvider({ children }) {
   // --- Refs ---
   const restaurantsRef = React.useRef(INITIAL_RESTAURANTS);
   const currentUserRef = React.useRef(null);
+  const fetchAppDataPromiseRef = useRef(null);
+  const fetchAppDataAuthKeyRef = useRef(null);
+  const loadUserSessionPromisesRef = useRef(new Map());
+  const lastLoadedAuthUserIdRef = useRef(null);
+  const lastWalletHistorySyncAtRef = useRef(0);
+  const persistedProfileRef = useRef(null);
+  // Keep a per-row snapshot of data read from or written to Supabase. This
+  // prevents initial hydration and unrelated state updates from auto-saving
+  // unchanged rows back to the database.
+  const persistedRowsRef = useRef({ restaurants: null, menuItems: null, riders: null });
   useEffect(() => { restaurantsRef.current = restaurants; }, [restaurants]);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
 
@@ -258,22 +277,41 @@ export function AppProvider({ children }) {
     if (!uid) return;
     try {
       const walletKey = (ADMIN_EMAIL && currentUser?.email === ADMIN_EMAIL) ? ADMIN_EMAIL : uid;
-      const { data: wallet } = await supabase
+      const { data: wallet, error: walletError } = await supabase
         .from('wallets')
-        .select('balance, history')
+        .select('balance')
         .eq('user_id', walletKey)
         .maybeSingle();
+      if (walletError) {
+        console.error('fetchUserWallet error:', walletError);
+        return;
+      }
 
       if (wallet) {
         const bal = r2(wallet.balance || 0);
-        const hist = wallet.history || [];
         setUserWallet(bal);
-        setWalletAllEntries(hist);
         setGlobalWallets(prev => ({
           ...prev,
-          [walletKey]: { balance: bal, history: hist },
-          [uid]: { balance: bal, history: hist },
+          [walletKey]: { ...prev[walletKey], balance: bal },
+          [uid]: { ...prev[uid], balance: bal },
         }));
+        // Realtime normally carries the updated history. Restore the full
+        // history only when that event has not reached this client.
+        if (Date.now() - lastWalletHistorySyncAtRef.current > 5000) {
+          const { data: historyRow, error } = await supabase
+            .from('wallets').select('history').eq('user_id', walletKey).maybeSingle();
+          if (error) console.error('Wallet history fallback error:', error);
+          else if (historyRow) {
+            const history = historyRow.history || [];
+            setWalletAllEntries(history);
+            setGlobalWallets(prev => ({
+              ...prev,
+              [walletKey]: { ...prev[walletKey], balance: bal, history },
+              [uid]: { ...prev[uid], balance: bal, history },
+            }));
+            lastWalletHistorySyncAtRef.current = Date.now();
+          }
+        }
       }
     } catch (e) {
       console.error('fetchUserWallet error', e);
@@ -430,56 +468,80 @@ export function AppProvider({ children }) {
   }, []);
 
   // ── Centralized fetch app data from Supabase ──────────────────────────
-  const fetchAppData = useCallback(async () => {
-    setIsDataLoading(true);
-    try {
-      const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
-        supabase.from('restaurants').select('id, data'),
-        supabase.from('menu_items').select('restaurant_id, items'),
-        supabase.from('riders').select('id, data'),
-        supabase.from('orders').select('id, data', { count: 'exact' }).order('created_at', { ascending: false }).limit(200),
-        supabase.from('pending_requests').select('id, data'),
-        supabase.from('app_config').select('data').eq('id', 1),
-        supabase.from('promo_codes').select('id, data'),
-      ]);
-
-      if (!restsResult.error) setRestaurants((restsResult.data || []).map(r => r.data));
-      if (!menusResult.error) {
-        const obj = {};
-        (menusResult.data || []).forEach(m => { obj[m.restaurant_id] = m.items; });
-        setMenuItems(obj);
-      }
-      if (!ridersResult.error) setRiders((ridersResult.data || []).map(r => r.data));
-      if (!ordersResult.error) {
-        setOrders((ordersResult.data || []).map(o => o.data));
-        setTotalOrdersCount(ordersResult.count || 0);
-      }
-      if (!pendingResult.error) setPendingRequests((pendingResult.data || []).map(r => r.data));
-
-      if (!configResult.error) {
-        const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
-        if (configRow?.data) {
-          setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
-          if (!isConfigDirtyRef.current) {
-            setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
-          }
-        }
-      } else {
-        console.warn('Failed to load app_config from Supabase:', configResult.error);
-      }
-      if (!promosResult.error) setPromoCodes((promosResult.data || []).map(p => p.data));
-    } catch (e) {
-      console.error('fetchAppData error', e);
-    } finally {
-      setIsDataLoading(false);
-      dataLoadedRef.current = true;
+  const fetchAppData = useCallback((authKey = currentUserRef.current?.id || null) => {
+    if (fetchAppDataPromiseRef.current) {
+      if (fetchAppDataAuthKeyRef.current === authKey) return fetchAppDataPromiseRef.current;
+      return fetchAppDataPromiseRef.current.then(() => fetchAppData(authKey));
     }
-  }, [setPromoCodes]);
 
-  // ── Load app data from Supabase on mount ────────────────────────────────
-  useEffect(() => {
-    fetchAppData();
-  }, [fetchAppData]);
+    fetchAppDataAuthKeyRef.current = authKey;
+    const promise = Promise.resolve().then(async () => {
+      setIsDataLoading(true);
+      try {
+        const [restsResult, menusResult, ridersResult, ordersResult, pendingResult, configResult, promosResult] = await Promise.all([
+          supabase.from('restaurants').select('id, data'),
+          supabase.from('menu_items').select('restaurant_id, items'),
+          supabase.from('riders').select('id, data, current_lat, current_lng, is_available'),
+          supabase.from('orders').select('id, data', { count: 'exact' }).order('created_at', { ascending: false }).limit(200),
+          supabase.from('pending_requests').select('id, data'),
+          supabase.from('app_config').select('data').eq('id', 1),
+          supabase.from('promo_codes').select('id, data'),
+        ]);
+
+        if (!restsResult.error) {
+          const rows = (restsResult.data || []).map(r => r.data).filter(Boolean);
+          persistedRowsRef.current.restaurants = new Map(rows.map(r => [r.id, JSON.stringify({ id: r.id, owner_id: r.ownerId || null, data: r })]));
+          setRestaurants(rows);
+        }
+        if (!menusResult.error) {
+          const obj = {};
+          (menusResult.data || []).forEach(m => { obj[m.restaurant_id] = m.items; });
+          persistedRowsRef.current.menuItems = new Map(Object.entries(obj).map(([restaurantId, items]) => [restaurantId, JSON.stringify({ restaurant_id: restaurantId, items })]));
+          setMenuItems(obj);
+        }
+        if (!ridersResult.error) {
+          const rows = (ridersResult.data || []).filter(r => r.data).map(r => ({
+            ...r.data,
+            location: Number.isFinite(r.current_lat) && Number.isFinite(r.current_lng)
+              ? { lat: r.current_lat, lng: r.current_lng }
+              : r.data.location,
+            current_lat: r.current_lat ?? r.data.current_lat,
+            current_lng: r.current_lng ?? r.data.current_lng,
+            is_available: r.is_available ?? r.data.is_available,
+          }));
+          persistedRowsRef.current.riders = new Map(rows.map(r => [r.id, riderProfileSignature({ id: r.id, user_id: r.userId || null, data: r })]));
+          setRiders(rows);
+        }
+        if (!ordersResult.error) {
+          setOrders((ordersResult.data || []).map(o => o.data));
+          setTotalOrdersCount(ordersResult.count || 0);
+        }
+        if (!pendingResult.error) setPendingRequests((pendingResult.data || []).map(r => r.data));
+
+        if (!configResult.error) {
+          const configRow = Array.isArray(configResult.data) ? configResult.data[0] : configResult.data;
+          if (configRow?.data) {
+            setAppConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
+            if (!isConfigDirtyRef.current) {
+              setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...configRow.data }));
+            }
+          }
+        } else {
+          console.warn('Failed to load app_config from Supabase:', configResult.error);
+        }
+        if (!promosResult.error) setPromoCodes((promosResult.data || []).map(p => p.data));
+      } catch (e) {
+        console.error('fetchAppData error', e);
+      } finally {
+        setIsDataLoading(false);
+        dataLoadedRef.current = true;
+        fetchAppDataPromiseRef.current = null;
+        fetchAppDataAuthKeyRef.current = null;
+      }
+    });
+    fetchAppDataPromiseRef.current = promise;
+    return promise;
+  }, [setPromoCodes]);
 
   // ── Supabase Auth session + onAuthStateChange ───────────────────────────
   const clearAuthStorageKeys = useCallback(() => {
@@ -535,6 +597,9 @@ export function AppProvider({ children }) {
       await supabase.auth.signOut().catch(() => {});
     } finally {
       clearAuthStorageKeys();
+      lastLoadedAuthUserIdRef.current = null;
+      lastWalletHistorySyncAtRef.current = 0;
+      persistedProfileRef.current = null;
       setIsLoggedIn(false);
       setCurrentUser(null);
       setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
@@ -554,57 +619,89 @@ export function AppProvider({ children }) {
     }
   }, [clearAuthStorageKeys, clearDebounceTimers]);
 
-  const loadUserSession = useCallback(async (authUser) => {
-    try {
-      const [profileResult, rolesResult, walletResult] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
-        supabase.from('user_roles').select('role').eq('user_id', authUser.id),
-        supabase.from('wallets').select('balance, history').eq('user_id', authUser.id).maybeSingle(),
-      ]);
+  const loadUserSession = useCallback((authUser) => {
+    if (!authUser?.id) return Promise.resolve();
+    const existingPromise = loadUserSessionPromisesRef.current.get(authUser.id);
+    if (existingPromise) return existingPromise;
 
-      const profile = profileResult.data || {};
-      const roles   = rolesResult.data?.map(r => r.role) || ['customer'];
-      const wallet  = walletResult.data;
+    const promise = Promise.resolve().then(async () => {
+      try {
+        const [profileResult, rolesResult, walletResult] = await Promise.all([
+          supabase.from('profiles').select('id, name, phone, email, location, avatar, addresses, banned').eq('id', authUser.id).maybeSingle(),
+          supabase.from('user_roles').select('role').eq('user_id', authUser.id),
+          supabase.from('wallets').select('balance, history').eq('user_id', authUser.id).maybeSingle(),
+        ]);
 
-      const mergedRoles = roles;
+        const profile = profileResult.data || {};
+        const roles   = rolesResult.data?.map(r => r.role) || ['customer'];
+        const wallet  = walletResult.data;
 
-      const prof = {
-        id: authUser.id,
-        name: profile.name || '',
-        phone: profile.phone || '',
-        email: authUser.email || profile.email || '',
-        location: profile.location || USER_LOCATION,
-        image: profile.avatar || null,
-      };
+        const mergedRoles = roles;
 
-      setCurrentUser({ id: authUser.id, email: authUser.email, ...profile, roles: mergedRoles });
-      setUserProfile(prof);
-      setTempProfile(prof);
-      setUserRoles(mergedRoles);
-      setUserWallet(r2(wallet?.balance || 0));
-      setWalletAllEntries(wallet?.history || []);
-      setUserAddresses(profile.addresses || [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }]);
-      // Use email key for admin so it stays consistent with creditWallet(ADMIN_EMAIL,...) calls
-      const walletKey = (ADMIN_EMAIL && authUser.email === ADMIN_EMAIL) ? ADMIN_EMAIL : authUser.id;
-      setGlobalWallets(prev => ({
-        ...prev,
-        [walletKey]: { balance: r2(wallet?.balance || 0), history: wallet?.history || [] },
-      }));
-    } catch (e) {
-      console.error('loadUserSession error', e);
-    }
+        const prof = {
+          id: authUser.id,
+          name: profile.name || '',
+          phone: profile.phone || '',
+          email: authUser.email || profile.email || '',
+          location: profile.location || USER_LOCATION,
+          image: profile.avatar || null,
+        };
+
+        const addresses = profile.addresses || [{ id: 1, label: 'บ้าน', address: 'กรุณาเพิ่มที่อยู่', location: USER_LOCATION }];
+        persistedProfileRef.current = profileResult.error || !profileResult.data ? null : {
+          userId: authUser.id,
+          signature: JSON.stringify({
+            name: prof.name, phone: prof.phone, avatar: prof.image || null,
+            location: prof.location, addresses,
+          }),
+        };
+        setCurrentUser({ id: authUser.id, email: authUser.email, ...profile, roles: mergedRoles });
+        setUserProfile(prof);
+        setTempProfile(prof);
+        setUserRoles(mergedRoles);
+        if (!walletResult.error) {
+          setUserWallet(r2(wallet?.balance || 0));
+          setWalletAllEntries(wallet?.history || []);
+          if (wallet) lastWalletHistorySyncAtRef.current = Date.now();
+        } else {
+          console.warn('Failed to load wallet from Supabase:', walletResult.error);
+        }
+        setUserAddresses(addresses);
+        // Use email key for admin so it stays consistent with creditWallet(ADMIN_EMAIL,...) calls
+        const walletKey = (ADMIN_EMAIL && authUser.email === ADMIN_EMAIL) ? ADMIN_EMAIL : authUser.id;
+        if (!walletResult.error) {
+          setGlobalWallets(prev => ({
+            ...prev,
+            [walletKey]: { balance: r2(wallet?.balance || 0), history: wallet?.history || [] },
+          }));
+        }
+      } catch (e) {
+        console.error('loadUserSession error', e);
+      } finally {
+        loadUserSessionPromisesRef.current.delete(authUser.id);
+      }
+    });
+    loadUserSessionPromisesRef.current.set(authUser.id, promise);
+    return promise;
   }, []);  
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+    let active = true;
+    const pendingAuthTimers = new Set();
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (!active) return;
       if (error && isInvalidTokenError(error)) {
         handleAuthErrorOrSignOut();
         return;
       }
       if (session?.user) {
         setIsLoggedIn(true);
-        loadUserSession(session.user);
-        fetchAppData();
+        await loadUserSession(session.user);
+        if (!active) return;
+        await fetchAppData(session.user.id);
+        lastLoadedAuthUserIdRef.current = session.user.id;
+      } else {
+        await fetchAppData(null);
       }
     }).catch((err) => {
       if (isInvalidTokenError(err)) {
@@ -612,42 +709,35 @@ export function AppProvider({ children }) {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
-        if (!isClearingAuthRef.current) {
-          await handleAuthErrorOrSignOut();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // getSession handles the initial load. Run subsequent requests after the
+      // auth callback returns so Supabase's session lock is no longer held.
+      if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
+      if (event === 'SIGNED_IN' && session?.user?.id === lastLoadedAuthUserIdRef.current) return;
+      const timer = setTimeout(async () => {
+        pendingAuthTimers.delete(timer);
+        if (!active) return;
+        if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+          lastLoadedAuthUserIdRef.current = null;
+          if (!isClearingAuthRef.current) await handleAuthErrorOrSignOut();
+          return;
         }
-        return;
-      }
 
-      if (session?.user) {
-        setIsLoggedIn(true);
-        await loadUserSession(session.user);
-        await fetchAppData();
-      } else {
-        if (!isClearingAuthRef.current) {
-          const hasAuthKeys = Object.keys(localStorage).some(
-            k => k.startsWith('sb-') || k.includes('auth-token')
-          );
-          if (hasAuthKeys) {
-            await handleAuthErrorOrSignOut();
-          } else {
-            setIsLoggedIn(false);
-            setCurrentUser(null);
-            setUserProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
-            setTempProfile({ id: '', name: '', phone: '', email: '', location: USER_LOCATION });
-            setUserRoles(['customer']);
-            setUserWallet(0);
-            setWalletAllEntries([]);
-            setUserAddresses([]);
-            setActiveRole('customer');
-            setActiveTab('home');
-            setProfileSubView('main');
-          }
+        if (session?.user) {
+          setIsLoggedIn(true);
+          await loadUserSession(session.user);
+          if (!active) return;
+          await fetchAppData(session.user.id);
+          lastLoadedAuthUserIdRef.current = session.user.id;
         }
-      }
+      }, 0);
+      pendingAuthTimers.add(timer);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      pendingAuthTimers.forEach(clearTimeout);
+      subscription.unsubscribe();
+    };
   }, [fetchAppData, handleAuthErrorOrSignOut, isInvalidTokenError, loadUserSession]);
 
   // ── Realtime: Orders ────────────────────────────────────────────────────
@@ -794,6 +884,7 @@ export function AppProvider({ children }) {
           const hist = updated.history || [];
           setUserWallet(bal);
           setWalletAllEntries(hist);
+          lastWalletHistorySyncAtRef.current = Date.now();
           setGlobalWallets(prev => ({
             ...prev,
             [walletKey]: { balance: bal, history: hist },
@@ -815,7 +906,7 @@ export function AppProvider({ children }) {
     };
   }, [isLoggedIn, currentUser?.id, currentUser?.email, isAdmin]);
 
-  // ── Auto-save to Supabase on state changes ──────────────────────────────
+  // ── Auto-save mutable app data to Supabase ──────────────────────────────
   const debounceRef = useRef({});
   const dataLoadedRef = useRef(false);
   const debouncedUpsert = useCallback((key, fn, delay = 1500) => {
@@ -836,9 +927,13 @@ export function AppProvider({ children }) {
       const rows = restaurantsRef.current
         .filter(r => isAdmin || r.ownerId === currentUid)
         .map(r => ({ id: r.id, owner_id: r.ownerId || null, data: r }));
-      if (rows.length) {
-        const { error } = await supabase.from('restaurants').upsert(rows);
+      const snapshots = persistedRowsRef.current.restaurants;
+      if (!snapshots) return;
+      const changedRows = rows.filter(row => snapshots.get(row.id) !== JSON.stringify(row));
+      if (changedRows.length) {
+        const { error } = await supabase.from('restaurants').upsert(changedRows);
         if (error) console.error('Auto-save restaurants error:', error);
+        else changedRows.forEach(row => snapshots.set(row.id, JSON.stringify(row)));
       }
     });
   }, [restaurants, currentUser?.id, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -858,9 +953,13 @@ export function AppProvider({ children }) {
       const rows = Object.entries(menuItems)
         .filter(([rid]) => activeOwnedRestIds.has(rid))
         .map(([rid, items]) => ({ restaurant_id: rid, items }));
-      if (rows.length) {
-        const { error } = await supabase.from('menu_items').upsert(rows);
+      const snapshots = persistedRowsRef.current.menuItems;
+      if (!snapshots) return;
+      const changedRows = rows.filter(row => snapshots.get(row.restaurant_id) !== JSON.stringify(row));
+      if (changedRows.length) {
+        const { error } = await supabase.from('menu_items').upsert(changedRows);
         if (error) console.error('Auto-save menu_items error:', error);
+        else changedRows.forEach(row => snapshots.set(row.restaurant_id, JSON.stringify(row)));
       }
     });
   }, [menuItems, restaurants, currentUser?.id, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -878,21 +977,16 @@ export function AppProvider({ children }) {
       const rows = riders
         .filter(r => isAdmin || r.userId === currentUid)
         .map(r => ({ id: r.id, user_id: r.userId || null, data: r }));
-      if (rows.length) {
-        const { error } = await supabase.from('riders').upsert(rows);
+      const snapshots = persistedRowsRef.current.riders;
+      if (!snapshots) return;
+      const changedRows = rows.filter(row => snapshots.get(row.id) !== riderProfileSignature(row));
+      if (changedRows.length) {
+        const { error } = await supabase.from('riders').upsert(changedRows);
         if (error) console.error('Auto-save riders error:', error);
+        else changedRows.forEach(row => snapshots.set(row.id, riderProfileSignature(row)));
       }
     });
   }, [riders, currentUser?.id, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!dataLoadedRef.current || !isAdmin) return;
-    debouncedUpsert('app_config', async () => {
-      if (!currentUserRef.current?.id) return;
-      const { error } = await supabase.from('app_config').upsert({ id: 1, data: appConfig });
-      if (error) console.error('Auto-save app_config error:', error);
-    }, 2000);
-  }, [appConfig, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-capture GPS location on login ──────────────────────────────────
   useEffect(() => {
@@ -912,7 +1006,6 @@ export function AppProvider({ children }) {
           }
           return prev.map((a, idx) => idx === 0 ? { ...a, location: loc } : a);
         });
-        supabase.from('profiles').update({ location: loc }).eq('id', uid).then(() => {});
         try {
           const r = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`,
@@ -1033,14 +1126,19 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!isLoggedIn || !currentUser?.id) return;
     debouncedUpsert('profile', async () => {
-      const { error } = await supabase.from('profiles').update({
+      const profileData = {
         name: userProfile.name,
         phone: userProfile.phone,
         avatar: userProfile.image || null,
         location: userProfile.location,
         addresses: userAddresses,
-      }).eq('id', currentUser.id);
+      };
+      const signature = JSON.stringify(profileData);
+      const snapshot = persistedProfileRef.current;
+      if (snapshot?.userId !== currentUser.id || snapshot.signature === signature) return;
+      const { error } = await supabase.from('profiles').update(profileData).eq('id', currentUser.id);
       if (error) console.error('Auto-save profile error:', error);
+      else persistedProfileRef.current = { userId: currentUser.id, signature };
     }, 2000);
   }, [userProfile, userAddresses]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1281,18 +1379,27 @@ export function AppProvider({ children }) {
   const handleUpdateUserLocation = useCallback(async (location) => {
     if (!location) return;
     const uid = currentUser?.id || userProfile?.id;
+    const nextAddresses = !userAddresses?.length
+      ? [{ id: 1, label: 'บ้าน', address: 'ที่อยู่ปัจจุบัน', location }]
+      : userAddresses.map((a, idx) => idx === 0 ? { ...a, location } : a);
     setUserProfile(prev => ({ ...prev, location }));
-    setUserAddresses(prev => {
-      if (!prev || prev.length === 0) {
-        return [{ id: 1, label: 'บ้าน', address: 'ที่อยู่ปัจจุบัน', location }];
-      }
-      return prev.map((a, idx) => idx === 0 ? { ...a, location } : a);
-    });
+    setUserAddresses(nextAddresses);
     if (uid) {
-      await supabase.from('profiles').update({ location }).eq('id', uid);
+      const { error } = await supabase.from('profiles')
+        .update({ location, addresses: nextAddresses }).eq('id', uid);
+      if (error) console.error('Location update error:', error);
+      else if (persistedProfileRef.current?.userId === uid) {
+        persistedProfileRef.current = {
+          userId: uid,
+          signature: JSON.stringify({
+            name: userProfile.name, phone: userProfile.phone,
+            avatar: userProfile.image || null, location, addresses: nextAddresses,
+          }),
+        };
+      }
     }
     notifySystem('📍 บันทึกตำแหน่งแล้ว', 'ตำแหน่งหลักของคุณถูกอัปเดตเรียบร้อย', 'success');
-  }, [currentUser?.id, userProfile?.id]);  
+  }, [currentUser?.id, userProfile, userAddresses]);
 
   const handleAddAddress = (addr) => {
     const loc = addr.location || USER_LOCATION;

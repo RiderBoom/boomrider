@@ -108,6 +108,7 @@ export default function RiderView() {
   // Refs: อัปเดตทุก render ผ่าน useEffect → callback ไม่มี stale closure
   const riderIdRef    = React.useRef(null);
   const riderUidRef   = React.useRef(null);
+  const isOnlineRef   = React.useRef(isOnline);
   const activeJobRef  = React.useRef(null);   // { id, status } ของงานที่กำลังทำอยู่
 
   // ── Sync refs ทุก render (synchronous — ไม่ใช้ useEffect เพื่อลด overhead) ──
@@ -115,6 +116,7 @@ export default function RiderView() {
   const meRider = riders.find(r => r.userId === _uid);
   riderIdRef.current  = meRider?.id ?? null;
   riderUidRef.current = _uid ?? null;
+  isOnlineRef.current = isOnline;
   const _activeJob = orders.find(o =>
     ['rider_accepted', 'picking_up', 'delivering'].includes(o.status) &&
     riderIdRef.current && o.riderId === riderIdRef.current,
@@ -144,7 +146,7 @@ export default function RiderView() {
       setGpsStatus('tracking');
 
       const riderId = riderIdRef.current;
-      if (riderId) updateRiderWorkingLocation(riderId, loc, isOnline);
+      if (riderId) updateRiderWorkingLocation(riderId, loc, isOnlineRef.current);
     };
 
     const onError = (err) => {
@@ -169,11 +171,7 @@ export default function RiderView() {
       const next = !prev;
       const key = `boomrider_rider_online_${userProfile.id || currentUser?.id}`;
       localStorage.setItem(key, String(next));
-      // Sync availability to DB so dispatch_order RPC can find this rider
-      const rid = riderIdRef.current;
-      if (rid) {
-        supabase.from('riders').update({ is_available: next }).eq('id', rid).then(() => {});
-      }
+      // The isOnline effect above writes the new availability once.
       return next;
     });
   };

@@ -63,6 +63,7 @@ export default function AdminView() {
     isConfigDirty, setIsConfigDirty,
     chats,
     globalWallets,
+    currentUser,
     userWallet,
     walletHistory,
     editingShop, setEditingShop,
@@ -119,7 +120,7 @@ export default function AdminView() {
 
   const loadAllUsers = async () => {
     const [profilesResult, walletsResult, rolesResult] = await Promise.all([
-      supabase.from('profiles').select('*'),
+      supabase.from('profiles').select('id, name, email, phone, banned'),
       supabase.from('wallets').select('user_id, balance'),
       supabase.from('user_roles').select('user_id, role'),
     ]);
@@ -144,7 +145,7 @@ export default function AdminView() {
   const loadWalletOverview = async () => {
     setWalletOverviewLoading(true);
     const [walletsResult, profilesResult, rolesResult] = await Promise.all([
-      supabase.from('wallets').select('user_id, balance, history'),
+      supabase.from('wallets').select('user_id, balance'),
       supabase.from('profiles').select('id, name, email'),
       supabase.from('user_roles').select('user_id, role'),
     ]);
@@ -166,7 +167,6 @@ export default function AdminView() {
         email:   p.email || '',
         roles:   rolesMap[p.id] || ['customer'],
         balance: w.balance || 0,
-        history: ((w.history || [])).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)),
       };
     });
     // Include any wallet entries not present in profiles table if applicable
@@ -178,7 +178,6 @@ export default function AdminView() {
           email:   '',
           roles:   rolesMap[w.user_id] || ['customer'],
           balance: w.balance || 0,
-          history: ((w.history || [])).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)),
         });
       }
     });
@@ -196,6 +195,7 @@ export default function AdminView() {
   useEffect(() => {
     if (adminTab === 'users') loadAllUsers();
     if (adminTab === 'dashboard') loadWalletOverview();
+    // Refresh on entry in case a Realtime event was missed while the tab was closed.
     if (adminTab === 'approvals') {
       supabase.from('pending_requests').select('id, data').then(({ data }) => {
         if (data) setPendingRequests(data.map(r => r.data));
@@ -334,14 +334,19 @@ export default function AdminView() {
       gpService,
     };
 
-    const { error } = await supabase.from('app_config').upsert({ id: 1, data: cleanedConfig });
+    const { data: savedRow, error } = await supabase
+      .from('app_config')
+      .upsert({ id: 1, data: cleanedConfig })
+      .select('data')
+      .single();
     if (error) {
       console.error('Failed to save app_config to Supabase:', error);
       return notifySystem('ผิดพลาด', `บันทึกข้อมูลไม่สำเร็จ: ${error.message}`, 'error');
     }
 
-    setAppConfig(cleanedConfig);
-    setEditConfig(cleanedConfig);
+    const persistedConfig = savedRow?.data || cleanedConfig;
+    setAppConfig(persistedConfig);
+    setEditConfig(persistedConfig);
     setIsConfigDirty(false);
     notifySystem('สำเร็จ', 'บันทึกการตั้งค่าระบบเรียบร้อยแล้ว', 'success');
   };
@@ -424,9 +429,11 @@ export default function AdminView() {
   // ── Wallet adjust ─────────────────────────────────────────────────────────
   const loadUserWalletEntries = async (userId) => {
     if (!userId) return;
+    if (userWalletLoading[userId]) return;
     setUserWalletLoading(prev => ({ ...prev, [userId]: true }));
-    const { data } = await supabase.from('wallets').select('history').eq('user_id', userId).maybeSingle();
-    setUserWalletEntries(prev => ({ ...prev, [userId]: data?.history || [] }));
+    const { data, error } = await supabase.from('wallets').select('history').eq('user_id', userId).maybeSingle();
+    if (error) console.error('Failed to load wallet history:', error);
+    else setUserWalletEntries(prev => ({ ...prev, [userId]: data?.history || [] }));
     setUserWalletLoading(prev => ({ ...prev, [userId]: false }));
   };
 
@@ -823,14 +830,21 @@ export default function AdminView() {
               <div className="divide-y max-h-[480px] overflow-y-auto">
                 {walletRows.map(row => {
                   const isExpanded = walletExpanded === row.uid;
+                  const history = userWalletEntries[row.uid] || (row.uid === currentUser?.id ? walletHistory : []);
                   const roleCls = r => r === 'admin' ? 'bg-red-100 text-red-700' : r === 'merchant' ? 'bg-orange-100 text-orange-700' : r === 'rider' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500';
-                  const gpEntries = row.history.filter(e => (e.desc||'').toLowerCase().includes('gp'));
+                  const gpEntries = history.filter(e => (e.desc||'').toLowerCase().includes('gp'));
                   const totalGP   = gpEntries.reduce((s,e)=>s+(e.amount||0), 0);
                   return (
                     <div key={row.uid}>
                       <div
                         className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer"
-                        onClick={() => setWalletExpanded(isExpanded ? null : row.uid)}
+                        onClick={() => {
+                          if (isExpanded) setWalletExpanded(null);
+                          else {
+                            setWalletExpanded(row.uid);
+                            loadUserWalletEntries(row.uid);
+                          }
+                        }}
                       >
                         {/* avatar */}
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
@@ -862,10 +876,12 @@ export default function AdminView() {
                       {/* Expanded history */}
                       {isExpanded && (
                         <div className="bg-gray-50 border-t px-4 py-3 space-y-1.5 max-h-60 overflow-y-auto">
-                          {row.history.length === 0 ? (
+                          {userWalletLoading[row.uid] ? (
+                            <p className="text-xs text-gray-400 text-center py-2">กำลังโหลดประวัติ…</p>
+                          ) : history.length === 0 ? (
                             <p className="text-xs text-gray-400 text-center py-2">ไม่มีประวัติธุรกรรม</p>
                           ) : (
-                            row.history.slice(0, 50).map((e, i) => (
+                            history.slice(0, 50).map((e, i) => (
                               <div key={e.id || i} className="flex items-center justify-between text-xs">
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
                                   <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${(e.amount||0)>=0?'bg-green-500':'bg-red-400'}`} />
