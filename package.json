@@ -17,15 +17,15 @@
   },
   "dependencies": {
     "@capacitor/push-notifications": "^8.1.2",
-    "@supabase/supabase-js": "^2.116.0",
+    "@supabase/supabase-js": "^2.117.2",
     "i18next": "^26.4.2",
     "leaflet": "^1.9.4",
-    "lucide-react": "^1.47.0",
+    "lucide-react": "^1.48.0",
     "promptpay-qr": "^0.5.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-i18next": "^17.0.14"
+    "react-i18next": "^17.0.15"
   },
   "overrides": {
     "uuid": "^11.1.1"
