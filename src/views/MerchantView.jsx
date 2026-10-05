@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { STATUS_LABELS, MENU_TAGS } from '../constants';
-import { formatDateTimeFromMs, getMerchantNotifSound, setMerchantNotifSound, playOrderNotificationSound } from '../utils';
+import { formatDateTimeFromMs, getMerchantNotifSound, setMerchantNotifSound, playOrderNotificationSound, getItemOptionsText } from '../utils';
 import InteractiveMap from '../components/InteractiveMap';
 
 export default function MerchantView() {
@@ -897,12 +897,22 @@ function OrderCard({ order, riders, updateOrderStatus, onCancel, highlight }) {
 
       {/* รายการสินค้า */}
       <div className="mb-3 text-sm bg-gray-50 rounded-lg p-2">
-        {(order.items || []).map((item, idx) => (
-          <div key={idx} className="flex justify-between text-xs">
-            <span>{item?.qty}× {item?.name}</span>
-            <span className="text-gray-500">฿{((item?.price ?? 0) * (item?.qty ?? 0)).toFixed(0)}</span>
-          </div>
-        ))}
+        {(order.items || []).map((item, idx) => {
+          const optsText = getItemOptionsText(item);
+          return (
+            <div key={idx} className="mb-1.5 last:mb-0">
+              <div className="flex justify-between text-xs font-medium text-gray-800">
+                <span>{item?.qty}× {item?.name}</span>
+                <span className="text-gray-500">฿{((item?.price ?? 0) * (item?.qty ?? 0)).toFixed(0)}</span>
+              </div>
+              {optsText && (
+                <div className="text-[11px] text-orange-600 font-semibold pl-4">
+                  + {optsText}
+                </div>
+              )}
+            </div>
+          );
+        })}
         <div className="border-t mt-1.5 pt-1.5 flex justify-between font-bold text-sm">
           <span>รวม</span>
           <span className="text-green-600">฿{order.grandTotal}</span>

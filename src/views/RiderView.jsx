@@ -7,7 +7,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import InteractiveMap from '../components/InteractiveMap';
-import { getDistanceFromLatLonInKm, formatDateTimeFromMs, compressImage, isSameDay } from '../utils';
+import { getDistanceFromLatLonInKm, formatDateTimeFromMs, compressImage, isSameDay, getItemOptionsText } from '../utils';
 import { USER_LOCATION } from '../constants';
 import { useJobOffer } from '../context/hooks/useJobOffer';
 import { getRiderJobDoneMs, getRiderJobIncome } from '../domain/riderJobs';
@@ -578,12 +578,22 @@ export default function RiderView() {
             {job.type === 'food' && job.items && job.items.length > 0 && (
               <div className="bg-gray-700/50 rounded-lg px-3 py-2 mb-2">
                 <p className="text-xs text-gray-400 font-bold mb-1">🍱 รายการสั่ง ({job.items.length} รายการ)</p>
-                {job.items.slice(0, 3).map((item, i) => (
-                  <div key={i} className="text-xs text-gray-300 flex justify-between">
-                    <span>· {item.name} {item.qty > 1 ? `x${item.qty}` : ''}</span>
-                    <span>฿{((item.price || 0) * (item.qty || 1)).toFixed(0)}</span>
-                  </div>
-                ))}
+                {job.items.slice(0, 3).map((item, i) => {
+                  const optsText = getItemOptionsText(item);
+                  return (
+                    <div key={i} className="text-xs text-gray-300 mb-1 last:mb-0">
+                      <div className="flex justify-between">
+                        <span>· {item.name} {item.qty > 1 ? `x${item.qty}` : ''}</span>
+                        <span>฿{((item.price || 0) * (item.qty || 1)).toFixed(0)}</span>
+                      </div>
+                      {optsText && (
+                        <div className="text-[10px] text-gray-400 pl-3">
+                          + {optsText}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 {job.items.length > 3 && (
                   <p className="text-xs text-gray-500 mt-0.5">+{job.items.length - 3} รายการ</p>
                 )}

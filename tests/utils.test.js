@@ -8,6 +8,7 @@ import {
   r2,
   isValidCoordinate,
   isDefaultFallbackLocation,
+  getItemOptionsText,
 } from '../src/utils.js';
 
 test('r2 rounds wallet values to two decimal places', () => {
@@ -48,4 +49,31 @@ test('isValidCoordinate validates bounds, lat/lng = 0, and default Bangkok fallb
   assert.equal(isDefaultFallbackLocation({ lat: 13.7563, lng: 100.5018 }), true);
   assert.equal(isValidCoordinate({ lat: 13.7563, lng: 100.5018 }), false); // Rejected for order creation!
   assert.equal(isValidCoordinate({ lat: 13.7563, lng: 100.5018 }, { allowDefaultFallback: true }), true);
+});
+
+test('getItemOptionsText correctly formats option and topping objects/strings', () => {
+  assert.equal(getItemOptionsText(null), null);
+  assert.equal(getItemOptionsText({ name: 'ข้าวมันไก่' }), null);
+  assert.equal(getItemOptionsText({ name: 'ข้าวมันไก่', selectedOptions: [] }), null);
+
+  const itemWithOptionsObjects = {
+    name: 'กะเพราหมูกรอบ',
+    selectedOptions: [
+      { name: 'ไข่ดาว', price: 10 },
+      { name: 'เผ็ดมาก', price: 0 },
+    ],
+  };
+  assert.equal(getItemOptionsText(itemWithOptionsObjects), 'ไข่ดาว (+฿10), เผ็ดมาก');
+
+  const itemWithOptionStrings = {
+    name: 'ก๋วยเตี๋ยว',
+    selectedOptions: ['เส้นเล็ก', 'งอกพิเศษ'],
+  };
+  assert.equal(getItemOptionsText(itemWithOptionStrings), 'เส้นเล็ก, งอกพิเศษ');
+
+  const itemWithFallbackOptions = {
+    name: 'ชานมไข่มุก',
+    options: [{ name: 'หวานน้อย', price: 0 }, { name: 'เพิ่มพุดดิ้ง', price: 15 }],
+  };
+  assert.equal(getItemOptionsText(itemWithFallbackOptions), 'หวานน้อย, เพิ่มพุดดิ้ง (+฿15)');
 });
