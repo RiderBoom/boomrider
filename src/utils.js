@@ -227,6 +227,26 @@ export const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
 };
 
 /**
+ * ดึงข้อความตัวเลือกเพิ่มเติม/ท็อปปิ้งของสินค้า (เช่น "ไข่ดาว (+฿10), เผ็ดมาก")
+ * @param {object} item
+ * @returns {string|null}
+ */
+export const getItemOptionsText = (item) => {
+  const opts = item?.selectedOptions || item?.options;
+  if (!opts || !Array.isArray(opts) || opts.length === 0) return null;
+  const list = opts.map(o => {
+    if (typeof o === 'string') return o.trim();
+    if (o && typeof o === 'object') {
+      if (o.name) {
+        return o.price ? `${o.name} (+฿${o.price})` : o.name;
+      }
+    }
+    return null;
+  }).filter(Boolean);
+  return list.length > 0 ? list.join(', ') : null;
+};
+
+/**
  * ติดตั้งและตั้งค่า Native Push Notifications สำหรับ Capacitor (Android/iOS)
  */
 export const initPushNotifications = async ({ onToken, onAction } = {}) => {
