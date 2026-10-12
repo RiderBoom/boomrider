@@ -270,6 +270,14 @@ export default function ActivityTab() {
                         </div>
                       </div>
                     )}
+
+                    <div className="mb-2.5 p-2.5 rounded-xl bg-teal-50/80 border border-teal-200/60 flex items-center gap-2">
+                      <Clock size={16} className="text-teal-600 shrink-0" />
+                      <p className="text-[11px] text-teal-800 font-medium leading-tight">
+                        สินค้าจัดส่งเรียบร้อยแล้ว — ระบบจะยืนยันการรับและปิดงานให้อัตโนมัติภายใน 15 นาทีหากไม่มีการแจ้งคัดค้าน
+                      </p>
+                    </div>
+
                     <button
                       onClick={() => { updateOrderStatus(order.id, 'completed'); openRatingModal(order); }}
                       className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-teal-400 active:scale-95 transition-all shadow-lg shadow-teal-900/20 animate-pulse"
