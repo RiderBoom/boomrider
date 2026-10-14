@@ -31,11 +31,11 @@
     "uuid": "^11.1.1"
   },
   "devDependencies": {
-    "@capacitor/android": "^8.5.2",
-    "@capacitor/cli": "^8.5.2",
-    "@capacitor/core": "^8.5.2",
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "@eslint/js": "^9.39.5",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
@@ -47,6 +47,6 @@
     "postcss": "^8.5.29",
     "sharp": "^0.35.5",
     "tailwindcss": "^3.4.19",
-    "vite": "^8.3.2"
+    "vite": "^8.3.4"
   }
 }
