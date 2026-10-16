@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Download, Share } from 'lucide-react';
 
 const DISMISSED_KEY = 'boomrider_install_dismissed';
@@ -31,6 +32,7 @@ function saveDismissed() {
 }
 
 export default function InstallBanner() {
+  const { t } = useTranslation();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showBanner, setShowBanner] = useState(() => {
     if (isInStandaloneMode() || isDismissed()) return false;
@@ -93,10 +95,10 @@ export default function InstallBanner() {
                 BoomRider
               </p>
               <p className="text-gray-500 text-xs mt-0.5 leading-tight">
-                ติดตั้งแอปเพื่อประสบการณ์ที่ดีกว่า
+                {t('install_banner_title')}
               </p>
               <p className="text-orange-500 text-xs mt-0.5">
-                ฟรี · ไม่ใช้พื้นที่เยอะ · เร็วกว่าเบราว์เซอร์
+                {t('install_banner_desc')}
               </p>
             </div>
 
@@ -107,13 +109,13 @@ export default function InstallBanner() {
                 className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors"
               >
                 <Download size={14} />
-                ติดตั้ง
+                {t('install_btn')}
               </button>
               <button
                 onClick={handleDismiss}
                 className="text-gray-400 text-xs text-center hover:text-gray-600 transition-colors"
               >
-                ไม่ขอบคุณ
+                {t('no_thanks')}
               </button>
             </div>
 

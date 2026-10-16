@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   MapPin, ArrowDownCircle, Wallet, MessageSquare,
   ChevronRight, Repeat, LogOut, Settings, Save,
   Camera, Crosshair, Bike, ChefHat, Plus, Trash2,
-  Check, Edit,
+  Check, Edit, Globe,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatDateTimeFromMs } from '../../utils';
 import InteractiveMap from '../InteractiveMap';
 
 export default function ProfileTab() {
+  const { t, i18n } = useTranslation();
   const {
     userProfile,
     profileSubView, setProfileSubView,
@@ -138,48 +140,61 @@ export default function ProfileTab() {
               onClick={() => openChatWindow('support-' + userProfile.id, 'เจ้าหน้าที่ (Admin)', 'customer')}
               className="flex-1 bg-blue-600 p-4 rounded-2xl shadow-lg text-white flex justify-center items-center font-bold text-sm"
             >
-              <MessageSquare className="mr-2" /> ติดต่อเจ้าหน้าที่
+              <MessageSquare className="mr-2" /> {t('contact_admin')}
             </button>
           </div>
           <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-            <div className="p-4 border-b bg-gray-50 font-bold text-gray-700 text-sm">เมนูพาร์ทเนอร์</div>
+            <div className="p-4 border-b bg-gray-50 font-bold text-gray-700 text-sm">{t('partner_menu')}</div>
             {userRoles.includes('merchant') ? (
               <button onClick={() => setActiveRole('merchant')} className="w-full p-4 flex items-center justify-between hover:bg-green-50 border-b">
-                <span className="text-green-700 font-bold">สลับไปร้านค้า</span><Repeat size={20} />
+                <span className="text-green-700 font-bold">{t('switch_to_merchant')}</span><Repeat size={20} />
               </button>
             ) : isPending('merchant_reg') ? (
               <div className="p-4 text-gray-400 border-b flex items-center justify-between bg-gray-50">
-                <span>สมัครร้านค้า (รออนุมัติ...)</span>
+                <span>{t('apply_merchant')} ({t('pending')}...)</span>
                 <button onClick={syncRoles} className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 flex items-center gap-1 ml-2">
-                  <Repeat size={12} /> ตรวจสอบ
+                  <Repeat size={12} /> {t('check_status')}
                 </button>
               </div>
             ) : (
               <button onClick={() => setProfileSubView('reg_merchant')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 border-b">
-                <span>สมัครเปิดร้านอาหาร</span><ChevronRight size={20} />
+                <span>{t('apply_merchant')}</span><ChevronRight size={20} />
               </button>
             )}
             {userRoles.includes('rider') ? (
               <button onClick={() => setActiveRole('rider')} className="w-full p-4 flex items-center justify-between hover:bg-blue-50">
-                <span className="text-blue-700 font-bold">สลับไปไรเดอร์</span><Repeat size={20} />
+                <span className="text-blue-700 font-bold">{t('switch_to_rider')}</span><Repeat size={20} />
               </button>
             ) : isPending('rider_reg') ? (
               <div className="p-4 text-gray-400 flex items-center justify-between bg-gray-50">
-                <span>สมัครไรเดอร์ (รออนุมัติ...)</span>
+                <span>{t('apply_rider')} ({t('pending')}...)</span>
                 <button onClick={syncRoles} className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 flex items-center gap-1 ml-2">
-                  <Repeat size={12} /> ตรวจสอบ
+                  <Repeat size={12} /> {t('check_status')}
                 </button>
               </div>
             ) : (
               <button onClick={() => setProfileSubView('reg_rider')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50">
-                <span>สมัครขับ BoomRider</span><ChevronRight size={20} />
+                <span>{t('apply_rider')}</span><ChevronRight size={20} />
               </button>
             )}
             <button onClick={handleLogout} className="w-full p-4 flex items-center justify-between hover:bg-red-50 border-t">
-              <span className="text-red-600 font-bold">ออกจากระบบ</span><LogOut size={20} className="text-red-600" />
+              <span className="text-red-600 font-bold">{t('logout')}</span><LogOut size={20} className="text-red-600" />
             </button>
           </div>
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <button
+              onClick={() => {
+                const nextLang = i18n.language.startsWith('th') ? 'en' : 'th';
+                i18n.changeLanguage(nextLang);
+              }}
+              className="w-full p-4 flex items-center justify-between hover:bg-gray-50 border-b"
+            >
+              <div className="flex items-center">
+                <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600 mr-3"><Globe size={20} /></div>
+                <span className="text-gray-800 font-medium">{t('language')}</span>
+              </div>
+              <span className="font-bold text-sm text-indigo-600">{i18n.language.startsWith('th') ? 'ไทย (TH)' : 'English (EN)'}</span>
+            </button>
             <button
               onClick={() => { setProfileSubView('pin_location'); setUserPinLoc(null); }}
               className="w-full p-4 flex items-center justify-between hover:bg-blue-50 border-b"
@@ -187,11 +202,11 @@ export default function ProfileTab() {
               <div className="flex items-center">
                 <div className="bg-blue-100 p-2 rounded-lg text-blue-600 mr-3"><MapPin size={20} /></div>
                 <div className="text-left">
-                  <div className="font-medium">ตำแหน่งของฉัน</div>
+                  <div className="font-medium">{t('my_location')}</div>
                   <div className="text-xs text-gray-400 mt-0.5">
                     {userProfile.location
                       ? `${userProfile.location.lat.toFixed(4)}, ${userProfile.location.lng.toFixed(4)}`
-                      : 'ยังไม่ได้ตั้ง'}
+                      : t('not_set')}
                   </div>
                 </div>
               </div>
@@ -200,12 +215,12 @@ export default function ProfileTab() {
             <button onClick={handleClearCache} className="w-full p-4 flex items-center justify-between hover:bg-red-50 border-b">
               <div className="flex items-center">
                 <div className="bg-red-50 p-2 rounded-lg text-red-500 mr-3"><Trash2 size={20} /></div>
-                <span className="text-gray-800 font-medium">ล้างแคช</span>
+                <span className="text-gray-800 font-medium">{t('clear_cache')}</span>
               </div>
               <ChevronRight size={20} className="text-gray-400" />
             </button>
             <button onClick={() => { setTempProfile({ ...userProfile }); setProfileSubView('edit_profile'); }} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 border-b">
-              <div className="flex items-center"><div className="bg-gray-100 p-2 rounded-lg text-gray-600 mr-3"><Settings size={20} /></div><span>ตั้งค่า/แก้ไขโปรไฟล์</span></div>
+              <div className="flex items-center"><div className="bg-gray-100 p-2 rounded-lg text-gray-600 mr-3"><Settings size={20} /></div><span>{t('edit_profile')}</span></div>
               <ChevronRight size={20} className="text-gray-400" />
             </button>
           </div>

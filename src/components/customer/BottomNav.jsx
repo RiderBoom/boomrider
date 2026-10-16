@@ -25,7 +25,7 @@ export default function BottomNav() {
     { id: 'home',     icon: Home,        label: t('nav_home') },
     { id: 'activity', icon: ShoppingBag, label: t('nav_activity'), badge: activityBadge },
     { id: 'profile',  icon: User,        label: t('nav_profile') },
-    ...(isAdmin ? [{ id: 'admin', icon: ShieldAlert, label: 'แอดมิน', badge: pendingRequests.length, isRole: true }] : []),
+    ...(isAdmin ? [{ id: 'admin', icon: ShieldAlert, label: t('nav_admin'), badge: pendingRequests.length, isRole: true }] : []),
   ];
 
   return (

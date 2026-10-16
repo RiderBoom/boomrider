@@ -38,7 +38,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
     getCurrentLocationForParcel('pickup');
   }, [serviceType]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [selectedCategory, setSelectedCategory] = useState('ทั้งหมด');
+  const [selectedCategory, setSelectedCategory] = useState(t('all'));
   const [orderNotes, setOrderNotes]   = useState('');
   const [promoInput, setPromoInput]   = useState('');
   const [promoResult, setPromoResult] = useState(null);
@@ -133,8 +133,8 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
   const categories = useMemo(() => {
     const catsInShops = restaurants.filter(r => r.category).map(r => r.category);
     const combined = [...new Set([...DEFAULT_CATEGORIES, ...catsInShops])].sort();
-    return ['ทั้งหมด', ...combined];
-  }, [restaurants]);
+    return [t('all'), ...combined];
+  }, [restaurants, t]);
 
   const handleOpenOptionModal = (item) => {
     if (item.options && item.options.length > 0) {
@@ -171,7 +171,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
 
   const visibleRestaurants = useMemo(() => {
     let list = restaurantsWithDistance.filter(r => r.status === 'open');
-    if (selectedCategory !== 'ทั้งหมด') list = list.filter(r => r.category === selectedCategory);
+    if (selectedCategory !== t('all') && selectedCategory !== 'ทั้งหมด') list = list.filter(r => r.category === selectedCategory);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(r => {
@@ -183,7 +183,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
       });
     }
     return list;
-  }, [restaurantsWithDistance, selectedCategory, searchQuery, menuItems]);
+  }, [restaurantsWithDistance, selectedCategory, searchQuery, menuItems, t]);
 
   // ── Menu detail view ────────────────────────────────────────────────────────
   if (selectedRestaurant) {
@@ -215,7 +215,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
           </div>
         </div>
         <div className="px-4 pt-4 pb-40">
-          <h2 className="font-bold text-lg text-gray-800 mb-3">เมนูทั้งหมด</h2>
+          <h2 className="font-bold text-lg text-gray-800 mb-3">{t('all_menu')}</h2>
           <div className="space-y-3">
             {menuItems[selectedRestaurant.id]?.length > 0 ? (
               menuItems[selectedRestaurant.id].map(item => (
@@ -461,21 +461,21 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
 
           <div className="featured-banner mb-5">
             <div className="relative z-10">
-              <div className="text-xs font-semibold text-orange-200 uppercase tracking-wider mb-1">ยินดีต้อนรับสู่ BoomRider</div>
-              <h2 className="text-xl font-black text-white leading-tight mb-1">สั่งอาหาร<br />ส่งพัสดุ ง่ายๆ!</h2>
-              <p className="text-orange-100 text-xs mb-3">บริการครอบคลุมทั่วกรุงเทพและปริมณฑล</p>
+              <div className="text-xs font-semibold text-orange-200 uppercase tracking-wider mb-1">{t('welcome_banner_title')}</div>
+              <h2 className="text-xl font-black text-white leading-tight mb-1">{t('welcome_banner_subtitle')}</h2>
+              <p className="text-orange-100 text-xs mb-3">{t('welcome_banner_desc')}</p>
               <button
                 onClick={() => setServiceType('parcel')}
                 className="bg-white text-orange-600 text-xs font-bold px-4 py-1.5 rounded-full"
-              >ส่งพัสดุเดี๋ยวนี้ →</button>
+              >{t('send_parcel_now')}</button>
             </div>
           </div>
 
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-gray-800">
-              {searchQuery ? `ผลการค้นหา "${searchQuery}"` : selectedCategory === 'ทั้งหมด' ? 'ร้านใกล้คุณ' : selectedCategory}
+              {searchQuery ? t('search_results_for', { query: searchQuery }) : (selectedCategory === t('all') || selectedCategory === 'ทั้งหมด') ? t('nearby_restaurants') : selectedCategory}
             </h2>
-            <span className="text-xs text-orange-500 font-medium">{visibleRestaurants.length} ร้าน</span>
+            <span className="text-xs text-orange-500 font-medium">{t('shops_count', { count: visibleRestaurants.length })}</span>
           </div>
 
           {visibleRestaurants.length === 0 && (
@@ -495,11 +495,11 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
             ) : (
               <div className="text-center py-16 text-gray-400">
                 <Search size={40} className="mx-auto mb-2 opacity-20" />
-                <p className="font-medium">ไม่พบร้านอาหารที่ค้นหา</p>
+                <p className="font-medium">{t('no_restaurants_found')}</p>
                 <button
-                  onClick={() => { setSearchQuery(''); setSelectedCategory('ทั้งหมด'); }}
+                  onClick={() => { setSearchQuery(''); setSelectedCategory(t('all')); }}
                   className="mt-2 text-orange-500 text-sm underline"
-                >ล้างการค้นหา</button>
+                >{t('clear_search')}</button>
               </div>
             )
           )}
@@ -627,7 +627,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
       ) : serviceType === 'ride' ? (
         /* ── Ride form ── */
         <div className="bg-white p-5 rounded-xl shadow-sm">
-          <h2 className="font-bold text-lg mb-4 text-purple-600 flex items-center"><Car className="mr-2" /> บริการเรียกรถรับส่ง (Ride)</h2>
+          <h2 className="font-bold text-lg mb-4 text-purple-600 flex items-center"><Car className="mr-2" /> {t('ride_hailing_title')}</h2>
           <div className="space-y-3">
             <p className="text-xs text-gray-500 text-center">ค่าบริการเดินทางเริ่มต้น {appConfig.rideBaseFee ?? appConfig.baseFee}บ. + {appConfig.ridePerKmFee ?? appConfig.perKmFee}บ./กม.</p>
             <div className="mb-4">
@@ -726,7 +726,7 @@ export default function HomeTab({ searchQuery, setSearchQuery }) {
       ) : (
         /* ── Service form ── */
         <div className="bg-white p-5 rounded-xl shadow-sm">
-          <h2 className="font-bold text-lg mb-4 text-emerald-600 flex items-center"><Wrench className="mr-2" /> บริการจองช่าง / งานบ้าน (Service)</h2>
+          <h2 className="font-bold text-lg mb-4 text-emerald-600 flex items-center"><Wrench className="mr-2" /> {t('service_booking_title')}</h2>
           <div className="space-y-3">
             <div>
               <label htmlFor="service-category-select" className="text-xs text-gray-500 mb-1 block">เลือกประเภทบริการ</label>
