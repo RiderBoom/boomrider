@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#311042" />
+    </linearGradient>
+
+    <!-- Accent Gradients -->
+    <linearGradient id="primaryGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4500" />
+      <stop offset="50%" stop-color="#ff8c00" />
+      <stop offset="100%" stop-color="#ffba08" />
+    </linearGradient>
+
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.03" />
+    </linearGradient>
+
+    <linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22c55e" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+
+    <filter id="glowEffect" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="25" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Layer -->
+  <rect width="1200" height="1200" fill="url(#bgGradient)" />
+
+  <!-- Glowing Orbs in background -->
+  <circle cx="200" cy="200" r="300" fill="#ff4500" opacity="0.25" filter="url(#glowEffect)" />
+  <circle cx="1000" cy="900" r="350" fill="#6366f1" opacity="0.2" filter="url(#glowEffect)" />
+  <circle cx="950" cy="300" r="250" fill="#ff8c00" opacity="0.2" filter="url(#glowEffect)" />
+
+  <!-- Diagonal Grid Lines Effect -->
+  <g stroke="#ffffff" stroke-opacity="0.03" stroke-width="1.5">
+    <line x1="0" y1="200" x2="1200" y2="200" />
+    <line x1="0" y1="400" x2="1200" y2="400" />
+    <line x1="0" y1="600" x2="1200" y2="600" />
+    <line x1="0" y1="800" x2="1200" y2="800" />
+    <line x1="0" y1="1000" x2="1200" y2="1000" />
+  </g>
+
+  <!-- HEADER / BRANDING -->
+  <g transform="translate(80, 90)">
+    <!-- Brand Badge -->
+    <rect x="0" y="0" width="220" height="48" rx="24" fill="url(#primaryGlow)" />
+    <text x="110" y="30" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="800" font-size="20" fill="#ffffff" text-anchor="middle">🛵 BOOM RIDER</text>
+
+    <!-- Main Headline -->
+    <text x="0" y="120" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="900" font-size="64" fill="#ffffff">หิวเมื่อไหร่... สั่งเลย!</text>
+    <text x="0" y="195" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="900" font-size="56" fill="url(#primaryGlow)">BoomRider Food Delivery</text>
+
+    <!-- Tagline -->
+    <text x="0" y="255" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="500" font-size="28" fill="#e2e8f0">
+      เสิร์ฟความอร่อยถึงหน้าบ้าน ส่งเร็ว สดใหม่ ทันใจทุกมื้อ 🍔🍕🧋
+    </text>
+  </g>
+
+  <!-- CENTER CONTENT / FEATURE CARDS & MOCKUP -->
+
+  <!-- Left Side: Highlights -->
+  <g transform="translate(80, 410)">
+    <!-- Feature 1 -->
+    <g transform="translate(0, 0)" filter="url(#dropShadow)">
+      <rect x="0" y="0" width="460" height="110" rx="20" fill="url(#cardBg)" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1" />
+      <circle cx="55" cy="55" r="32" fill="#ff4500" fill-opacity="0.2" />
+      <text x="55" y="66" font-size="32" text-anchor="middle">⚡</text>
+      <text x="105" y="48" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="700" font-size="24" fill="#ffffff">ส่งไว ทันใจ ไม่ต้องรอนาน</text>
+      <text x="105" y="80" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="400" font-size="18" fill="#cbd5e1">ไรเดอร์พร้อมสแตนด์บายรับออเดอร์ทันที</text>
+    </g>
+
+    <!-- Feature 2 -->
+    <g transform="translate(0, 135)" filter="url(#dropShadow)">
+      <rect x="0" y="0" width="460" height="110" rx="20" fill="url(#cardBg)" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1" />
+      <circle cx="55" cy="55" r="32" fill="#10b981" fill-opacity="0.2" />
+      <text x="55" y="66" font-size="32" text-anchor="middle">🛵</text>
+      <text x="105" y="48" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="700" font-size="24" fill="#ffffff">ค่าส่งสุดคุ้ม เริ่มต้นเพียง 20.-</text>
+      <text x="105" y="80" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="400" font-size="18" fill="#cbd5e1">คำนวณค่าส่งตามระยะทางจริง ยุติธรรม</text>
+    </g>
+
+    <!-- Feature 3 -->
+    <g transform="translate(0, 270)" filter="url(#dropShadow)">
+      <rect x="0" y="0" width="460" height="110" rx="20" fill="url(#cardBg)" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1" />
+      <circle cx="55" cy="55" r="32" fill="#3b82f6" fill-opacity="0.2" />
+      <text x="55" y="66" font-size="32" text-anchor="middle">🍱</text>
+      <text x="105" y="48" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="700" font-size="24" fill="#ffffff">เลือกร้านอร่อยได้หลากหลาย</text>
+      <text x="105" y="80" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="400" font-size="18" fill="#cbd5e1">อาหารตามสั่ง ก๋วยเตี๋ยว ชาไข่มุก และของหวาน</text>
+    </g>
+
+    <!-- Feature 4 -->
+    <g transform="translate(0, 405)" filter="url(#dropShadow)">
+      <rect x="0" y="0" width="460" height="110" rx="20" fill="url(#cardBg)" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1" />
+      <circle cx="55" cy="55" r="32" fill="#8b5cf6" fill-opacity="0.2" />
+      <text x="55" y="66" font-size="32" text-anchor="middle">💳</text>
+      <text x="105" y="48" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="700" font-size="24" fill="#ffffff">ชำระเงินสะดวก สะดวกรวดเร็ว</text>
+      <text x="105" y="80" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="400" font-size="18" fill="#cbd5e1">รองรับ PromptPay QR, กระเป๋าเงิน Wallet และเงินสด</text>
+    </g>
+  </g>
+
+  <!-- Right Side: Phone Graphic & Food Visuals -->
+  <g transform="translate(620, 360)" filter="url(#dropShadow)">
+    <!-- Smartphone Outer Frame -->
+    <rect x="70" y="0" width="380" height="680" rx="48" fill="#0f172a" stroke="#334155" stroke-width="8" />
+    <rect x="78" y="8" width="364" height="664" rx="40" fill="#1e293b" />
+
+    <!-- Phone Notch / Camera -->
+    <rect x="180" y="20" width="160" height="24" rx="12" fill="#0f172a" />
+    <circle cx="310" cy="32" r="5" fill="#334155" />
+
+    <!-- Phone Screen Content Header -->
+    <rect x="94" y="60" width="332" height="180" rx="20" fill="url(#primaryGlow)" />
+    <text x="114" y="100" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="800" font-size="22" fill="#ffffff">BoomRider Express</text>
+    <text x="114" y="130" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="500" font-size="16" fill="#fff" opacity="0.9">ส่งเร็ว ถึงไว ใจถึงใจ 🛵</text>
+
+    <!-- Search Bar Mockup -->
+    <rect x="114" y="150" width="292" height="42" rx="12" fill="#ffffff" opacity="0.95" />
+    <text x="134" y="176" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-size="15" fill="#64748b">🔍 ค้นหาร้านอาหาร, เมนูโปรด...</text>
+
+    <!-- Food Cards Mockup inside phone -->
+    <!-- Food Card 1 -->
+    <g transform="translate(94, 255)">
+      <rect x="0" y="0" width="332" height="110" rx="16" fill="#334155" />
+      <rect x="12" y="12" width="86" height="86" rx="12" fill="#ff4500" opacity="0.8" />
+      <text x="55" y="65" font-size="40" text-anchor="middle">ผัดไทย</text>
+      <text x="110" y="40" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="700" font-size="18" fill="#ffffff">ผัดไทยกุ้งสด แม่พร</text>
+      <text x="110" y="65" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-size="14" fill="#fbbf24">★ 4.9 (120+ รีวิว)</text>
+      <text x="110" y="88" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="600" font-size="15" fill="#34d399">฿60 • ส่ง 15-20 นาที</text>
+    </g>
+
+    <!-- Food Card 2 -->
+    <g transform="translate(94, 380)">
+      <rect x="0" y="0" width="332" height="110" rx="16" fill="#334155" />
+      <rect x="12" y="12" width="86" height="86" rx="12" fill="#3b82f6" opacity="0.8" />
+      <text x="55" y="65" font-size="40" text-anchor="middle">ชาไข่มุก</text>
+      <text x="110" y="40" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="700" font-size="18" fill="#ffffff">ชาไข่มุกไต้หวัน ชานมฮ่องกง</text>
+      <text x="110" y="65" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-size="14" fill="#fbbf24">★ 4.8 (95+ รีวิว)</text>
+      <text x="110" y="88" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="600" font-size="15" fill="#34d399">฿45 • ส่ง 10-15 นาที</text>
+    </g>
+
+    <!-- Food Card 3 -->
+    <g transform="translate(94, 505)">
+      <rect x="0" y="0" width="332" height="110" rx="16" fill="#334155" />
+      <rect x="12" y="12" width="86" height="86" rx="12" fill="#10b981" opacity="0.8" />
+      <text x="55" y="65" font-size="40" text-anchor="middle">ส้มตำ</text>
+      <text x="110" y="40" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="700" font-size="18" fill="#ffffff">ส้มตำแซ่บเวอร์ เมืองทอง</text>
+      <text x="110" y="65" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-size="14" fill="#fbbf24">★ 5.0 (200+ รีวิว)</text>
+      <text x="110" y="88" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="600" font-size="15" fill="#34d399">฿50 • ส่ง 15-25 นาที</text>
+    </g>
+
+    <!-- Floating Badge on Phone -->
+    <g transform="translate(25, 480)" filter="url(#dropShadow)">
+      <rect x="0" y="0" width="180" height="60" rx="30" fill="url(#badgeGrad)" />
+      <text x="90" y="36" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="800" font-size="18" fill="#ffffff" text-anchor="middle">🔥 ส่งไวลื่นไหล</text>
+    </g>
+  </g>
+
+  <!-- FOOTER / CTA BAR -->
+  <g transform="translate(80, 960)">
+    <rect x="0" y="0" width="1040" height="150" rx="28" fill="url(#primaryGlow)" filter="url(#dropShadow)" />
+
+    <!-- CTA Text -->
+    <text x="50" y="60" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="900" font-size="34" fill="#ffffff">กดสั่งเลยง่ายๆ ผ่านเว็บบราวเซอร์!</text>
+    <text x="50" y="102" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="600" font-size="24" fill="#fef08a">👉 https://boomrider.vercel.app</text>
+
+    <!-- Order Now Button -->
+    <g transform="translate(740, 35)">
+      <rect x="0" y="0" width="250" height="80" rx="40" fill="#ffffff" filter="url(#dropShadow)" />
+      <text x="125" y="48" font-family="'Prompt', 'Noto Sans Thai', sans-serif" font-weight="800" font-size="26" fill="#ff4500" text-anchor="middle">คลิกสั่งอาหาร ➔</text>
+    </g>
+  </g>
+</svg>
