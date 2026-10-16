@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   MapPin, Clock, Star, Navigation, MessageSquare,
   Banknote, CheckCircle, Receipt, ShoppingBag, Bike,
@@ -15,19 +16,10 @@ const calcETA = (fromLoc, toLoc) => {
   return { km: km.toFixed(1), mins };
 };
 
-const STATUS_LABELS = {
-  pending:         { label: 'รอร้านรับออเดอร์',          color: 'bg-orange-100 text-orange-600' },
-  preparing:       { label: 'กำลังเตรียมอาหาร',          color: 'bg-blue-100 text-blue-600' },
-  ready_to_pickup: { label: 'รอไรเดอร์รับงาน',           color: 'bg-purple-100 text-purple-600' },
-  rider_accepted:  { label: 'ไรเดอร์รับงานแล้ว',         color: 'bg-indigo-100 text-indigo-600' },
-  picking_up:      { label: 'ไรเดอร์ถึงจุดรับแล้ว',      color: 'bg-indigo-100 text-indigo-700' },
-  delivering:      { label: '🛵 กำลังส่งของหาคุณ!',      color: 'bg-blue-100 text-blue-700' },
-  delivered:       { label: '📦 ไรเดอร์ถึงที่หมายแล้ว!', color: 'bg-teal-100 text-teal-700' },
-};
-
 const TRACKING_STATUSES = ['rider_accepted', 'picking_up', 'delivering'];
 
 export default function ActivityTab() {
+  const { t } = useTranslation();
   const {
     orders, userProfile, currentUser,
     openRatingModal, updateOrderStatus,
@@ -35,6 +27,19 @@ export default function ActivityTab() {
     openChatWindow, restaurants, riders,
     setActiveTab,
   } = useApp();
+
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'pending': return { label: t('status_pending'), color: 'bg-orange-100 text-orange-600' };
+      case 'preparing': return { label: t('status_preparing'), color: 'bg-blue-100 text-blue-600' };
+      case 'ready_to_pickup': return { label: t('status_ready_to_pickup'), color: 'bg-purple-100 text-purple-600' };
+      case 'rider_accepted': return { label: t('status_rider_accepted'), color: 'bg-indigo-100 text-indigo-600' };
+      case 'picking_up': return { label: t('status_picking_up'), color: 'bg-indigo-100 text-indigo-700' };
+      case 'delivering': return { label: t('status_delivering'), color: 'bg-blue-100 text-blue-700' };
+      case 'delivered': return { label: t('status_delivered'), color: 'bg-teal-100 text-teal-700' };
+      default: return { label: status, color: 'bg-gray-100 text-gray-600' };
+    }
+  };
 
   const [trackingOrderId, setTrackingOrderId] = useState(null);
   const [showCancelReqModal, setShowCancelReqModal] = useState(false);
@@ -120,10 +125,10 @@ export default function ActivityTab() {
       {inProgress.length > 0 && (
         <>
           <h2 className="text-lg font-bold mb-3 text-orange-600 flex items-center gap-2">
-            <Bike size={18} /> กำลังดำเนินการ ({inProgress.length})
+            <Bike size={18} /> {t('in_progress_title', { count: inProgress.length })}
           </h2>
           {inProgress.map(order => {
-            const s = STATUS_LABELS[order.status] || { label: order.status, color: 'bg-gray-100 text-gray-600' };
+            const s = getStatusLabel(order.status);
             const cardBorder = order.status === 'delivered' ? 'border-2 border-teal-400' : 'border border-orange-100';
             const rLoc = riderLocations[order.id] ?? order.riderLocation;
             const isDelivering = order.status === 'delivering';

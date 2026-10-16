@@ -88,7 +88,7 @@ export default function CustomerView() {
           <button onClick={() => setProfileSubView('main')} className="mr-4 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
             <ArrowLeft />
           </button>
-          <h2 className="text-xl font-bold">เมนูจัดการ</h2>
+          <h2 className="text-xl font-bold">{t('manage_menu')}</h2>
         </div>
       )}
 
