@@ -208,10 +208,11 @@ export default function InteractiveMap({
       L.tileLayer(TILE_URL, {
         attribution: TILE_ATTR,
         maxZoom:     19,
-        subdomains:  'abcd',
+        subdomains:  'abc',
       }).addTo(map);
 
       mapRef.current = map;
+      map.invalidateSize();
 
       // ── SELECT MODE ────────────────────────────────────────────────────
       if (mode === 'select') {
@@ -286,8 +287,27 @@ export default function InteractiveMap({
       }
     });
 
+    // Recalculate container bounds when layout renders or resizes
+    const timerId = setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    }, 150);
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        if (mapRef.current) {
+          mapRef.current.invalidateSize();
+        }
+      });
+      resizeObserver.observe(containerRef.current);
+    }
+
     return () => {
       destroyed = true;
+      clearTimeout(timerId);
+      if (resizeObserver) resizeObserver.disconnect();
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       if (searchAbortControllerRef.current) searchAbortControllerRef.current.abort();
       if (reverseGeocodeAbortControllerRef.current) reverseGeocodeAbortControllerRef.current.abort();

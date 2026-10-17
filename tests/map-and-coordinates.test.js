@@ -130,3 +130,15 @@ test('Customer location resolution prioritizes active userProfile.location over 
   const resolved = resolveCustomerLocation(userProfile, userAddresses);
   assert.deepEqual(resolved, { lat: 13.7367, lng: 100.5231 });
 });
+
+test('InteractiveMap component uses valid tile subdomains and container invalidation', async () => {
+  const fs = await import('node:fs');
+  const mapCode = fs.readFileSync('src/components/InteractiveMap.jsx', 'utf8');
+
+  // Verify subdomains are strictly valid OpenStreetMap subdomains 'abc' and not invalid 'abcd'
+  assert.ok(mapCode.includes("subdomains:  'abc'") || mapCode.includes("subdomains: 'abc'"), "InteractiveMap must use valid subdomains 'abc'");
+  assert.ok(!mapCode.includes("'abcd'"), "InteractiveMap must not use invalid subdomain 'd'");
+
+  // Verify invalidateSize is called to handle dynamic container sizing
+  assert.ok(mapCode.includes('map.invalidateSize()'), "InteractiveMap must invoke invalidateSize on map instantiation");
+});
