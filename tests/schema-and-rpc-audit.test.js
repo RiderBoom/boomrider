@@ -94,12 +94,12 @@ test('Frontend RPC parameters match SQL function parameter definitions', () => {
   assert.deepEqual(mismatches, [], `Found RPC parameter mismatches:\n${mismatches.join('\n')}`);
 });
 
-test('Essential migration files (001-045) exist and maintain sequential ordering', () => {
+test('Essential migration files (001-046) exist and maintain sequential ordering', () => {
   const files = readdirSync('supabase/migrations')
     .filter(f => f.endsWith('.sql'))
     .sort();
 
-  const essentialNumbers = ['036', '037', '038', '039', '040', '041', '042', '043', '044', '045'];
+  const essentialNumbers = ['036', '037', '038', '039', '040', '041', '042', '043', '044', '045', '046'];
   for (const num of essentialNumbers) {
     const exists = files.some(f => f.startsWith(`${num}_`));
     assert.ok(exists, `Missing essential migration ${num}`);
@@ -121,6 +121,7 @@ test('Required triggers, functions, and EXECUTE grants are declared in migration
   // Verify required functions
   const requiredFunctions = [
     'create_service_quote',
+    'create_service_quote_from_route',
     'place_customer_order',
     'cancel_order_atomic',
     'process_order_settlement',

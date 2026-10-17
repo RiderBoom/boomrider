@@ -31,3 +31,6 @@ verify_jwt = true
 [functions.ai-chat]
 verify_jwt = true
 
+[functions.create-service-quote]
+verify_jwt = true
+

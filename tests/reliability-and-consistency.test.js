@@ -219,10 +219,15 @@ test('placeOrder rejects order when server quote RPC fails', async () => {
   let ordersState = [];
 
   const mockSupabase = {
-    rpc: async (fnName) => {
-      if (fnName === 'create_service_quote') {
-        return { data: { ok: false, reason: 'INVALID_COORDINATES' }, error: null };
-      }
+    functions: {
+      invoke: async (fnName) => {
+        if (fnName === 'create-service-quote') {
+          return { data: { ok: false, reason: 'INVALID_COORDINATES' }, error: null };
+        }
+        return { data: null, error: null };
+      },
+    },
+    rpc: async () => {
       return { data: null, error: null };
     },
   };

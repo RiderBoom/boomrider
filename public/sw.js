@@ -1,12 +1,14 @@
-// BoomRider Service Worker — self-destruct build
-// Clears ALL caches and unregisters itself so old SW conflicts are resolved permanently.
-self.addEventListener('install', () => self.skipWaiting());
+// Network-first worker: keeps the app eligible for PWA installation without
+// serving old cached JavaScript after a deployment.
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
+});
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-      .then(() => self.registration.unregister())
-  );
-  self.clients.claim();
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  event.respondWith(fetch(event.request));
 });

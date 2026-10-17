@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Download, Share } from 'lucide-react';
 
-const DISMISSED_KEY = 'boomrider_install_dismissed';
+// New key re-shows the banner after the PWA installation fix ships.
+const DISMISSED_KEY = 'boomrider_install_dismissed_v2';
 const DISMISSED_TTL = 7 * 24 * 60 * 60 * 1000; // 7 วัน
 
 function isIOS() {
