@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
 
-// CartoDB Voyager — โหลดเร็ว สวยงาม คมชัด ไม่มี Watermark
-const TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+// OpenStreetMap — โหลดเร็ว แสดงผลชัดเจน ไม่มี API Key หรือ Watermark
+const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
@@ -175,8 +175,8 @@ export default function InteractiveMap({
     onLocationSelectRef.current?.(fullLoc, address);
   };
 
-  // ── height: check if custom height class is in className, default to h-64 if absent
-  const heightClass = /(?:^|\s)h-(?:\[|\d)/.test(className || '') ? '' : 'h-64';
+  // ── height: check if custom height class is in className, default to h-80 (320px) if absent
+  const heightClass = /(?:^|\s)h-(?:\[|\d)/.test(className || '') ? '' : 'h-80';
 
   const defaultCenter =
     centerOverride
