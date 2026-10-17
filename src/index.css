@@ -5,6 +5,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevent Tailwind Preflight (img { max-width: 100% }) from collapsing Leaflet tiles and markers */
+.leaflet-container img, .leaflet-tile, .leaflet-marker-icon, .leaflet-image-layer {
+  max-width: none !important;
+  max-height: none !important;
+}
+
 /* ===== Base Reset ===== */
 *, *::before, *::after {
   box-sizing: border-box;
