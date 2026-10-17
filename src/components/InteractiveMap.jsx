@@ -175,11 +175,8 @@ export default function InteractiveMap({
     onLocationSelectRef.current?.(fullLoc, address);
   };
 
-  // ── height: extract from className (e.g. "h-64", "h-36") ─────────────────
-  const heightClass = (() => {
-    const m = (className || '').match(/h-\[?\d+\]?/);
-    return m ? m[0] : 'h-64';
-  })();
+  // ── height: check if custom height class is in className, default to h-64 if absent
+  const heightClass = /(?:^|\s)h-(?:\[|\d)/.test(className || '') ? '' : 'h-64';
 
   const defaultCenter =
     centerOverride
@@ -294,12 +291,24 @@ export default function InteractiveMap({
       }
     });
 
-    // Recalculate container bounds when layout renders or resizes
-    const timerId = setTimeout(() => {
+    // Recalculate container bounds when layout renders or resizes (staggered for animations/modals)
+    const timerId1 = setTimeout(() => {
       if (mapRef.current) {
         mapRef.current.invalidateSize();
       }
-    }, 150);
+    }, 100);
+
+    const timerId2 = setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    }, 300);
+
+    const timerId3 = setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    }, 600);
 
     let resizeObserver = null;
     if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
@@ -313,7 +322,9 @@ export default function InteractiveMap({
 
     return () => {
       destroyed = true;
-      clearTimeout(timerId);
+      clearTimeout(timerId1);
+      clearTimeout(timerId2);
+      clearTimeout(timerId3);
       if (resizeObserver) resizeObserver.disconnect();
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       if (searchAbortControllerRef.current) searchAbortControllerRef.current.abort();
@@ -713,7 +724,7 @@ export default function InteractiveMap({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-xl border-2 w-full mb-4 ${heightClass} ${borderColor}`}
+      className={`relative overflow-hidden rounded-xl border-2 w-full mb-4 bg-slate-100 ${heightClass} ${borderColor} ${className}`}
       style={{ zIndex: 0 }}
     >
       {/* Leaflet container */}
