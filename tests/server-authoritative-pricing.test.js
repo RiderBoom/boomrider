@@ -25,6 +25,18 @@ test('quote migration reads coordinates from the deployed JSON schema', () => {
   assert.doesNotMatch(migration, /public\.user_addresses/);
   assert.doesNotMatch(migration, /v_rest_data\.location/);
 });
+
+test('create_service_quote_from_route calculates price using osrm_road distance and updates quote', () => {
+  const migration = readFileSync(
+    new URL('../supabase/migrations/046_osrm_road_distance_quotes.sql', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(migration, /CREATE OR REPLACE FUNCTION public\.create_service_quote_from_route/);
+  assert.match(migration, /distance_source = 'osrm_road'/);
+  assert.match(migration, /'distanceSource', 'osrm_road'/);
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.create_service_quote_from_route.*TO service_role/);
+});
 function mockCreateServiceQuoteRPC(pQuote, authUid, dbStores) {
   const { quotes = {}, appConfig = {}, restaurants = {}, userAddresses = {} } = dbStores;
 

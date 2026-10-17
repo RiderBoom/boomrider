@@ -14,9 +14,9 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-// Proactively unregister any lingering service workers to prevent cache conflicts
+// A network-first Service Worker is required for browser PWA installation.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations()
-    .then((regs) => regs.forEach((r) => r.unregister()))
-    .catch(() => {});
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+  });
 }

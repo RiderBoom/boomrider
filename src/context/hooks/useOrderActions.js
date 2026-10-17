@@ -30,15 +30,17 @@ export function useOrderActions(deps) {
   const hasPendingCancelRequest = (orderId) =>
     pendingRequests.some(r => r.type === 'cancel_order' && r.data?.orderId === orderId);
 
-  // Helper to fetch server quote prior to order placement
+  // Road distance and the authoritative quote are both created server-side.
   const _fetchServiceQuote = async (payload) => {
-    const { data: quoteRes, error: quoteErr } = await supabase.rpc('create_service_quote', payload);
+    const { data: quoteRes, error: quoteErr } = await supabase.functions.invoke('create-service-quote', { body: payload });
     if (quoteErr) {
       console.error('[quoteEngine] Error fetching server quote:', quoteErr);
-      return { ok: false, reason: quoteErr.message || 'ไม่สามารถขอใบเสนอราคาจากเซิร์ฟเวอร์ได้' };
+      return { ok: false, reason: 'ยังคำนวณเส้นทางถนนไม่ได้ กรุณาลองใหม่อีกครั้ง' };
     }
     if (!quoteRes || !quoteRes.ok) {
-      return { ok: false, reason: quoteRes?.reason || 'ไม่สามารถสร้างใบเสนอราคาได้' };
+      return { ok: false, reason: quoteRes?.reason === 'ROUTE_NOT_FOUND'
+        ? 'ไม่พบเส้นทางขับรถระหว่างจุดรับและจุดส่ง'
+        : 'ยังคำนวณเส้นทางถนนไม่ได้ กรุณาลองใหม่อีกครั้ง' };
     }
     return { ok: true, quote: quoteRes };
   };

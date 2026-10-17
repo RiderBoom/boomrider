@@ -449,7 +449,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
     const addr = userAddresses?.[0] || { address: 'ที่อยู่ปัจจุบันของลูกค้า', location: custLoc };
     const orderId = generateId();
 
-    const { data: quote, error: quoteError } = await supabase.rpc('create_service_quote', {
+    const { data: quote, error: quoteError } = await supabase.functions.invoke('create-service-quote', { body: {
       p_service_type: 'food',
       p_restaurant_id: matchedShop.id,
       p_address_id: addr.id ? String(addr.id) : null,
@@ -457,7 +457,7 @@ ${openShops || 'ไม่มีข้อมูลร้านค้า'}
       p_pickup_lng: shopLoc.lng,
       p_dropoff_lat: custLoc.lat,
       p_dropoff_lng: custLoc.lng,
-    });
+    }});
     if (quoteError || !quote?.ok) {
       return `ไม่สามารถยืนยันราคาออเดอร์ได้: ${quoteError?.message || quote?.reason || 'กรุณาลองใหม่'}`;
     }
