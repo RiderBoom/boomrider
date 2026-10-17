@@ -224,15 +224,17 @@ export default function ActivityTab() {
                           </button>
                         </div>
                       </div>
-                      <InteractiveMap
-                        mode="view"
-                        userLocation={order.location}
-                        shopLocation={order.pickupLocation}
-                        riderLocation={rLoc}
-                        trackingMode
-                        autoFollow={isDelivering}
-                        className={isDelivering ? 'h-72' : 'h-44'}
-                      />
+                      {trackingOrderId !== order.id && (
+                        <InteractiveMap
+                          mode="view"
+                          userLocation={order.location}
+                          shopLocation={order.pickupLocation}
+                          riderLocation={rLoc}
+                          trackingMode
+                          autoFollow={isDelivering}
+                          className={isDelivering ? 'h-72' : 'h-44'}
+                        />
+                      )}
                     </div>
                   );
                 })()}
