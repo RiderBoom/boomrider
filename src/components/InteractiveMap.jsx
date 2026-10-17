@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
 
 // OpenStreetMap Standard — ฟรี 100%, ไม่มี Watermark, ไม่ต้องใช้ API Key
-const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const PRIMARY_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const PRIMARY_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+// Free fallback when the public OpenStreetMap tile service is unavailable on a user's network.
+const FALLBACK_TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+const FALLBACK_TILE_ATTR = '&copy; OpenStreetMap contributors &copy; CARTO';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
@@ -175,11 +178,8 @@ export default function InteractiveMap({
     onLocationSelectRef.current?.(fullLoc, address);
   };
 
-  // ── height: extract from className (e.g. "h-64", "h-36") ─────────────────
-  const heightClass = (() => {
-    const m = (className || '').match(/h-\[?\d+\]?/);
-    return m ? m[0] : 'h-64';
-  })();
+  // Preserve the caller's sizing class, including h-full for fullscreen maps.
+  const heightClass = className.trim() || 'h-64';
 
   const defaultCenter =
     centerOverride
@@ -193,6 +193,8 @@ export default function InteractiveMap({
   useEffect(() => {
     if (!containerRef.current) return;
     let destroyed = false;
+    let frameId = null;
+    let resizeObserver = null;
 
     import('leaflet').then(({ default: L }) => {
       if (destroyed || mapRef.current) return;
@@ -205,11 +207,31 @@ export default function InteractiveMap({
         attributionControl: true,
       });
 
-      L.tileLayer(TILE_URL, {
-        attribution: TILE_ATTR,
-        maxZoom:     19,
-        subdomains:  'abc',
-      }).addTo(map);
+      let usingFallbackTiles = false;
+      const addTileLayer = (url, attribution) => {
+        const layer = L.tileLayer(url, {
+          attribution,
+          maxZoom: 19,
+          subdomains: 'abcd',
+        }).addTo(map);
+
+        layer.on('tileerror', () => {
+          if (usingFallbackTiles) return;
+          usingFallbackTiles = true;
+          map.removeLayer(layer);
+          addTileLayer(FALLBACK_TILE_URL, FALLBACK_TILE_ATTR);
+        });
+      };
+      addTileLayer(PRIMARY_TILE_URL, PRIMARY_TILE_ATTR);
+
+      // A map created inside a modal or resized panel can start with zero width.
+      // Recalculate it after layout and whenever its container changes size.
+      const refreshMapSize = () => map.invalidateSize({ animate: false, pan: false });
+      frameId = requestAnimationFrame(refreshMapSize);
+      resizeObserver = typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(refreshMapSize);
+      resizeObserver?.observe(containerRef.current);
 
       mapRef.current = map;
       map.invalidateSize();
@@ -311,6 +333,8 @@ export default function InteractiveMap({
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       if (searchAbortControllerRef.current) searchAbortControllerRef.current.abort();
       if (reverseGeocodeAbortControllerRef.current) reverseGeocodeAbortControllerRef.current.abort();
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current     = null;
