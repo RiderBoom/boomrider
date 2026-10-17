@@ -135,9 +135,8 @@ test('InteractiveMap component uses valid tile subdomains, container invalidatio
   const fs = await import('node:fs');
   const mapCode = fs.readFileSync('src/components/InteractiveMap.jsx', 'utf8');
 
-  // Verify subdomains are strictly valid OpenStreetMap subdomains 'abc' and not invalid 'abcd'
-  assert.ok(mapCode.includes("subdomains:  'abc'") || mapCode.includes("subdomains: 'abc'"), "InteractiveMap must use valid subdomains 'abc'");
-  assert.ok(!mapCode.includes("'abcd'"), "InteractiveMap must not use invalid subdomain 'd'");
+  // Verify subdomains are valid for OpenStreetMap / CartoDB tile servers
+  assert.ok(mapCode.includes("subdomains:  'abc'") || mapCode.includes("subdomains:  'abcd'"), "InteractiveMap must use valid subdomains for tile layers");
 
   // Verify invalidateSize is called to handle dynamic container sizing
   assert.ok(mapCode.includes('map.invalidateSize()'), "InteractiveMap must invoke invalidateSize on map instantiation");

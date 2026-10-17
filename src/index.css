@@ -5,6 +5,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fix Leaflet tiles rendering issue when combined with Tailwind CSS reset rules */
+.leaflet-container img,
+.leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+}
+
 /* ===== Base Reset ===== */
 *, *::before, *::after {
   box-sizing: border-box;

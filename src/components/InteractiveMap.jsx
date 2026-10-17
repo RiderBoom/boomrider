@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
 
-// OpenStreetMap Standard — ฟรี 100%, ไม่มี Watermark, ไม่ต้องใช้ API Key
-const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+// Tile Layers — CartoDB Voyager เป็นหลัก (เร็ว + เสถียร ไม่โดน Adblock/Rate Limit ง่าย) พร้อม OpenStreetMap เป็น Fallback
+const PRIMARY_TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const PRIMARY_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+const FALLBACK_TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const FALLBACK_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
@@ -209,11 +212,25 @@ export default function InteractiveMap({
         attributionControl: true,
       });
 
-      L.tileLayer(TILE_URL, {
-        attribution: TILE_ATTR,
+      const primaryLayer = L.tileLayer(PRIMARY_TILE_URL, {
+        attribution: PRIMARY_TILE_ATTR,
         maxZoom:     19,
-        subdomains:  'abc',
-      }).addTo(map);
+        subdomains:  'abcd',
+      });
+
+      primaryLayer.on('tileerror', () => {
+        // หาก CartoDB โหลดไม่ได้ ให้สลับไปใช้ OpenStreetMap
+        if (mapRef.current && primaryLayer._map) {
+          mapRef.current.removeLayer(primaryLayer);
+          L.tileLayer(FALLBACK_TILE_URL, {
+            attribution: FALLBACK_TILE_ATTR,
+            maxZoom:     19,
+            subdomains:  'abc',
+          }).addTo(mapRef.current);
+        }
+      });
+
+      primaryLayer.addTo(map);
 
       mapRef.current = map;
       map.invalidateSize();
