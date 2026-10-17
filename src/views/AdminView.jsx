@@ -190,7 +190,7 @@ export default function AdminView() {
     if (appConfig && !isConfigDirty) {
       setEditConfig(prev => ({ ...INITIAL_CONFIG, ...prev, ...appConfig }));
     }
-  }, [appConfig, isConfigDirty]);
+  }, [appConfig, isConfigDirty, setEditConfig]);
 
   useEffect(() => {
     if (adminTab === 'users') loadAllUsers();

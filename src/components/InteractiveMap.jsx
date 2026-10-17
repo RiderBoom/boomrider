@@ -406,6 +406,7 @@ export default function InteractiveMap({
   useEffect(() => {
     if (!mapRef.current || !leafletRef.current || mode !== 'view') return;
     const L = leafletRef.current;
+    const riderAnim = riderAnimRef.current;
     if (riderLocation) {
       const targetLat = riderLocation.lat;
       const targetLng = riderLocation.lng;
@@ -416,18 +417,18 @@ export default function InteractiveMap({
           : makeIcon(L, '#3b82f6', '🛵');
         markersRef.current.rider = L.marker([targetLat, targetLng], { icon })
           .addTo(mapRef.current).bindPopup('ไรเดอร์');
-        riderAnimRef.current.currentPos = { lat: targetLat, lng: targetLng };
+        riderAnim.currentPos = { lat: targetLat, lng: targetLng };
       } else {
-        const startPos = riderAnimRef.current.currentPos || { lat: targetLat, lng: targetLng };
+        const startPos = riderAnim.currentPos || { lat: targetLat, lng: targetLng };
         const dLat = targetLat - startPos.lat;
         const dLng = targetLng - startPos.lng;
 
         if (Math.abs(dLat) > 0.00001 || Math.abs(dLng) > 0.00001) {
           const newBearing = calculateBearing(startPos.lat, startPos.lng, targetLat, targetLng);
-          riderAnimRef.current.bearing = newBearing;
+          riderAnim.bearing = newBearing;
 
-          if (riderAnimRef.current.animId) {
-            cancelAnimationFrame(riderAnimRef.current.animId);
+          if (riderAnim.animId) {
+            cancelAnimationFrame(riderAnim.animId);
           }
 
           const duration = 800;
@@ -449,14 +450,14 @@ export default function InteractiveMap({
             if (markersRef.current.rider) {
               markersRef.current.rider.setLatLng([curLat, curLng]);
             }
-            riderAnimRef.current.currentPos = { lat: curLat, lng: curLng };
+            riderAnim.currentPos = { lat: curLat, lng: curLng };
 
             if (progress < 1) {
-              riderAnimRef.current.animId = requestAnimationFrame(animateStep);
+              riderAnim.animId = requestAnimationFrame(animateStep);
             }
           };
 
-          riderAnimRef.current.animId = requestAnimationFrame(animateStep);
+          riderAnim.animId = requestAnimationFrame(animateStep);
         } else {
           markersRef.current.rider.setLatLng([targetLat, targetLng]);
         }
@@ -471,8 +472,8 @@ export default function InteractiveMap({
     }
 
     return () => {
-      if (riderAnimRef.current.animId) {
-        cancelAnimationFrame(riderAnimRef.current.animId);
+      if (riderAnim.animId) {
+        cancelAnimationFrame(riderAnim.animId);
       }
     };
   }, [riderLocation, centerOverride]); // eslint-disable-line react-hooks/exhaustive-deps
