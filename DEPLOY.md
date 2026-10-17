@@ -99,6 +99,7 @@ supabase secrets set GEMINI_MODEL=gemini-1.5-flash
 supabase functions deploy process-expired-offers
 supabase functions deploy send-notification
 supabase functions deploy ai-chat
+supabase functions deploy create-service-quote
 ```
 
 กำหนด `x-cron-secret` ในระบบที่เรียก `process-expired-offers` และ
