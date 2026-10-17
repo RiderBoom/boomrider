@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
 
-// OpenStreetMap Standard — ฟรี 100%, ไม่มี Watermark, ไม่ต้องใช้ API Key
-const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+// CartoDB Voyager — OpenStreetMap data, fast global CDN, no referer block in webviews
+const TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
