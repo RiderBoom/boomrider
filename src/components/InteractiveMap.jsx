@@ -208,10 +208,15 @@ export default function InteractiveMap({
       L.tileLayer(TILE_URL, {
         attribution: TILE_ATTR,
         maxZoom:     19,
-        subdomains:  'abcd',
+        subdomains:  'abc',
       }).addTo(map);
 
       mapRef.current = map;
+      setTimeout(() => {
+        if (!destroyed && mapRef.current) {
+          mapRef.current.invalidateSize();
+        }
+      }, 100);
 
       // ── SELECT MODE ────────────────────────────────────────────────────
       if (mode === 'select') {
