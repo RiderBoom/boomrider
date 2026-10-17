@@ -131,7 +131,7 @@ test('Customer location resolution prioritizes active userProfile.location over 
   assert.deepEqual(resolved, { lat: 13.7367, lng: 100.5231 });
 });
 
-test('InteractiveMap component uses valid tile subdomains and container invalidation', async () => {
+test('InteractiveMap component uses valid tile subdomains, container invalidation, and leaflet_id cleanup', async () => {
   const fs = await import('node:fs');
   const mapCode = fs.readFileSync('src/components/InteractiveMap.jsx', 'utf8');
 
@@ -141,4 +141,21 @@ test('InteractiveMap component uses valid tile subdomains and container invalida
 
   // Verify invalidateSize is called to handle dynamic container sizing
   assert.ok(mapCode.includes('map.invalidateSize()'), "InteractiveMap must invoke invalidateSize on map instantiation");
+
+  // Verify _leaflet_id safety check is performed
+  assert.ok(mapCode.includes('containerRef.current._leaflet_id = null;'), "InteractiveMap must clear container _leaflet_id to prevent re-initialization crashes");
+});
+
+test('ActivityTab suppresses inline map when trackingOrderId full-screen modal is active', async () => {
+  const fs = await import('node:fs');
+  const activityCode = fs.readFileSync('src/components/customer/ActivityTab.jsx', 'utf8');
+
+  assert.ok(activityCode.includes('trackingOrderId !== order.id'), 'ActivityTab must condition inline map rendering on trackingOrderId to prevent map duplication');
+});
+
+test('RiderView uses on-demand map preview toggle for job list items', async () => {
+  const fs = await import('node:fs');
+  const riderCode = fs.readFileSync('src/views/RiderView.jsx', 'utf8');
+
+  assert.ok(riderCode.includes('expandedMapJobs[job.id]'), 'RiderView must use expandedMapJobs toggle for job list items to prevent multi-map rendering lag');
 });

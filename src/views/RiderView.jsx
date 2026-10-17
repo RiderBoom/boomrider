@@ -60,6 +60,7 @@ export default function RiderView() {
   const [acceptingId, setAcceptingId] = useState(null);
   const [savingLocation, setSavingLocation] = useState(false);
   const [pendingLocation, setPendingLocation] = useState(null);
+  const [expandedMapJobs, setExpandedMapJobs] = useState({}); // { [jobId]: bool }
 
   // ── state สำหรับรูปหลักฐานการส่ง (keyed by orderId) ──────────────────────
   const [proofPhotos,   setProofPhotos]   = useState({}); // { [orderId]: url }
@@ -526,10 +527,27 @@ export default function RiderView() {
               </div>
             )}
 
-            {/* แผนที่ */}
-            <div className="mb-3 rounded-lg overflow-hidden border border-gray-600">
-              <InteractiveMap mode="view" userLocation={job.location} shopLocation={job.pickupLocation} className="h-36" />
-            </div>
+            {/* แผนที่พรีวิว ( toggle per job เพื่อป้องกันแผนที่ซ้ำซ้อนหลาย instance ) */}
+            {expandedMapJobs[job.id] ? (
+              <div className="mb-3 rounded-lg overflow-hidden border border-gray-600">
+                <InteractiveMap mode="view" userLocation={job.location} shopLocation={job.pickupLocation} className="h-36" />
+                <button
+                  type="button"
+                  onClick={() => setExpandedMapJobs(prev => ({ ...prev, [job.id]: false }))}
+                  className="w-full bg-gray-700 hover:bg-gray-600 text-gray-300 py-1 text-xs font-bold text-center"
+                >
+                  ▲ ซ่อนแผนที่
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setExpandedMapJobs(prev => ({ ...prev, [job.id]: true }))}
+                className="w-full mb-3 bg-gray-700/60 hover:bg-gray-700 text-gray-300 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border border-gray-600/50"
+              >
+                <MapPin size={13} className="text-green-400" /> แสดงแผนที่พรีวิว
+              </button>
+            )}
 
             {/* ที่อยู่ */}
             <div className="text-sm text-gray-400 mb-1.5 space-y-1">

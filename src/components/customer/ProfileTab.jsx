@@ -304,69 +304,71 @@ export default function ProfileTab() {
 
       ) : profileSubView === 'pin_location' ? (
         <div className="p-4 pt-0">
-          <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-4 mb-6">
-            <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-2">
-              <MapPin size={18} className="text-blue-500" /> ตำแหน่งปัจจุบันของฉัน
-            </h3>
-            <p className="text-xs text-gray-500 mb-3">
-              ตำแหน่งนี้ใช้คำนวณระยะทางร้านค้าใกล้บ้าน และเป็นที่อยู่เริ่มต้นสำหรับสั่งอาหาร
-            </p>
-            <div className="text-xs mb-3 space-y-0.5">
-              <div className="text-gray-500">
-                📍 ตำแหน่งตอนนี้:{' '}
-                {userProfile.location
-                  ? <span className="text-gray-700 font-medium">{userProfile.location.lat.toFixed(4)}, {userProfile.location.lng.toFixed(4)}</span>
-                  : <span className="text-red-400 font-bold">ยังไม่ได้ตั้ง</span>}
-              </div>
-              {userPinLoc && (
-                <div className="text-blue-600 font-bold">
-                  🔵 เลือกใหม่: {userPinLoc.lat.toFixed(4)}, {userPinLoc.lng.toFixed(4)}
+          {!editingAddrId && !newAddrMode && (
+            <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-4 mb-6">
+              <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-2">
+                <MapPin size={18} className="text-blue-500" /> ตำแหน่งปัจจุบันของฉัน
+              </h3>
+              <p className="text-xs text-gray-500 mb-3">
+                ตำแหน่งนี้ใช้คำนวณระยะทางร้านค้าใกล้บ้าน และเป็นที่อยู่เริ่มต้นสำหรับสั่งอาหาร
+              </p>
+              <div className="text-xs mb-3 space-y-0.5">
+                <div className="text-gray-500">
+                  📍 ตำแหน่งตอนนี้:{' '}
+                  {userProfile.location
+                    ? <span className="text-gray-700 font-medium">{userProfile.location.lat.toFixed(4)}, {userProfile.location.lng.toFixed(4)}</span>
+                    : <span className="text-red-400 font-bold">ยังไม่ได้ตั้ง</span>}
                 </div>
-              )}
+                {userPinLoc && (
+                  <div className="text-blue-600 font-bold">
+                    🔵 เลือกใหม่: {userPinLoc.lat.toFixed(4)}, {userPinLoc.lng.toFixed(4)}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl overflow-hidden border-2 border-blue-200 mb-2">
+                <InteractiveMap
+                  mode="select"
+                  userLocation={userPinLoc || userProfile.location}
+                  onLocationSelect={loc => setUserPinLoc(loc)}
+                  className="h-64"
+                />
+              </div>
+              <p className="text-[10px] text-gray-400 text-center mb-3">แตะบนแผนที่เพื่อปักหมุดตำแหน่งของคุณ</p>
+              <button
+                onClick={() => {
+                  if (!navigator.geolocation) return notifySystem('ไม่รองรับ', 'Browser นี้ไม่รองรับ GPS', 'error');
+                  navigator.geolocation.getCurrentPosition(
+                    pos => setUserPinLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                    () => notifySystem('ไม่สามารถดึง GPS', 'กรุณาแตะแผนที่เพื่อเลือกตำแหน่ง', 'error'),
+                    { enableHighAccuracy: true, timeout: 8000 },
+                  );
+                }}
+                className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold mb-3 flex items-center justify-center gap-2 hover:bg-gray-200 active:scale-95 transition-all"
+              >
+                <Crosshair size={15} /> ใช้ GPS ตำแหน่งปัจจุบัน
+              </button>
+              <button
+                disabled={!userPinLoc || userPinSaving}
+                onClick={async () => {
+                  if (!userPinLoc) return;
+                  setUserPinSaving(true);
+                  await handleUpdateUserLocation(userPinLoc);
+                  setUserPinSaving(false);
+                  setUserPinLoc(null);
+                  setProfileSubView('main');
+                }}
+                className={`w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                  userPinLoc && !userPinSaving
+                    ? 'bg-blue-500 text-white hover:bg-blue-400 active:scale-95 shadow-lg shadow-blue-100'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {userPinSaving
+                  ? <><Save size={16} className="animate-spin" /> กำลังบันทึก...</>
+                  : <><MapPin size={16} /> บันทึกตำแหน่งของฉัน</>}
+              </button>
             </div>
-            <div className="rounded-xl overflow-hidden border-2 border-blue-200 mb-2">
-              <InteractiveMap
-                mode="select"
-                userLocation={userPinLoc || userProfile.location}
-                onLocationSelect={loc => setUserPinLoc(loc)}
-                className="h-64"
-              />
-            </div>
-            <p className="text-[10px] text-gray-400 text-center mb-3">แตะบนแผนที่เพื่อปักหมุดตำแหน่งของคุณ</p>
-            <button
-              onClick={() => {
-                if (!navigator.geolocation) return notifySystem('ไม่รองรับ', 'Browser นี้ไม่รองรับ GPS', 'error');
-                navigator.geolocation.getCurrentPosition(
-                  pos => setUserPinLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                  () => notifySystem('ไม่สามารถดึง GPS', 'กรุณาแตะแผนที่เพื่อเลือกตำแหน่ง', 'error'),
-                  { enableHighAccuracy: true, timeout: 8000 },
-                );
-              }}
-              className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold mb-3 flex items-center justify-center gap-2 hover:bg-gray-200 active:scale-95 transition-all"
-            >
-              <Crosshair size={15} /> ใช้ GPS ตำแหน่งปัจจุบัน
-            </button>
-            <button
-              disabled={!userPinLoc || userPinSaving}
-              onClick={async () => {
-                if (!userPinLoc) return;
-                setUserPinSaving(true);
-                await handleUpdateUserLocation(userPinLoc);
-                setUserPinSaving(false);
-                setUserPinLoc(null);
-                setProfileSubView('main');
-              }}
-              className={`w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                userPinLoc && !userPinSaving
-                  ? 'bg-blue-500 text-white hover:bg-blue-400 active:scale-95 shadow-lg shadow-blue-100'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {userPinSaving
-                ? <><Save size={16} className="animate-spin" /> กำลังบันทึก...</>
-                : <><MapPin size={16} /> บันทึกตำแหน่งของฉัน</>}
-            </button>
-          </div>
+          )}
 
           {/* ควบรวมที่อยู่ของฉันไว้ในหน้าเดียวกัน */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">

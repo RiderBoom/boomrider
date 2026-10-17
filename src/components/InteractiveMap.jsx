@@ -194,8 +194,15 @@ export default function InteractiveMap({
     if (!containerRef.current) return;
     let destroyed = false;
 
+    if (containerRef.current._leaflet_id) {
+      containerRef.current._leaflet_id = null;
+    }
+
     import('leaflet').then(({ default: L }) => {
-      if (destroyed || mapRef.current) return;
+      if (destroyed || !containerRef.current || mapRef.current) return;
+      if (containerRef.current._leaflet_id) {
+        containerRef.current._leaflet_id = null;
+      }
       leafletRef.current = L;
 
       const map = L.map(containerRef.current, {
