@@ -133,8 +133,7 @@ test('Customer location resolution prioritizes active userProfile.location over 
 
 test('InteractiveMap component uses valid tile subdomains and container invalidation', async () => {
   const fs = await import('node:fs');
-  const path = await import('node:path');
-  const mapCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/InteractiveMap.jsx'), 'utf8');
+  const mapCode = fs.readFileSync('src/components/InteractiveMap.jsx', 'utf8');
 
   // Verify subdomains are strictly valid OpenStreetMap subdomains 'abc' and not invalid 'abcd'
   assert.ok(mapCode.includes("subdomains:  'abc'") || mapCode.includes("subdomains: 'abc'"), "InteractiveMap must use valid subdomains 'abc'");
