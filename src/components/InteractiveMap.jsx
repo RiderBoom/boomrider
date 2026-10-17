@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
 
 // Tile Layers — CartoDB Voyager เป็นหลัก (เร็ว + เสถียร ไม่โดน Adblock/Rate Limit ง่าย) พร้อม OpenStreetMap เป็น Fallback
-const PRIMARY_TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const PRIMARY_TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
 const PRIMARY_TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 const FALLBACK_TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
