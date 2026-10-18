@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 
-// Standard OpenStreetMap Tiles
-const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+// CartoDB Voyager Tiles (High-reliability CORS tile server for Leaflet)
+const TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
@@ -216,13 +216,13 @@ export default function InteractiveMap({
         subdomains:  'abc',
       }).addTo(map);
 
-      // Fallback to standard OpenStreetMap tile server if Carto tile encounters error
+      // Fallback to Esri World Street Map tile server if primary tile encounters error
       tileLayer.on('tileerror', (e) => {
         if (e.tile && !e.tile._hasFallback) {
           e.tile._hasFallback = true;
           const coords = e.coords;
           if (coords) {
-            e.tile.src = `https://a.tile.openstreetmap.org/${coords.z}/${coords.x}/${coords.y}.png`;
+            e.tile.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${coords.z}/${coords.y}/${coords.x}`;
           }
         }
       });
