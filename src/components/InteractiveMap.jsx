@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 
-// CartoDB Voyager Tiles (High-reliability CORS tile server for Leaflet)
-const TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+// Longdo Map Tiles (CORS-enabled raster tile service for Leaflet)
+const TILE_URL  = 'https://ms.longdo.com/mmmap/img.php?zoom={z}&x={x}&y={y}&mode=icons&proj=epsg3857&HD=1';
+const TILE_ATTR = '&copy; <a href="https://map.longdo.com/">Longdo Map</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
