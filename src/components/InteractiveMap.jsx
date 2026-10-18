@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 
-// Longdo Map Tiles (CORS-enabled raster tile service for Leaflet)
-const TILE_URL  = 'https://ms.longdo.com/mmmap/img.php?zoom={z}&x={x}&y={y}&mode=icons&proj=epsg3857&HD=1';
-const TILE_ATTR = '&copy; <a href="https://map.longdo.com/">Longdo Map</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+// Standard OpenStreetMap Tiles (Fast, open, CORS-enabled Thailand street map for Leaflet)
+const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
