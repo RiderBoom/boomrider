@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Navigation, Search, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 
-// Standard OpenStreetMap Tiles
-const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+// Esri World Street Map — Fast, high reliability, no watermark, no rate-limiting block
+const TILE_URL  = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+const TILE_ATTR = '&copy; <a href="https://www.esri.com/">Esri</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
