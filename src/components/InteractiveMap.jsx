@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, Navigation, Search, Loader2, X } from 'lucide-react';
+import { Crosshair, Navigation, Search, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 
-// CartoDB Voyager — โหลดเร็ว สวยงาม คมชัด ไม่มี Watermark
-const TILE_URL  = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+// Standard OpenStreetMap Tiles
+const TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const SEARCH_HISTORY_KEY = 'boomrider_map_search_history';
 const geocodeCache = new Map(); // lat,lng -> address string cache
@@ -119,6 +119,7 @@ export default function InteractiveMap({
   const [locating, setLocating] = useState(false);
   const [pinned,   setPinned]   = useState(null);
   const [routeMeta, setRouteMeta] = useState(null); // { distanceKm: number, durationMin: number }
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const [searchHistory, setSearchHistory] = useState(() => {
     try {
@@ -175,8 +176,8 @@ export default function InteractiveMap({
     onLocationSelectRef.current?.(fullLoc, address);
   };
 
-  // ── height: check if custom height class is in className, default to h-64 if absent
-  const heightClass = /(?:^|\s)h-(?:\[|\d)/.test(className || '') ? '' : 'h-64';
+  // ── height: check if custom height class is in className, default to h-96 if absent
+  const heightClass = /(?:^|\s)h-(?:\[|\d)/.test(className || '') ? '' : 'h-96';
 
   const defaultCenter =
     centerOverride
@@ -506,6 +507,17 @@ export default function InteractiveMap({
     };
   }, [riderLocation, centerOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Invalidate size when full-screen state toggles ───────────────────────
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const timer = setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [isExpanded]);
+
   // ── pan เมื่อ centerOverride เปลี่ยน (select mode) ───────────────────────
   useEffect(() => {
     if (!mapRef.current || !centerOverride || mode !== 'select') return;
@@ -735,11 +747,25 @@ export default function InteractiveMap({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-xl border-2 w-full mb-4 bg-slate-100 ${heightClass} ${borderColor} ${className}`}
-      style={{ zIndex: 0 }}
+      className={
+        isExpanded
+          ? `fixed inset-0 z-[9999] bg-slate-100 flex flex-col w-full h-full border-none rounded-none m-0`
+          : `relative overflow-hidden rounded-xl border-2 w-full mb-4 bg-slate-100 ${heightClass} ${borderColor} ${className}`
+      }
+      style={{ zIndex: isExpanded ? 9999 : 0 }}
     >
       {/* Leaflet container */}
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Fullscreen Expand / Minimize Toggle Button */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(prev => !prev)}
+        className="absolute top-2 right-2 z-[1000] bg-white/95 backdrop-blur-sm p-2 rounded-xl shadow-lg border border-gray-200 text-gray-700 hover:text-green-600 active:scale-95 transition-all flex items-center justify-center"
+        title={isExpanded ? "ย่อขนาดแผนที่" : "ขยายแผนที่เต็มหน้าจอ"}
+      >
+        {isExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+      </button>
 
       {/* View Mode ETA & Distance Badge */}
       {mode === 'view' && routeMeta && (
